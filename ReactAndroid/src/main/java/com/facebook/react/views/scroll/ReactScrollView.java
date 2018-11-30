@@ -13,6 +13,7 @@ import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.support.v4.view.ViewCompat;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -321,6 +322,10 @@ public class ReactScrollView extends ScrollView implements ReactClippingViewGrou
       // aborts the scroller animation when we get to the bottom of the ScrollView content.
 
       int scrollWindowHeight = getHeight() - getPaddingBottom() - getPaddingTop();
+
+      if (this.getScaleY() < 0 && Build.VERSION.SDK_INT > 27) {
+        velocityY *= -1;
+      }
 
       mScroller.fling(
         getScrollX(), // startX
