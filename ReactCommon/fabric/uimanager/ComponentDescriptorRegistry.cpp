@@ -75,8 +75,8 @@ static const std::string componentNameByReactViewName(std::string viewName) {
   // We need this temporarly for testing purposes until we have proper
   // implementation of core components.
   if (viewName == "SinglelineTextInputView" ||
-      viewName == "MultilineTextInputView" || viewName == "RefreshControl" ||
-      viewName == "AndroidSwipeRefreshLayout" || viewName == "SafeAreaView" ||
+      viewName == "MultilineTextInputView" || viewName == "AndroidTextInput" ||
+      viewName == "RefreshControl" || viewName == "SafeAreaView" ||
       viewName == "ScrollContentView" ||
       viewName == "AndroidHorizontalScrollContentView" // Android
   ) {
@@ -92,9 +92,12 @@ const ComponentDescriptor &ComponentDescriptorRegistry::at(
 
   auto it = _registryByName.find(unifiedComponentName);
   if (it == _registryByName.end()) {
-    throw std::invalid_argument(
-        ("Unable to find componentDescriptor for " + unifiedComponentName)
-            .c_str());
+    if (_fallbackComponentDescriptor == nullptr) {
+      throw std::invalid_argument(
+          ("Unable to find componentDescriptor for " + unifiedComponentName)
+              .c_str());
+    }
+    return *_fallbackComponentDescriptor.get();
   }
   return *it->second;
 }
@@ -112,15 +115,26 @@ SharedShadowNode ComponentDescriptorRegistry::createNode(
     const SharedEventTarget &eventTarget) const {
   ComponentName componentName = componentNameByReactViewName(viewName);
   const SharedComponentDescriptor &componentDescriptor = (*this)[componentName];
-  RawProps rawProps = rawPropsFromDynamic(props);
 
-  SharedShadowNode shadowNode = componentDescriptor->createShadowNode(
-      {.tag = tag,
-       .rootTag = rootTag,
-       .eventEmitter =
-           componentDescriptor->createEventEmitter(std::move(eventTarget), tag),
-       .props = componentDescriptor->cloneProps(nullptr, rawProps)});
+  SharedShadowNode shadowNode = componentDescriptor->createShadowNode({
+      /* .tag = */ tag,
+      /* .rootTag = */ rootTag,
+      /* .props = */ componentDescriptor->cloneProps(nullptr, RawProps(props)),
+      /* .eventEmitter = */
+      componentDescriptor->createEventEmitter(std::move(eventTarget), tag),
+  });
   return shadowNode;
+}
+
+void ComponentDescriptorRegistry::setFallbackComponentDescriptor(
+    SharedComponentDescriptor descriptor) {
+  _fallbackComponentDescriptor = descriptor;
+  registerComponentDescriptor(descriptor);
+}
+
+const SharedComponentDescriptor
+ComponentDescriptorRegistry::getFallbackComponentDescriptor() const {
+  return _fallbackComponentDescriptor;
 }
 
 } // namespace react

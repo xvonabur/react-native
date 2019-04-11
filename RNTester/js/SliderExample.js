@@ -11,8 +11,7 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
-const {Slider, Text, StyleSheet, View} = ReactNative;
+const {Slider, Text, StyleSheet, View} = require('react-native');
 
 class SliderExample extends React.Component<$FlowFixMeProps, $FlowFixMeState> {
   static defaultProps = {
@@ -124,8 +123,7 @@ exports.examples = [
     },
   },
   {
-    title: 'Custom thumb color',
-    platform: 'android',
+    title: 'Custom thumb tint color',
     render(): React.Element<any> {
       return <SliderExample thumbTintColor={'blue'} />;
     },

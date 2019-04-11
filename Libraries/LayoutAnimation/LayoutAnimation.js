@@ -10,6 +10,7 @@
 
 'use strict';
 
+import Platform from 'Platform';
 const UIManager = require('UIManager');
 
 type Type =
@@ -42,13 +43,13 @@ function configureNext(
   config: LayoutAnimationConfig,
   onAnimationDidEnd?: Function,
 ) {
-  UIManager.configureNextLayoutAnimation(
-    config,
-    onAnimationDidEnd ?? function() {},
-    function() {
-      /* unused */
-    },
-  );
+  if (!Platform.isTesting) {
+    UIManager.configureNextLayoutAnimation(
+      config,
+      onAnimationDidEnd ?? function() {},
+      function() {} /* unused onError */,
+    );
+  }
 }
 
 function create(

@@ -13,10 +13,11 @@
 const React = require('react');
 const ReactNative = require('react-native');
 
-const nativeImageSource = require('nativeImageSource');
+const nativeImageSource = require('../../Libraries/Image/nativeImageSource');
 const {Image, StyleSheet, Text, View} = ReactNative;
 
-class ImageCapInsetsExample extends React.Component<{}> {
+type Props = $ReadOnly<{||}>;
+class ImageCapInsetsExample extends React.Component<Props> {
   render() {
     return (
       <View>

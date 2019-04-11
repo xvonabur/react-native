@@ -9,13 +9,14 @@
  */
 'use strict';
 
+const Platform = require('Platform');
 const deepDiffer = require('deepDiffer');
 const React = require('React');
 const View = require('View');
 const VirtualizedList = require('VirtualizedList');
 const StyleSheet = require('StyleSheet');
 
-const invariant = require('fbjs/lib/invariant');
+const invariant = require('invariant');
 
 import type {ViewStyleProp} from 'StyleSheet';
 import type {
@@ -62,7 +63,7 @@ type RequiredProps<ItemT> = {
     item: ItemT,
     index: number,
     separators: SeparatorsObj,
-  }) => ?React.Element<any>,
+  }) => ?React.Node,
   /**
    * For simplicity, data is just a plain array. If you want to use something else, like an
    * immutable list, use the underlying `VirtualizedList` directly.
@@ -219,6 +220,12 @@ export type Props<ItemT> = RequiredProps<ItemT> &
 const defaultProps = {
   ...VirtualizedList.defaultProps,
   numColumns: 1,
+  /**
+   * Enabling this prop on Android greatly improves scrolling performance with no known issues.
+   * The alternative is that scrolling on Android is unusably bad. Enabling it on iOS has a few
+   * known issues.
+   */
+  removeClippedSubviews: Platform.OS === 'android',
 };
 export type DefaultProps = typeof defaultProps;
 
@@ -591,7 +598,7 @@ class FlatList<ItemT> extends React.PureComponent<Props<ItemT>, void> {
     };
   }
 
-  _renderItem = (info: Object) => {
+  _renderItem = (info: Object): ?React.Node => {
     const {renderItem, numColumns, columnWrapperStyle} = this.props;
     if (numColumns > 1) {
       const {item, index} = info;
@@ -611,7 +618,9 @@ class FlatList<ItemT> extends React.PureComponent<Props<ItemT>, void> {
               index: index * numColumns + kk,
               separators: info.separators,
             });
-            return element && React.cloneElement(element, {key: kk});
+            return element != null ? (
+              <React.Fragment key={kk}>{element}</React.Fragment>
+            ) : null;
           })}
         </View>
       );

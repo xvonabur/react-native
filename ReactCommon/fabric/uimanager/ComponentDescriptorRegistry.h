@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include <better/map.h>
 #include <react/core/ComponentDescriptor.h>
 
 namespace facebook {
@@ -38,11 +39,13 @@ class ComponentDescriptorRegistry {
       Tag rootTag,
       const folly::dynamic &props,
       const SharedEventTarget &eventTarget) const;
+  void setFallbackComponentDescriptor(SharedComponentDescriptor descriptor);
+  const SharedComponentDescriptor getFallbackComponentDescriptor() const;
 
  private:
-  std::unordered_map<ComponentHandle, SharedComponentDescriptor>
-      _registryByHandle;
-  std::unordered_map<ComponentName, SharedComponentDescriptor> _registryByName;
+  better::map<ComponentHandle, SharedComponentDescriptor> _registryByHandle;
+  better::map<ComponentName, SharedComponentDescriptor> _registryByName;
+  SharedComponentDescriptor _fallbackComponentDescriptor;
 };
 
 } // namespace react

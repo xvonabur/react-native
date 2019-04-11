@@ -11,13 +11,15 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
-const {AccessibilityInfo, Text, View, TouchableOpacity, Alert} = ReactNative;
+const {Text, View, Alert} = require('react-native');
 
-class AccessibilityIOSExample extends React.Component<{}> {
+const RNTesterBlock = require('./RNTesterBlock');
+
+type Props = $ReadOnly<{||}>;
+class AccessibilityIOSExample extends React.Component<Props> {
   render() {
     return (
-      <View>
+      <RNTesterBlock title="Accessibility iOS APIs">
         <View
           onAccessibilityTap={() =>
             Alert.alert('Alert', 'onAccessibilityTap success')
@@ -30,112 +32,30 @@ class AccessibilityIOSExample extends React.Component<{}> {
           accessible={true}>
           <Text>Accessibility magic tap example</Text>
         </View>
-        <View accessibilityLabel="Some announcement" accessible={true}>
-          <Text>Accessibility label example</Text>
-        </View>
         <View
-          accessibilityRole="button"
-          accessibilityStates={['selected']}
+          onAccessibilityEscape={() =>
+            Alert.alert('onAccessibilityEscape success')
+          }
           accessible={true}>
-          <Text>Accessibility traits example</Text>
+          <Text>Accessibility escape example</Text>
         </View>
-        <Text>
-          Text's accessibilityLabel is the raw text itself unless it is set
-          explicitly.
-        </Text>
-        <Text accessibilityLabel="Test of accessibilityLabel" accessible={true}>
-          This text component's accessibilityLabel is set explicitly.
-        </Text>
-        <View
-          accessibilityLabel="Test of accessibilityHint"
-          accessibilityHint="The hint provides more info than the label does"
-          accessible={true}>
-          <Text>
-            This view component has both an accessibilityLabel and an
-            accessibilityHint explicitly set.
-          </Text>
-        </View>
-        <Text
-          accessibilityLabel="Test of accessibilityHint"
-          accessibilityHint="The hint provides more info than the label does">
-          This text component has both an accessibilityLabel and an
-          accessibilityHint explicitly set.
-        </Text>
-        <TouchableOpacity
-          accessibilityLabel="Test of accessibilityHint"
-          accessibilityHint="The hint provides more info than the label does">
-          <View>
-            <Text>
-              This button has both an accessibilityLabel and an
-              accessibilityHint explicitly set.
-            </Text>
-          </View>
-        </TouchableOpacity>
         <View accessibilityElementsHidden={true}>
           <Text>
             This view's children are hidden from the accessibility tree
           </Text>
         </View>
-      </View>
-    );
-  }
-}
-
-class ScreenReaderStatusExample extends React.Component<{}, $FlowFixMeState> {
-  state = {
-    screenReaderEnabled: false,
-  };
-
-  componentDidMount() {
-    AccessibilityInfo.addEventListener(
-      'change',
-      this._handleScreenReaderToggled,
-    );
-    AccessibilityInfo.fetch().done(isEnabled => {
-      this.setState({
-        screenReaderEnabled: isEnabled,
-      });
-    });
-  }
-
-  componentWillUnmount() {
-    AccessibilityInfo.removeEventListener(
-      'change',
-      this._handleScreenReaderToggled,
-    );
-  }
-
-  _handleScreenReaderToggled = isEnabled => {
-    this.setState({
-      screenReaderEnabled: isEnabled,
-    });
-  };
-
-  render() {
-    return (
-      <View>
-        <Text>
-          The screen reader is{' '}
-          {this.state.screenReaderEnabled ? 'enabled' : 'disabled'}.
-        </Text>
-      </View>
+      </RNTesterBlock>
     );
   }
 }
 
 exports.title = 'AccessibilityIOS';
-exports.description = "Interface to show iOS' accessibility samples";
+exports.description = 'iOS specific Accessibility APIs';
 exports.examples = [
   {
-    title: 'Accessibility elements',
+    title: 'iOS Accessibility elements',
     render(): React.Element<any> {
       return <AccessibilityIOSExample />;
-    },
-  },
-  {
-    title: 'Check if the screen reader is enabled',
-    render(): React.Element<any> {
-      return <ScreenReaderStatusExample />;
     },
   },
 ];

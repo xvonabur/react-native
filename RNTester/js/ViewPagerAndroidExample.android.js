@@ -10,7 +10,6 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
 const {
   Image,
   StyleSheet,
@@ -19,9 +18,9 @@ const {
   TouchableOpacity,
   View,
   ViewPagerAndroid,
-} = ReactNative;
+} = require('react-native');
 
-import type {ViewPagerScrollState} from 'ViewPagerAndroid';
+import type {ViewPagerScrollState} from '../../Libraries/Components/ViewPager/ViewPagerAndroid';
 
 const PAGES = 5;
 const BGCOLOR = ['#fdc08e', '#fff6b9', '#99d1b7', '#dde5fe', '#f79273'];
@@ -33,7 +32,9 @@ const IMAGE_URIS = [
   'https://apod.nasa.gov/apod/image/1510/lunareclipse_27Sep_beletskycrop4.jpg',
 ];
 
-class LikeCount extends React.Component {
+type Props = $ReadOnly<{||}>;
+type State = {|likes: number|};
+class LikeCount extends React.Component<Props, State> {
   state = {
     likes: 7,
   };
@@ -92,10 +93,6 @@ class ProgressBar extends React.Component {
 }
 
 class ViewPagerAndroidExample extends React.Component {
-  static title = '<ViewPagerAndroid>';
-  static description =
-    'Container that allows to flip left and right between child views.';
-
   state = {
     page: 0,
     animationsAreEnabled: true,
@@ -291,4 +288,15 @@ const styles = StyleSheet.create({
   },
 });
 
-module.exports = ViewPagerAndroidExample;
+exports.title = '<ViewPagerAndroid>';
+exports.description =
+  'Container that allows to flip left and right between child views.';
+
+exports.examples = [
+  {
+    title: 'Basic pager',
+    render(): React.Element<typeof ViewPagerAndroidExample> {
+      return <ViewPagerAndroidExample />;
+    },
+  },
+];

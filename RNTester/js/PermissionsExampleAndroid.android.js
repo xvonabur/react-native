@@ -11,7 +11,6 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
 const {
   PermissionsAndroid,
   Picker,
@@ -19,14 +18,9 @@ const {
   Text,
   TouchableWithoutFeedback,
   View,
-} = ReactNative;
+} = require('react-native');
 
 const Item = Picker.Item;
-
-exports.displayName = (undefined: ?string);
-exports.framework = 'React';
-exports.title = 'PermissionsAndroid';
-exports.description = 'Permissions example for API 23+.';
 
 class PermissionsExample extends React.Component<{}, $FlowFixMeState> {
   state = {
@@ -105,6 +99,10 @@ class PermissionsExample extends React.Component<{}, $FlowFixMeState> {
   };
 }
 
+exports.displayName = (undefined: ?string);
+exports.framework = 'React';
+exports.title = 'PermissionsAndroid';
+exports.description = 'Permissions example for API 23+.';
 exports.examples = [
   {
     title: 'Permissions Example',

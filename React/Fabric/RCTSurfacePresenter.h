@@ -11,11 +11,23 @@
 #import <React/RCTBridge.h>
 #import <React/RCTComponentViewFactory.h>
 #import <React/RCTPrimitives.h>
+#import <react/config/ReactNativeConfig.h>
+#import <react/uimanager/ContextContainer.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
 @class RCTFabricSurface;
 @class RCTMountingManager;
+
+@protocol RCTSurfacePresenterObserver <NSObject>
+
+@optional
+
+- (void)willMountComponentsWithRootTag:(ReactTag)rootTag;
+
+- (void)didMountComponentsWithRootTag:(ReactTag)rootTag;
+
+@end
 
 /**
  * Coordinates presenting of React Native Surfaces and represents application
@@ -25,19 +37,25 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @interface RCTSurfacePresenter : NSObject
 
-- (instancetype)initWithBridge:(RCTBridge *)bridge;
+- (instancetype)initWithBridge:(RCTBridge *)bridge
+                        config:(std::shared_ptr<const facebook::react::ReactNativeConfig>)config;
 
 @property (nonatomic, readonly) RCTComponentViewFactory *componentViewFactory;
+@property (nonatomic, readonly) facebook::react::SharedContextContainer contextContainer;
 
 @end
 
 @interface RCTSurfacePresenter (Surface)
 
 /**
- * Surface uses those methods to register itself in the Presenter.
- * Registering initiates running, rendering and mounting processes.
+ * Surface uses these methods to register itself in the Presenter.
  */
 - (void)registerSurface:(RCTFabricSurface *)surface;
+/**
+ * Starting initiates running, rendering and mounting processes.
+ * Should be called after registerSurface and any other surface-specific setup is done
+ */
+- (void)startSurface:(RCTFabricSurface *)surface;
 - (void)unregisterSurface:(RCTFabricSurface *)surface;
 - (void)setProps:(NSDictionary *)props
          surface:(RCTFabricSurface *)surface;
@@ -57,6 +75,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setMinimumSize:(CGSize)minimumSize
            maximumSize:(CGSize)maximumSize
                surface:(RCTFabricSurface *)surface;
+
+- (BOOL)synchronouslyUpdateViewOnUIThread:(NSNumber *)reactTag props:(NSDictionary *)props;
+
+- (void)addObserver:(id<RCTSurfacePresenterObserver>)observer;
+
+- (void)removeObserver:(id<RCTSurfacePresenterObserver>)observer;
 
 @end
 

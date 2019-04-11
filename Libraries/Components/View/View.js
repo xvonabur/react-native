@@ -11,10 +11,7 @@
 'use strict';
 
 const React = require('React');
-const TextAncestor = require('TextAncestor');
 const ViewNativeComponent = require('ViewNativeComponent');
-
-const invariant = require('fbjs/lib/invariant');
 
 import type {ViewProps} from 'ViewPropTypes';
 
@@ -35,19 +32,8 @@ if (__DEV__) {
       props: Props,
       forwardedRef: React.Ref<typeof ViewNativeComponent>,
     ) => {
-      return (
-        <TextAncestor.Consumer>
-          {hasTextAncestor => {
-            invariant(
-              !hasTextAncestor,
-              'Nesting of <View> within <Text> is not currently supported.',
-            );
-            return <ViewNativeComponent {...props} ref={forwardedRef} />;
-          }}
-        </TextAncestor.Consumer>
-      );
+      return <ViewNativeComponent {...props} ref={forwardedRef} />;
     };
-    // $FlowFixMe - TODO T29156721 `React.forwardRef` is not defined in Flow, yet.
     ViewToExport = React.forwardRef(View);
     ViewToExport.displayName = 'View';
   }

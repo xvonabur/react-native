@@ -11,7 +11,6 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
 const {
   Animated,
   Image,
@@ -22,9 +21,9 @@ const {
   Text,
   TextInput,
   View,
-} = ReactNative;
+} = require('react-native');
 
-type Item = {
+export type Item = {
   title: string,
   text: string,
   key: string,

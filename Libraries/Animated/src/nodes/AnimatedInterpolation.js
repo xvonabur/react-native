@@ -14,7 +14,7 @@ const AnimatedNode = require('./AnimatedNode');
 const AnimatedWithChildren = require('./AnimatedWithChildren');
 const NativeAnimatedHelper = require('../NativeAnimatedHelper');
 
-const invariant = require('fbjs/lib/invariant');
+const invariant = require('invariant');
 const normalizeColor = require('normalizeColor');
 
 type ExtrapolateType = 'extend' | 'identity' | 'clamp';
@@ -347,21 +347,7 @@ class AnimatedInterpolation extends AnimatedWithChildren {
   }
 
   __transformDataType(range: Array<any>) {
-    // Change the string array type to number array
-    // So we can reuse the same logic in iOS and Android platform
-    return range.map(function(value) {
-      if (typeof value !== 'string') {
-        return value;
-      }
-      if (/deg$/.test(value)) {
-        const degrees = parseFloat(value) || 0;
-        const radians = (degrees * Math.PI) / 180.0;
-        return radians;
-      } else {
-        // Assume radians
-        return parseFloat(value) || 0;
-      }
-    });
+    return range.map(NativeAnimatedHelper.transformDataType);
   }
 
   __getNativeConfig(): any {

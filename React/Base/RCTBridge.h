@@ -49,6 +49,25 @@ RCT_EXTERN NSString *const RCTJavaScriptDidFailToLoadNotification;
 RCT_EXTERN NSString *const RCTDidInitializeModuleNotification;
 
 /**
+ * This notification fires each time a native module is setup after it is initialized. The
+ * `RCTDidSetupModuleNotificationModuleNameKey` key will contain a reference to the module name and
+ * `RCTDidSetupModuleNotificationSetupTimeKey` will contain the setup time in ms.
+ */
+RCT_EXTERN NSString *const RCTDidSetupModuleNotification;
+
+/**
+ * Key for the module name (NSString) in the
+ * RCTDidSetupModuleNotification userInfo dictionary.
+ */
+RCT_EXTERN NSString *const RCTDidSetupModuleNotificationModuleNameKey;
+
+/**
+ * Key for the setup time (NSNumber) in the
+ * RCTDidSetupModuleNotification userInfo dictionary.
+ */
+RCT_EXTERN NSString *const RCTDidSetupModuleNotificationSetupTimeKey;
+
+/**
  * This notification fires just before the bridge starts processing a request to
  * reload.
  */
@@ -158,6 +177,12 @@ RCT_EXTERN void RCTEnableTurboModule(BOOL enabled);
 - (id)moduleForName:(NSString *)moduleName lazilyLoadIfNecessary:(BOOL)lazilyLoad;
 // Note: This method lazily load the module as necessary.
 - (id)moduleForClass:(Class)moduleClass;
+
+/**
+ * When a NativeModule performs a lookup for a TurboModule, we need to query
+ * the lookupDelegate.
+ */
+- (void)setRCTTurboModuleLookupDelegate:(id<RCTTurboModuleLookupDelegate>)turboModuleLookupDelegate;
 
 /**
  * Convenience method for retrieving all modules conforming to a given protocol.

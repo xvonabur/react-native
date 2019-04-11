@@ -10,14 +10,14 @@
 
 'use strict';
 
-const Alert = require('Alert');
+import type {Item} from './ListExampleShared';
+
 const React = require('react');
-const ReactNative = require('react-native');
-const {Animated, StyleSheet, View} = ReactNative;
+const {Alert, Animated, StyleSheet, View} = require('react-native');
 
 const RNTesterPage = require('./RNTesterPage');
 
-const infoLog = require('infoLog');
+const infoLog = require('../../Libraries/Utilities/infoLog');
 
 const {
   FooterComponent,
@@ -40,10 +40,20 @@ const VIEWABILITY_CONFIG = {
   waitForInteraction: true,
 };
 
-class FlatListExample extends React.PureComponent<{}, $FlowFixMeState> {
-  static title = '<FlatList>';
-  static description = 'Performant, scrollable list of data.';
+type Props = $ReadOnly<{||}>;
+type State = {|
+  data: Array<Item>,
+  debug: boolean,
+  horizontal: boolean,
+  inverted: boolean,
+  filterText: string,
+  fixedHeight: boolean,
+  logViewable: boolean,
+  virtualized: boolean,
+  empty: boolean,
+|};
 
+class FlatListExample extends React.PureComponent<Props, State> {
   state = {
     data: genItemData(100),
     debug: false,
@@ -220,4 +230,13 @@ const styles = StyleSheet.create({
   },
 });
 
-module.exports = FlatListExample;
+exports.title = '<FlatList>';
+exports.description = 'Performant, scrollable list of data.';
+exports.examples = [
+  {
+    title: 'Simple list of items',
+    render: function(): React.Element<typeof FlatListExample> {
+      return <FlatListExample />;
+    },
+  },
+];

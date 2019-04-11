@@ -10,21 +10,17 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
 const {
   TimePickerAndroid,
   StyleSheet,
   Text,
   TouchableWithoutFeedback,
-} = ReactNative;
+} = require('react-native');
 
 const RNTesterBlock = require('./RNTesterBlock');
 const RNTesterPage = require('./RNTesterPage');
 
 class TimePickerAndroidExample extends React.Component {
-  static title = 'TimePickerAndroid';
-  static description = 'Standard Android time picker dialog';
-
   state = {
     isoFormatText: 'pick a time (24-hour format)',
     presetHour: 4,
@@ -117,4 +113,13 @@ const styles = StyleSheet.create({
   },
 });
 
-module.exports = TimePickerAndroidExample;
+exports.title = 'TimePickerAndroid';
+exports.description = 'Standard Android time picker dialog';
+exports.examples = [
+  {
+    title: 'Simple time picker',
+    render: function(): React.Element<typeof TimePickerAndroidExample> {
+      return <TimePickerAndroidExample />;
+    },
+  },
+];

@@ -11,19 +11,16 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
-const {ScrollView, StyleSheet, Text, TouchableOpacity} = ReactNative;
+const {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+} = require('react-native');
 
 const NUM_ITEMS = 20;
 
 class ScrollViewSimpleExample extends React.Component<{}> {
-  static title = '<ScrollView>';
-  static description =
-    'Component that enables scrolling through child components.';
-
-  /* $FlowFixMe(>=0.85.0 site=react_native_fb) This comment suppresses an error
-   * found when Flow v0.85 was deployed. To see the error, delete this comment
-   * and run Flow. */
   makeItems = (nItems: number, styles): Array<any> => {
     const items = [];
     for (let i = 0; i < nItems; i++) {
@@ -90,4 +87,15 @@ const styles = StyleSheet.create({
   },
 });
 
-module.exports = ScrollViewSimpleExample;
+exports.title = '<ScrollView>';
+exports.description =
+  'Component that enables scrolling through child components.';
+
+exports.examples = [
+  {
+    title: 'Simple scroll view',
+    render: function(): React.Element<typeof ScrollViewSimpleExample> {
+      return <ScrollViewSimpleExample />;
+    },
+  },
+];

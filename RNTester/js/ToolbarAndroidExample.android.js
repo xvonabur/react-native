@@ -11,20 +11,20 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
+const {
+  StyleSheet,
+  Switch,
+  Text,
+  ToolbarAndroid,
+  View,
+} = require('react-native');
 
-const nativeImageSource = require('nativeImageSource');
-const {StyleSheet, Text, View} = ReactNative;
+const nativeImageSource = require('../../Libraries/Image/nativeImageSource');
+
 const RNTesterBlock = require('./RNTesterBlock');
 const RNTesterPage = require('./RNTesterPage');
 
-const Switch = require('Switch');
-const ToolbarAndroid = require('ToolbarAndroid');
-
 class ToolbarAndroidExample extends React.Component<{}, $FlowFixMeState> {
-  static title = '<ToolbarAndroid>';
-  static description = 'Examples of using the Android toolbar.';
-
   state = {
     actionText: 'Example app with toolbar component',
     toolbarSwitch: false,
@@ -174,4 +174,13 @@ const styles = StyleSheet.create({
   },
 });
 
-module.exports = ToolbarAndroidExample;
+exports.title = '<ToolbarAndroid>';
+exports.description = 'Examples of using the Android toolbar.';
+exports.examples = [
+  {
+    title: 'Basic toolbar',
+    render: function(): React.Element<typeof ToolbarAndroidExample> {
+      return <ToolbarAndroidExample />;
+    },
+  },
+];

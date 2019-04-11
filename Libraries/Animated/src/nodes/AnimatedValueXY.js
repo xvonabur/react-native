@@ -12,9 +12,9 @@
 const AnimatedValue = require('./AnimatedValue');
 const AnimatedWithChildren = require('./AnimatedWithChildren');
 
-const invariant = require('fbjs/lib/invariant');
+const invariant = require('invariant');
 
-type ValueXYListenerCallback = (value: {x: number, y: number}) => void;
+type ValueXYListenerCallback = (value: {x: number, y: number}) => mixed;
 
 let _uniqueId = 1;
 

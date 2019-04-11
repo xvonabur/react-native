@@ -10,35 +10,38 @@
 
 'use strict';
 
-const AsyncStorage = require('AsyncStorage');
-const BackHandler = require('BackHandler');
-const Linking = require('Linking');
 const React = require('react');
-const ReactNative = require('react-native');
+const {
+  AppRegistry,
+  AsyncStorage,
+  BackHandler,
+  Button,
+  Linking,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  View,
+  YellowBox,
+} = require('react-native');
 const RNTesterActions = require('./RNTesterActions');
 const RNTesterExampleContainer = require('./RNTesterExampleContainer');
 const RNTesterExampleList = require('./RNTesterExampleList');
 const RNTesterList = require('./RNTesterList.ios');
 const RNTesterNavigationReducer = require('./RNTesterNavigationReducer');
+const SnapshotViewIOS = require('./SnapshotViewIOS.ios');
 const URIActionMap = require('./URIActionMap');
 
-const {
-  Button,
-  AppRegistry,
-  SnapshotViewIOS,
-  StyleSheet,
-  Text,
-  View,
-  SafeAreaView,
-} = ReactNative;
-
-import type {RNTesterExample} from './RNTesterList.ios';
+import type {RNTesterExample} from './Shared/RNTesterTypes';
 import type {RNTesterAction} from './RNTesterActions';
 import type {RNTesterNavigationState} from './RNTesterNavigationReducer';
 
 type Props = {
   exampleFromAppetizeParams: string,
 };
+
+YellowBox.ignoreWarnings([
+  'Module RCTImagePickerManager requires main queue setup',
+]);
 
 const APP_STATE_KEY = 'RNTesterAppState.v2';
 
@@ -70,17 +73,8 @@ class RNTesterApp extends React.Component<Props, RNTesterNavigationState> {
         );
         const urlAction = URIActionMap(url);
         const launchAction = exampleAction || urlAction;
-        if (err || !storedString) {
-          const initialAction = launchAction || {type: 'InitialAction'};
-          this.setState(RNTesterNavigationReducer(undefined, initialAction));
-          return;
-        }
-        const storedState = JSON.parse(storedString);
-        if (launchAction) {
-          this.setState(RNTesterNavigationReducer(storedState, launchAction));
-          return;
-        }
-        this.setState(storedState);
+        const initialAction = launchAction || {type: 'InitialAction'};
+        this.setState(RNTesterNavigationReducer(undefined, initialAction));
       });
     });
 
@@ -111,7 +105,7 @@ class RNTesterApp extends React.Component<Props, RNTesterNavigationState> {
     }
     if (this.state.openExample) {
       const Component = RNTesterList.Modules[this.state.openExample];
-      if (Component.external) {
+      if (Component && Component.external) {
         return <Component onExampleExit={this._handleBack} />;
       } else {
         return (
@@ -151,6 +145,7 @@ const styles = StyleSheet.create({
     top: 7,
     left: 0,
     right: 0,
+    alignItems: 'center',
   },
   title: {
     fontSize: 19,

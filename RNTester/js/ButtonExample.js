@@ -11,8 +11,7 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
-const {Alert, Button, View, StyleSheet} = ReactNative;
+const {Alert, Button, View, StyleSheet} = require('react-native');
 
 function onButtonPress(buttonName) {
   Alert.alert(`${buttonName} has been pressed!`);
@@ -34,6 +33,7 @@ exports.examples = [
       return (
         <Button
           onPress={() => onButtonPress('Simple')}
+          testID="simple_button"
           title="Press Me"
           accessibilityLabel="See an informative alert"
         />
@@ -50,6 +50,7 @@ exports.examples = [
       return (
         <Button
           onPress={() => onButtonPress('Purple')}
+          testID="purple_button"
           title="Press Purple"
           color="#841584"
           accessibilityLabel="Learn more about purple"
@@ -66,11 +67,13 @@ exports.examples = [
         <View style={styles.container}>
           <Button
             onPress={() => onButtonPress('Left')}
+            testID="left_button"
             title="This looks great!"
             accessibilityLabel="This sounds great!"
           />
           <Button
             onPress={() => onButtonPress('Right')}
+            testID="right_button"
             title="Ok!"
             color="#841584"
             accessibilityLabel="Ok, Great!"
@@ -87,6 +90,7 @@ exports.examples = [
         <Button
           disabled
           onPress={() => onButtonPress('Disabled')}
+          testID="disabled_button"
           title="I Am Disabled"
           accessibilityLabel="See an informative alert"
         />

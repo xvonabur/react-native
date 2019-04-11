@@ -18,7 +18,7 @@ const ReactNative = require('ReactNative');
 const StyleSheet = require('StyleSheet');
 const View = require('View');
 const processColor = require('processColor');
-const requireNativeComponent = require('requireNativeComponent');
+const RCTPickerNativeComponent = require('RCTPickerNativeComponent');
 
 import type {SyntheticEvent} from 'CoreEventTypes';
 import type {ColorValue} from 'StyleSheetTypes';
@@ -47,13 +47,10 @@ type RCTPickerIOSType = Class<
       onStartShouldSetResponder: () => boolean,
       selectedIndex: number,
       style?: ?TextStyleProp,
+      testID?: ?string,
     |}>,
   >,
 >;
-
-const RCTPickerIOS: RCTPickerIOSType = (requireNativeComponent(
-  'RCTPicker',
-): any);
 
 type Label = Stringish | number;
 
@@ -94,26 +91,29 @@ class PickerIOS extends React.Component<Props, State> {
   static getDerivedStateFromProps(props: Props): State {
     let selectedIndex = 0;
     const items = [];
-    React.Children.toArray(props.children).forEach(function(child, index) {
-      if (child.props.value === props.selectedValue) {
-        selectedIndex = index;
-      }
-      items.push({
-        value: child.props.value,
-        label: child.props.label,
-        textColor: processColor(child.props.color),
+    React.Children.toArray(props.children)
+      .filter(child => child !== null)
+      .forEach(function(child, index) {
+        if (child.props.value === props.selectedValue) {
+          selectedIndex = index;
+        }
+        items.push({
+          value: child.props.value,
+          label: child.props.label,
+          textColor: processColor(child.props.color),
+        });
       });
-    });
     return {selectedIndex, items};
   }
 
   render() {
     return (
       <View style={this.props.style}>
-        <RCTPickerIOS
+        <RCTPickerNativeComponent
           ref={picker => {
             this._picker = picker;
           }}
+          testID={this.props.testID}
           style={[styles.pickerIOS, this.props.itemStyle]}
           items={this.state.items}
           selectedIndex={this.state.selectedIndex}

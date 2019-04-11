@@ -11,10 +11,14 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
-const {Clipboard, View, Text, StyleSheet} = ReactNative;
+const {Clipboard, View, Text, StyleSheet} = require('react-native');
 
-class ClipboardExample extends React.Component<{}, $FlowFixMeState> {
+type Props = $ReadOnly<{||}>;
+type State = {|
+  content: string,
+|};
+
+class ClipboardExample extends React.Component<Props, State> {
   state = {
     content: 'Content will appear here',
   };
@@ -41,6 +45,16 @@ class ClipboardExample extends React.Component<{}, $FlowFixMeState> {
   }
 }
 
+const styles = StyleSheet.create({
+  label: {
+    color: 'blue',
+  },
+  content: {
+    color: 'red',
+    marginTop: 20,
+  },
+});
+
 exports.title = 'Clipboard';
 exports.description = 'Show Clipboard contents.';
 exports.examples = [
@@ -51,13 +65,3 @@ exports.examples = [
     },
   },
 ];
-
-const styles = StyleSheet.create({
-  label: {
-    color: 'blue',
-  },
-  content: {
-    color: 'red',
-    marginTop: 20,
-  },
-});

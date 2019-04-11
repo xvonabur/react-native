@@ -11,10 +11,15 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
-const {Animated, LayoutAnimation, PanResponder, StyleSheet, View} = ReactNative;
+const {
+  Animated,
+  LayoutAnimation,
+  PanResponder,
+  StyleSheet,
+  View,
+} = require('react-native');
 
-const AnExSet = require('AnExSet');
+const AnExSet = require('./AnExSet');
 
 const CIRCLE_SIZE = 80;
 const CIRCLE_MARGIN = 18;
@@ -195,11 +200,6 @@ class Circle extends React.Component<any, any> {
 }
 
 class AnExApp extends React.Component<any, any> {
-  static title = 'Animated - Gratuitous App';
-  static description =
-    'Bunch of Animations - tap a circle to ' +
-    'open a view with more animations, or longPress and drag to reorder circles.';
-
   _onMove: (position: Point) => void;
   constructor(props: any): void {
     super(props);
@@ -365,4 +365,14 @@ const styles = StyleSheet.create({
   },
 });
 
-module.exports = AnExApp;
+exports.title = 'Animated - Gratuitous App';
+exports.description =
+  'Bunch of Animations - tap a circle to open a view with more animations, or longPress and drag to reorder circles.';
+exports.examples = [
+  {
+    title: 'And example app',
+    render(): React.Element<typeof AnExApp> {
+      return <AnExApp />;
+    },
+  },
+];

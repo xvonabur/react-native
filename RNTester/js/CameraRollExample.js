@@ -10,7 +10,6 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
 const {
   CameraRoll,
   Image,
@@ -20,15 +19,18 @@ const {
   Text,
   View,
   TouchableOpacity,
-} = ReactNative;
+} = require('react-native');
 
-const invariant = require('fbjs/lib/invariant');
+const invariant = require('invariant');
 
 const CameraRollView = require('./CameraRollView');
 
 const AssetScaledImageExampleView = require('./AssetScaledImageExample');
 
-import type {PhotoIdentifier, GroupTypes} from 'CameraRoll';
+import type {
+  PhotoIdentifier,
+  GroupTypes,
+} from '../../Libraries/CameraRoll/CameraRoll';
 
 type Props = $ReadOnly<{|
   navigator?: ?Array<
@@ -74,6 +76,7 @@ class CameraRollExample extends React.Component<Props, State> {
           batchSize={20}
           groupTypes={this.state.groupTypes}
           renderImage={this._renderImage}
+          bigImages={this.state.bigImages}
         />
       </View>
     );
@@ -125,7 +128,6 @@ class CameraRollExample extends React.Component<Props, State> {
 
   _onSwitchChange = value => {
     invariant(this._cameraRollView, 'ref should be set');
-    this._cameraRollView.rendererChanged();
     this.setState({bigImages: value});
   };
 }

@@ -11,8 +11,7 @@
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
-const {ProgressViewIOS, StyleSheet, View} = ReactNative;
+const {ProgressViewIOS, StyleSheet, View} = require('react-native');
 
 type Props = {||};
 type State = {|
@@ -82,6 +81,16 @@ class ProgressViewExample extends React.Component<Props, State> {
   }
 }
 
+const styles = StyleSheet.create({
+  container: {
+    marginTop: -20,
+    backgroundColor: 'transparent',
+  },
+  progressView: {
+    marginTop: 20,
+  },
+});
+
 exports.displayName = (undefined: ?string);
 exports.framework = 'React';
 exports.title = 'ProgressViewIOS';
@@ -94,13 +103,3 @@ exports.examples = [
     },
   },
 ];
-
-const styles = StyleSheet.create({
-  container: {
-    marginTop: -20,
-    backgroundColor: 'transparent',
-  },
-  progressView: {
-    marginTop: 20,
-  },
-});

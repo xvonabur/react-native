@@ -14,7 +14,7 @@ const NativeEventEmitter = require('NativeEventEmitter');
 const NativeModules = require('NativeModules');
 const Platform = require('Platform');
 
-const invariant = require('fbjs/lib/invariant');
+const invariant = require('invariant');
 
 const LinkingManager =
   Platform.OS === 'android'
@@ -72,6 +72,15 @@ class Linking extends NativeEventEmitter {
   }
 
   /**
+   * Open app settings.
+   *
+   * See https://facebook.github.io/react-native/docs/linking.html#opensettings
+   */
+  openSettings(): Promise<any> {
+    return LinkingManager.openSettings();
+  }
+
+  /**
    * If the app launch was triggered by an app link,
    * it will give the link url, otherwise it will give `null`
    *
@@ -79,6 +88,20 @@ class Linking extends NativeEventEmitter {
    */
   getInitialURL(): Promise<?string> {
     return LinkingManager.getInitialURL();
+  }
+
+  /*
+   * Launch an Android intent with extras (optional)
+   *
+   * @platform android
+   *
+   * See https://facebook.github.io/react-native/docs/linking.html#sendintent
+   */
+  sendIntent(
+    action: String,
+    extras?: [{key: string, value: string | number | boolean}],
+  ) {
+    return LinkingManager.sendIntent(action, extras);
   }
 
   _validateURL(url: string) {

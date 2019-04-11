@@ -22,7 +22,7 @@ const ViewabilityHelper = require('ViewabilityHelper');
 const clamp = require('clamp');
 const deepDiffer = require('deepDiffer');
 const infoLog = require('infoLog');
-const invariant = require('fbjs/lib/invariant');
+const invariant = require('invariant');
 const nullthrows = require('nullthrows');
 
 import type {NativeMethodsMixinType} from 'ReactNativeTypes';
@@ -208,6 +208,7 @@ class WindowedListView extends React.Component<Props, State> {
     return (
       this._scrollRef &&
       this._scrollRef.getScrollResponder &&
+      // $FlowFixMe - it actually returns ScrollView & ScrollResponder.Mixin
       this._scrollRef.getScrollResponder()
     );
   }

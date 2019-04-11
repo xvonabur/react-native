@@ -5,12 +5,14 @@
 
 #pragma once
 
+#include <better/small_vector.h>
+#include <folly/Hash.h>
+#include <react/core/EventEmitter.h>
 #include <react/core/LayoutMetrics.h>
 #include <react/core/LocalData.h>
 #include <react/core/Props.h>
 #include <react/core/ReactPrimitives.h>
 #include <react/core/ShadowNode.h>
-#include <react/events/EventEmitter.h>
 
 namespace facebook {
 namespace react {
@@ -21,6 +23,8 @@ namespace react {
 struct ShadowView final {
   ShadowView() = default;
   ShadowView(const ShadowView &shadowView) = default;
+
+  ~ShadowView(){};
 
   /*
    * Constructs a `ShadowView` from given `ShadowNode`.
@@ -34,19 +38,29 @@ struct ShadowView final {
 
   ComponentName componentName = "";
   ComponentHandle componentHandle = 0;
-  Tag tag = -1;
+  Tag tag = -1; // Tag does not change during the lifetime of a shadow view.
   SharedProps props = {};
   SharedEventEmitter eventEmitter = {};
   LayoutMetrics layoutMetrics = EmptyLayoutMetrics;
   SharedLocalData localData = {};
+  State::Shared state = {};
 };
+
+#if RN_DEBUG_STRING_CONVERTIBLE
+
+std::string getDebugName(ShadowView const &object);
+std::vector<DebugStringConvertibleObject> getDebugProps(
+    ShadowView const &object,
+    DebugStringConvertibleOptions options = {});
+
+#endif
 
 /*
  * Describes pair of a `ShadowView` and a `ShadowNode`.
  */
 struct ShadowViewNodePair final {
-  const ShadowView shadowView;
-  const ShadowNode &shadowNode;
+  ShadowView shadowView;
+  ShadowNode const *shadowNode;
 
   /*
    * The stored pointer to `ShadowNode` represents an indentity of the pair.
@@ -55,7 +69,8 @@ struct ShadowViewNodePair final {
   bool operator!=(const ShadowViewNodePair &rhs) const;
 };
 
-using ShadowViewNodePairList = std::vector<ShadowViewNodePair>;
+using ShadowViewNodePairList = better::
+    small_vector<ShadowViewNodePair, kShadowNodeChildrenSmallVectorSize>;
 
 } // namespace react
 } // namespace facebook
@@ -65,13 +80,14 @@ namespace std {
 template <>
 struct hash<facebook::react::ShadowView> {
   size_t operator()(const facebook::react::ShadowView &shadowView) const {
-    return std::hash<decltype(shadowView.componentHandle)>{}(
-               shadowView.componentHandle) +
-        std::hash<decltype(shadowView.tag)>{}(shadowView.tag) +
-        std::hash<decltype(shadowView.props)>{}(shadowView.props) +
-        std::hash<decltype(shadowView.eventEmitter)>{}(
-               shadowView.eventEmitter) +
-        std::hash<decltype(shadowView.localData)>{}(shadowView.localData);
+    return folly::hash::hash_combine(
+        0,
+        shadowView.componentHandle,
+        shadowView.tag,
+        shadowView.props,
+        shadowView.eventEmitter,
+        shadowView.localData,
+        shadowView.state);
   }
 };
 
