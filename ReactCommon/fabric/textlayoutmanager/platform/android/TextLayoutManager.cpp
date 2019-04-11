@@ -23,7 +23,6 @@ void *TextLayoutManager::getNativeTextLayoutManager() const {
 }
 
 Size TextLayoutManager::measure(
-    Tag reactTag,
     AttributedString attributedString,
     ParagraphAttributes paragraphAttributes,
     LayoutConstraints layoutConstraints) const {
@@ -31,17 +30,16 @@ Size TextLayoutManager::measure(
       contextContainer_->getInstance<jni::global_ref<jobject>>(
           "FabricUIManager");
 
-  auto clazz =
-      jni::findClassStatic("com/facebook/fbreact/fabric/FabricUIManager");
-  static auto measure = clazz->getMethod<jlong(
-      jint,
-      jstring,
-      ReadableNativeMap::javaobject,
-      ReadableNativeMap::javaobject,
-      jint,
-      jint,
-      jint,
-      jint)>("measure");
+  static auto measure =
+      jni::findClassStatic("com/facebook/react/fabric/FabricUIManager")
+          ->getMethod<jlong(
+              jstring,
+              ReadableNativeMap::javaobject,
+              ReadableNativeMap::javaobject,
+              jint,
+              jint,
+              jint,
+              jint)>("measure");
 
   auto minimumSize = layoutConstraints.minimumSize;
   auto maximumSize = layoutConstraints.maximumSize;
@@ -52,7 +50,6 @@ Size TextLayoutManager::measure(
   local_ref<JString> componentName = make_jstring("RCTText");
   return yogaMeassureToSize(measure(
       fabricUIManager,
-      reactTag,
       componentName.get(),
       ReadableNativeMap::newObjectCxxArgs(toDynamic(attributedString)).get(),
       ReadableNativeMap::newObjectCxxArgs(toDynamic(paragraphAttributes)).get(),

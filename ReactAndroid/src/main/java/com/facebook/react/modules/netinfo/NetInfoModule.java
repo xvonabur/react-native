@@ -7,6 +7,7 @@
 
 package com.facebook.react.modules.netinfo;
 
+import android.annotation.SuppressLint;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -30,6 +31,7 @@ import static com.facebook.react.modules.core.DeviceEventManagerModule.RCTDevice
 /**
  * Module that monitors and provides information about the connectivity state of the device.
  */
+@SuppressLint("MissingPermission")
 @ReactModule(name = NetInfoModule.NAME)
 public class NetInfoModule extends ReactContextBaseJavaModule
     implements LifecycleEventListener {
@@ -103,7 +105,7 @@ public class NetInfoModule extends ReactContextBaseJavaModule
   @ReactMethod
   public void getCurrentConnectivity(Promise promise) {
     if (mNoNetworkPermission) {
-      promise.reject(ERROR_MISSING_PERMISSION, MISSING_PERMISSION_MESSAGE, null);
+      promise.reject(ERROR_MISSING_PERMISSION, MISSING_PERMISSION_MESSAGE);
       return;
     }
     promise.resolve(createConnectivityEventMap());
@@ -112,7 +114,7 @@ public class NetInfoModule extends ReactContextBaseJavaModule
   @ReactMethod
   public void isConnectionMetered(Promise promise) {
     if (mNoNetworkPermission) {
-      promise.reject(ERROR_MISSING_PERMISSION, MISSING_PERMISSION_MESSAGE, null);
+      promise.reject(ERROR_MISSING_PERMISSION, MISSING_PERMISSION_MESSAGE);
       return;
     }
     promise.resolve(ConnectivityManagerCompat.isActiveNetworkMetered(mConnectivityManager));

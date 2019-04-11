@@ -23,7 +23,7 @@ const ViewabilityHelper = require('ViewabilityHelper');
 
 const flattenStyle = require('flattenStyle');
 const infoLog = require('infoLog');
-const invariant = require('fbjs/lib/invariant');
+const invariant = require('invariant');
 /* $FlowFixMe(>=0.54.0 site=react_native_oss) This comment suppresses an error
  * found when Flow v0.54 was deployed. To see the error delete this comment and
  * run Flow. */
@@ -806,7 +806,10 @@ class VirtualizedList extends React.PureComponent<Props, State> {
             if (stickyIndicesFromProps.has(ii + stickyOffset)) {
               const initBlock = this._getFrameMetricsApprox(lastInitialIndex);
               const stickyBlock = this._getFrameMetricsApprox(ii);
-              const leadSpace = stickyBlock.offset - initBlock.offset;
+              const leadSpace =
+                stickyBlock.offset -
+                initBlock.offset -
+                (this.props.initialScrollIndex ? 0 : initBlock.length);
               cells.push(
                 <View key="$sticky_lead" style={{[spacerKey]: leadSpace}} />,
               );
@@ -882,16 +885,17 @@ class VirtualizedList extends React.PureComponent<Props, State> {
         <ListEmptyComponent />
       )): any);
       cells.push(
-        React.cloneElement(element, {
-          key: '$empty',
-          onLayout: event => {
-            this._onLayoutEmpty(event);
-            if (element.props.onLayout) {
-              element.props.onLayout(event);
-            }
-          },
-          style: [element.props.style, inversionStyle],
-        }),
+        <View key="$empty" style={inversionStyle}>
+          {React.cloneElement(element, {
+            onLayout: event => {
+              this._onLayoutEmpty(event);
+              if (element.props.onLayout) {
+                element.props.onLayout(event);
+              }
+            },
+            style: element.props.style,
+          })}
+        </View>,
       );
     }
     if (ListFooterComponent) {
@@ -1178,7 +1182,8 @@ class VirtualizedList extends React.PureComponent<Props, State> {
 
   _renderDebugOverlay() {
     const normalize =
-      this._scrollMetrics.visibleLength / this._scrollMetrics.contentLength;
+      this._scrollMetrics.visibleLength /
+      (this._scrollMetrics.contentLength || 1);
     const framesInLayout = [];
     const itemCount = this.props.getItemCount(this.props.data);
     for (let ii = 0; ii < itemCount; ii++) {
@@ -1732,6 +1737,9 @@ class CellRenderer extends React.Component<
         : inversionStyle;
     if (!CellRendererComponent) {
       return (
+        /* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses an
+         * error found when Flow v0.89 was deployed. To see the error, delete
+         * this comment and run Flow. */
         <View style={cellStyle} onLayout={onLayout}>
           {element}
           {itemSeparator}

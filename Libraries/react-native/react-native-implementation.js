@@ -10,10 +10,8 @@
 
 'use strict';
 
-const invariant = require('fbjs/lib/invariant');
-
-let showedListViewDeprecation = false;
-let showedSwipeableListViewDeprecation = false;
+const invariant = require('invariant');
+const warnOnce = require('warnOnce');
 
 // Export React, plus some native additions.
 module.exports = {
@@ -52,6 +50,13 @@ module.exports = {
     return require('ImageEditor');
   },
   get ImageStore() {
+    warnOnce(
+      'imagestore-deprecation',
+      'ImageStore is deprecated and will be removed in a future release. ' +
+        'To get a base64-encoded string from a local image use either of the following third-party libraries:' +
+        "* expo-file-system: `readAsStringAsync(filepath, 'base64')`" +
+        "* react-native-fs: `readFile(filepath, 'base64')`",
+    );
     return require('ImageStore');
   },
   get InputAccessoryView() {
@@ -61,17 +66,20 @@ module.exports = {
     return require('KeyboardAvoidingView');
   },
   get ListView() {
-    if (!showedListViewDeprecation) {
-      console.warn(
-        'ListView is deprecated and will be removed in a future release. ' +
-          'See https://fb.me/nolistview for more information',
-      );
-
-      showedListViewDeprecation = true;
-    }
+    warnOnce(
+      'listview-deprecation',
+      'ListView is deprecated and will be removed in a future release. ' +
+        'See https://fb.me/nolistview for more information',
+    );
     return require('ListView');
   },
   get MaskedViewIOS() {
+    warnOnce(
+      'maskedviewios-moved',
+      'MaskedViewIOS has been extracted from react-native core and will be removed in a future release. ' +
+        "It can now be installed and imported from '@react-native-community/masked-view' instead of 'react-native'. " +
+        'See https://github.com/react-native-community/react-native-masked-view',
+    );
     return require('MaskedViewIOS');
   },
   get Modal() {
@@ -102,6 +110,12 @@ module.exports = {
     return require('SegmentedControlIOS');
   },
   get Slider() {
+    warnOnce(
+      'slider-moved',
+      'Slider has been extracted from react-native core and will be removed in a future release. ' +
+        "It can now be installed and imported from '@react-native-community/slider' instead of 'react-native'. " +
+        'See https://github.com/react-native-community/react-native-slider',
+    );
     return require('Slider');
   },
   get SnapshotViewIOS() {
@@ -120,27 +134,18 @@ module.exports = {
     return require('SwipeableFlatList');
   },
   get SwipeableListView() {
-    if (!showedSwipeableListViewDeprecation) {
-      console.warn(
-        'ListView and SwipeableListView are deprecated and will be removed in a future release. ' +
-          'See https://fb.me/nolistview for more information',
-      );
-
-      showedSwipeableListViewDeprecation = true;
-    }
+    warnOnce(
+      'swipablelistview-deprecation',
+      'ListView and SwipeableListView are deprecated and will be removed in a future release. ' +
+        'See https://fb.me/nolistview for more information',
+    );
     return require('SwipeableListView');
-  },
-  get TabBarIOS() {
-    return require('TabBarIOS');
   },
   get Text() {
     return require('Text');
   },
   get TextInput() {
     return require('TextInput');
-  },
-  get ToastAndroid() {
-    return require('ToastAndroid');
   },
   get ToolbarAndroid() {
     return require('ToolbarAndroid');
@@ -164,12 +169,24 @@ module.exports = {
     return require('View');
   },
   get ViewPagerAndroid() {
+    warnOnce(
+      'viewpager-moved',
+      'ViewPagerAndroid has been extracted from react-native core and will be removed in a future release. ' +
+        "It can now be installed and imported from '@react-native-community/viewpager' instead of 'react-native'. " +
+        'See https://github.com/react-native-community/react-native-viewpager',
+    );
     return require('ViewPagerAndroid');
   },
   get VirtualizedList() {
     return require('VirtualizedList');
   },
   get WebView() {
+    warnOnce(
+      'webview-moved',
+      'WebView has been extracted from react-native core and will be removed in a future release. ' +
+        "It can now be installed and imported from 'react-native-webview' instead of 'react-native'. " +
+        'See https://github.com/react-native-community/react-native-webview',
+    );
     return require('WebView');
   },
 
@@ -181,7 +198,11 @@ module.exports = {
     return require('Alert');
   },
   get AlertIOS() {
-    return require('AlertIOS');
+    warnOnce(
+      'alert-ios',
+      'AlertIOS is deprecated. Use the `Alert` module directly instead.',
+    );
+    return require('Alert');
   },
   get Animated() {
     return require('Animated');
@@ -193,6 +214,12 @@ module.exports = {
     return require('AppState');
   },
   get AsyncStorage() {
+    warnOnce(
+      'async-storage-moved',
+      'Async Storage has been extracted from react-native core and will be removed in a future release. ' +
+        "It can now be installed and imported from '@react-native-community/async-storage' instead of 'react-native'. " +
+        'See https://github.com/react-native-community/react-native-async-storage',
+    );
     return require('AsyncStorage');
   },
   get BackHandler() {
@@ -241,6 +268,12 @@ module.exports = {
     return require('NativeEventEmitter');
   },
   get NetInfo() {
+    warnOnce(
+      'netinfo-moved',
+      'NetInfo has been extracted from react-native core and will be removed in a future release. ' +
+        "It can now be installed and imported from '@react-native-community/netinfo' instead of 'react-native'. " +
+        'See https://github.com/react-native-community/react-native-netinfo',
+    );
     return require('NetInfo');
   },
   get PanResponder() {
@@ -273,6 +306,9 @@ module.exports = {
   get TimePickerAndroid() {
     return require('TimePickerAndroid');
   },
+  get ToastAndroid() {
+    return require('ToastAndroid');
+  },
   get TVEventHandler() {
     return require('TVEventHandler');
   },
@@ -281,6 +317,9 @@ module.exports = {
   },
   get unstable_batchedUpdates() {
     return require('ReactNative').unstable_batchedUpdates;
+  },
+  get UTFSequence() {
+    return require('UTFSequence');
   },
   get Vibration() {
     return require('Vibration');
