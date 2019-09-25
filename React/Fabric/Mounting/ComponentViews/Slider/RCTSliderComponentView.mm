@@ -10,10 +10,8 @@
 #import <React/RCTImageResponseObserverProxy.h>
 #import <react/components/rncore/EventEmitters.h>
 #import <react/components/rncore/Props.h>
+#import <react/components/slider/SliderComponentDescriptor.h>
 #import <react/components/slider/SliderLocalData.h>
-#import <react/components/slider/SliderShadowNode.h>
-
-#import "MainQueueExecutor.h"
 
 using namespace facebook::react;
 
@@ -104,17 +102,15 @@ using namespace facebook::react;
 
 #pragma mark - RCTComponentViewProtocol
 
-+ (ComponentHandle)componentHandle
++ (ComponentDescriptorProvider)componentDescriptorProvider
 {
-  return SliderShadowNode::Handle();
+  return concreteComponentDescriptorProvider<SliderComponentDescriptor>();
 }
 
-- (void)updateProps:(SharedProps)props oldProps:(SharedProps)oldProps
+- (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps
 {
-  const auto &oldSliderProps = *std::static_pointer_cast<const SliderProps>(oldProps ?: _props);
+  const auto &oldSliderProps = *std::static_pointer_cast<const SliderProps>(_props);
   const auto &newSliderProps = *std::static_pointer_cast<const SliderProps>(props);
-
-  [super updateProps:props oldProps:oldProps];
 
   // `value`
   if (oldSliderProps.value != newSliderProps.value) {
@@ -151,6 +147,8 @@ using namespace facebook::react;
   if (oldSliderProps.maximumTrackTintColor != newSliderProps.maximumTrackTintColor) {
     _sliderView.maximumTrackTintColor = [UIColor colorWithCGColor:newSliderProps.maximumTrackTintColor.get()];
   }
+
+  [super updateProps:props oldProps:oldProps];
 }
 
 - (void)updateLocalData:(SharedLocalData)localData oldLocalData:(SharedLocalData)oldLocalData
@@ -179,44 +177,44 @@ using namespace facebook::react;
 - (void)setTrackImageCoordinator:(const ImageResponseObserverCoordinator *)coordinator
 {
   if (_trackImageCoordinator) {
-    _trackImageCoordinator->removeObserver(_trackImageResponseObserverProxy.get());
+    _trackImageCoordinator->removeObserver(*_trackImageResponseObserverProxy);
   }
   _trackImageCoordinator = coordinator;
   if (_trackImageCoordinator) {
-    _trackImageCoordinator->addObserver(_trackImageResponseObserverProxy.get());
+    _trackImageCoordinator->addObserver(*_trackImageResponseObserverProxy);
   }
 }
 
 - (void)setMinimumTrackImageCoordinator:(const ImageResponseObserverCoordinator *)coordinator
 {
   if (_minimumTrackImageCoordinator) {
-    _minimumTrackImageCoordinator->removeObserver(_minimumTrackImageResponseObserverProxy.get());
+    _minimumTrackImageCoordinator->removeObserver(*_minimumTrackImageResponseObserverProxy);
   }
   _minimumTrackImageCoordinator = coordinator;
   if (_minimumTrackImageCoordinator) {
-    _minimumTrackImageCoordinator->addObserver(_minimumTrackImageResponseObserverProxy.get());
+    _minimumTrackImageCoordinator->addObserver(*_minimumTrackImageResponseObserverProxy);
   }
 }
 
 - (void)setMaximumTrackImageCoordinator:(const ImageResponseObserverCoordinator *)coordinator
 {
   if (_maximumTrackImageCoordinator) {
-    _maximumTrackImageCoordinator->removeObserver(_maximumTrackImageResponseObserverProxy.get());
+    _maximumTrackImageCoordinator->removeObserver(*_maximumTrackImageResponseObserverProxy);
   }
   _maximumTrackImageCoordinator = coordinator;
   if (_maximumTrackImageCoordinator) {
-    _maximumTrackImageCoordinator->addObserver(_maximumTrackImageResponseObserverProxy.get());
+    _maximumTrackImageCoordinator->addObserver(*_maximumTrackImageResponseObserverProxy);
   }
 }
 
 - (void)setThumbImageCoordinator:(const ImageResponseObserverCoordinator *)coordinator
 {
   if (_thumbImageCoordinator) {
-    _thumbImageCoordinator->removeObserver(_thumbImageResponseObserverProxy.get());
+    _thumbImageCoordinator->removeObserver(*_thumbImageResponseObserverProxy);
   }
   _thumbImageCoordinator = coordinator;
   if (_thumbImageCoordinator) {
-    _thumbImageCoordinator->addObserver(_thumbImageResponseObserverProxy.get());
+    _thumbImageCoordinator->addObserver(*_thumbImageResponseObserverProxy);
   }
 }
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the LICENSE
@@ -71,13 +71,17 @@ Instrumentation& Runtime::instrumentation() {
       return "";
     }
 
-    Value getHeapInfo(bool) override {
-      return Value::undefined();
+    std::unordered_map<std::string, int64_t> getHeapInfo(bool) override {
+      return std::unordered_map<std::string, int64_t>{};
     }
 
     void collectGarbage() override {}
 
     bool createSnapshotToFile(const std::string&, bool) override {
+      return false;
+    }
+
+    bool createSnapshotToStream(std::ostream&, bool) override {
       return false;
     }
 

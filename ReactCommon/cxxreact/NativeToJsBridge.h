@@ -96,13 +96,18 @@ private:
   std::unique_ptr<JSExecutor> m_executor;
   std::shared_ptr<MessageQueueThread> m_executorMessageQueueThread;
 
+  // Memoize this on the JS thread, so that it can be inspected from
+  // any thread later.  This assumes inspectability doesn't change for
+  // a JSExecutor instance, which is true for all existing implementations.
+  bool m_inspectable;
+
   // Keep track of whether the JS bundle containing the application logic causes
   // exception when evaluated initially. If so, more calls to JS will very
   // likely fail as well, so this flag can help prevent them.
   bool m_applicationScriptHasFailure = false;
 
   #ifdef WITH_FBSYSTRACE
-  std::atomic_uint_least32_t m_systraceCookie = ATOMIC_VAR_INIT();
+  std::atomic_uint_least32_t m_systraceCookie = ATOMIC_VAR_INIT(0);
   #endif
 };
 

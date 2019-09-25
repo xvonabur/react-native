@@ -5,19 +5,18 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#import "RCTUITextField.h"
+#import <React/RCTUITextField.h>
 
 #import <React/RCTUtils.h>
 #import <React/UIView+React.h>
 
-#import "RCTBackedTextInputDelegateAdapter.h"
-#import "RCTTextAttributes.h"
+#import <React/RCTBackedTextInputDelegateAdapter.h>
+#import <React/RCTTextAttributes.h>
 
 @implementation RCTUITextField {
   RCTBackedTextFieldDelegateAdapter *_textInputDelegateAdapter;
+  NSDictionary<NSAttributedStringKey, id> *_defaultTextAttributes;
 }
-
-@synthesize reactTextAttributes = _reactTextAttributes;
 
 - (instancetype)initWithFrame:(CGRect)frame
 {
@@ -43,6 +42,15 @@
   _textWasPasted = NO;
 }
 
+#pragma mark - Accessibility
+
+- (void)setIsAccessibilityElement:(BOOL)isAccessibilityElement
+{
+  // UITextField is accessible by default (some nested views are) and disabling that is not supported.
+  // On iOS accessible elements cannot be nested, therefore enabling accessibility for some container view
+  // (even in a case where this view is a part of public API of TextInput on iOS) shadows some features implemented inside the component.
+}
+
 #pragma mark - Properties
 
 - (void)setTextContainerInset:(UIEdgeInsets)textContainerInset
@@ -63,29 +71,22 @@
   [self _updatePlaceholder];
 }
 
-- (void)setReactTextAttributes:(RCTTextAttributes *)reactTextAttributes
+- (void)setDefaultTextAttributes:(NSDictionary<NSAttributedStringKey, id> *)defaultTextAttributes
 {
-  if ([reactTextAttributes isEqual:_reactTextAttributes]) {
-    return;
-  }
-  self.defaultTextAttributes = reactTextAttributes.effectiveTextAttributes;
-  _reactTextAttributes = reactTextAttributes;
+  _defaultTextAttributes = defaultTextAttributes;
+  [super setDefaultTextAttributes:defaultTextAttributes];
   [self _updatePlaceholder];
 }
 
-- (RCTTextAttributes *)reactTextAttributes
+- (NSDictionary<NSAttributedStringKey, id> *)defaultTextAttributes
 {
-  return _reactTextAttributes;
+  return _defaultTextAttributes;
 }
 
 - (void)_updatePlaceholder
 {
-  if (self.placeholder == nil) {
-    return;
-  }
-
-  self.attributedPlaceholder = [[NSAttributedString alloc] initWithString:self.placeholder
-                                                               attributes:[self placeholderEffectiveTextAttributes]];
+  self.attributedPlaceholder = [[NSAttributedString alloc] initWithString:self.placeholder ?: @""
+                                                               attributes:[self _placeholderTextAttributes]];
 }
 
 - (BOOL)isEditable
@@ -110,24 +111,17 @@
 
 #pragma mark - Placeholder
 
-- (NSDictionary<NSAttributedStringKey, id> *)placeholderEffectiveTextAttributes
+- (NSDictionary<NSAttributedStringKey, id> *)_placeholderTextAttributes
 {
-  NSMutableDictionary<NSAttributedStringKey, id> *effectiveTextAttributes = [NSMutableDictionary dictionary];
-  
-  if (_placeholderColor) {
-    effectiveTextAttributes[NSForegroundColorAttributeName] = _placeholderColor;
+  NSMutableDictionary<NSAttributedStringKey, id> *textAttributes = [_defaultTextAttributes mutableCopy] ?: [NSMutableDictionary new];
+
+  if (self.placeholderColor) {
+    [textAttributes setValue:self.placeholderColor forKey:NSForegroundColorAttributeName];
+  } else {
+    [textAttributes removeObjectForKey:NSForegroundColorAttributeName];
   }
-  // Kerning
-  if (!isnan(_reactTextAttributes.letterSpacing)) {
-    effectiveTextAttributes[NSKernAttributeName] = @(_reactTextAttributes.letterSpacing);
-  }
-  
-  NSParagraphStyle *paragraphStyle = [_reactTextAttributes effectiveParagraphStyle];
-  if (paragraphStyle) {
-    effectiveTextAttributes[NSParagraphStyleAttributeName] = paragraphStyle;
-  }
-  
-  return [effectiveTextAttributes copy];
+
+  return textAttributes;
 }
 
 #pragma mark - Context Menu
@@ -152,7 +146,6 @@
   return [super caretRectForPosition:position];
 }
 
-
 #pragma mark - Positioning Overrides
 
 - (CGRect)textRectForBounds:(CGRect)bounds
@@ -166,6 +159,16 @@
 }
 
 #pragma mark - Overrides
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
+// Overrides selectedTextRange setter to get notify when selectedTextRange changed.
+- (void)setSelectedTextRange:(UITextRange *)selectedTextRange
+{
+  [super setSelectedTextRange:selectedTextRange];
+  [_textInputDelegateAdapter selectedTextRangeWasSet];
+}
+#pragma clang diagnostic pop
 
 - (void)setSelectedTextRange:(UITextRange *)selectedTextRange notifyDelegate:(BOOL)notifyDelegate
 {
@@ -196,7 +199,7 @@
 {
   // Note: `placeholder` defines intrinsic size for `<TextInput>`.
   NSString *text = self.placeholder ?: @"";
-  CGSize size = [text sizeWithAttributes:[self placeholderEffectiveTextAttributes]];
+  CGSize size = [text sizeWithAttributes:[self _placeholderTextAttributes]];
   size = CGSizeMake(RCTCeilPixelValue(size.width), RCTCeilPixelValue(size.height));
   size.width += _textContainerInset.left + _textContainerInset.right;
   size.height += _textContainerInset.top + _textContainerInset.bottom;

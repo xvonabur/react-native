@@ -9,14 +9,6 @@ package com.facebook.yoga;
 import javax.annotation.Nullable;
 
 public abstract class YogaNode {
-  public static YogaNode create() {
-    return YogaConfig.useBatchingForLayoutOutputs ? new YogaNodeJNIBatching() : new YogaNodeJNI();
-  }
-
-  public static YogaNode create(YogaConfig config) {
-    return YogaConfig.useBatchingForLayoutOutputs ? new YogaNodeJNIBatching(config) : new YogaNodeJNI(config);
-  }
-
   public abstract void reset();
 
   public abstract int getChildCount();
