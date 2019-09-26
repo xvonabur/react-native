@@ -1,47 +1,65 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @flow
+ * @flow strict-local
  */
 
 'use strict';
 
-const React = require('React');
-const View = require('View');
-const StyleSheet = require('StyleSheet');
 const BorderBox = require('BorderBox');
-const resolveBoxStyle = require('resolveBoxStyle');
+const React = require('React');
+const StyleSheet = require('StyleSheet');
+const View = require('View');
+const Dimensions = require('Dimensions');
 
 const flattenStyle = require('flattenStyle');
+const resolveBoxStyle = require('resolveBoxStyle');
 
 class ElementBox extends React.Component<$FlowFixMeProps> {
   render() {
     const style = flattenStyle(this.props.style) || {};
-    const margin = resolveBoxStyle('margin', style);
-    const padding = resolveBoxStyle('padding', style);
-    let frameStyle = this.props.frame;
-    if (margin) {
-      frameStyle = {
-        top: frameStyle.top - margin.top,
-        left: frameStyle.left - margin.left,
-        height: frameStyle.height + margin.top + margin.bottom,
-        width: frameStyle.width + margin.left + margin.right,
-      };
-    }
-    let contentStyle = {
+    let margin = resolveBoxStyle('margin', style);
+    let padding = resolveBoxStyle('padding', style);
+
+    const frameStyle = {...this.props.frame};
+    const contentStyle = {
       width: this.props.frame.width,
       height: this.props.frame.height,
     };
-    if (padding) {
-      contentStyle = {
-        width: contentStyle.width - padding.left - padding.right,
-        height: contentStyle.height - padding.top - padding.bottom,
-      };
+
+    if (margin != null) {
+      margin = resolveRelativeSizes(margin);
+
+      frameStyle.top -= margin.top;
+      frameStyle.left -= margin.left;
+      frameStyle.height += margin.top + margin.bottom;
+      frameStyle.width += margin.left + margin.right;
+
+      if (margin.top < 0) {
+        contentStyle.height += margin.top;
+      }
+      if (margin.bottom < 0) {
+        contentStyle.height += margin.bottom;
+      }
+      if (margin.left < 0) {
+        contentStyle.width += margin.left;
+      }
+      if (margin.right < 0) {
+        contentStyle.width += margin.right;
+      }
     }
+
+    if (padding != null) {
+      padding = resolveRelativeSizes(padding);
+
+      contentStyle.width -= padding.left + padding.right;
+      contentStyle.height -= padding.top + padding.bottom;
+    }
+
     return (
       <View style={[styles.frame, frameStyle]} pointerEvents="none">
         <BorderBox box={margin} style={styles.margin}>
@@ -59,14 +77,61 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   content: {
-    backgroundColor: 'rgba(200, 230, 255, 0.8)',
+    backgroundColor: 'rgba(200, 230, 255, 0.8)', // blue
   },
   padding: {
-    borderColor: 'rgba(77, 255, 0, 0.3)',
+    borderColor: 'rgba(77, 255, 0, 0.3)', // green
   },
   margin: {
-    borderColor: 'rgba(255, 132, 0, 0.3)',
+    borderColor: 'rgba(255, 132, 0, 0.3)', // orange
   },
 });
+
+type Style = {
+  top: number,
+  right: number,
+  bottom: number,
+  left: number,
+};
+
+/**
+ * Resolves relative sizes (percentages and auto) in a style object.
+ *
+ * @param style the style to resolve
+ * @return a modified copy
+ */
+function resolveRelativeSizes(style: $ReadOnly<Style>): Style {
+  let resolvedStyle = Object.assign({}, style);
+  resolveSizeInPlace(resolvedStyle, 'top', 'height');
+  resolveSizeInPlace(resolvedStyle, 'right', 'width');
+  resolveSizeInPlace(resolvedStyle, 'bottom', 'height');
+  resolveSizeInPlace(resolvedStyle, 'left', 'width');
+  return resolvedStyle;
+}
+
+/**
+ * Resolves the given size of a style object in place.
+ *
+ * @param style the style object to modify
+ * @param direction the direction to resolve (e.g. 'top')
+ * @param dimension the window dimension that this direction belongs to (e.g. 'height')
+ */
+function resolveSizeInPlace(
+  style: Style,
+  direction: string,
+  dimension: string,
+) {
+  if (style[direction] !== null && typeof style[direction] === 'string') {
+    if (style[direction].indexOf('%') !== -1) {
+      style[direction] =
+        (parseFloat(style[direction]) / 100.0) *
+        Dimensions.get('window')[dimension];
+    }
+    if (style[direction] === 'auto') {
+      // Ignore auto sizing in frame drawing due to complexity of correctly rendering this
+      style[direction] = 0;
+    }
+  }
+}
 
 module.exports = ElementBox;

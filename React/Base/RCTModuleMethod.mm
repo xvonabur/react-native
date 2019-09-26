@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -90,8 +90,9 @@ static BOOL RCTParseSelectorPart(const char **input, NSMutableString *selector)
 
 static BOOL RCTParseUnused(const char **input)
 {
-  return RCTReadString(input, "__unused") ||
-         RCTReadString(input, "__attribute__((unused))");
+  return RCTReadString(input, "__attribute__((unused))") ||
+         RCTReadString(input, "__attribute__((__unused__))") ||
+         RCTReadString(input, "__unused");
 }
 
 static RCTNullability RCTParseNullability(const char **input)
@@ -302,6 +303,12 @@ RCT_EXTERN_C_END
 
           [argumentBlocks addObject:^(__unused RCTBridge *bridge, NSUInteger index, id json) {
             void *returnValue = malloc(typeSignature.methodReturnLength);
+            if (!returnValue) {
+              // CWE - 391 : Unchecked error condition
+              // https://www.cvedetails.com/cwe-details/391/Unchecked-Error-Condition.html
+              // https://eli.thegreenplace.net/2009/10/30/handling-out-of-memory-conditions-in-c
+              abort();
+            }
             [typeInvocation setArgument:&json atIndex:2];
             [typeInvocation invoke];
             [typeInvocation getReturnValue:returnValue];
