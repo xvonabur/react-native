@@ -68,11 +68,8 @@ jest
   .mock('AnimatedImplementation', () => {
     const AnimatedImplementation = jest.requireActual('AnimatedImplementation');
     const oldCreate = AnimatedImplementation.createAnimatedComponent;
-    AnimatedImplementation.createAnimatedComponent = function(
-      Component,
-      defaultProps,
-    ) {
-      const Wrapped = oldCreate(Component, defaultProps);
+    AnimatedImplementation.createAnimatedComponent = function(Component) {
+      const Wrapped = oldCreate(Component);
       Wrapped.__skipSetNativeProps_FOR_TESTS_ONLY = true;
       return Wrapped;
     };

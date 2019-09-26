@@ -26,6 +26,9 @@ module.exports = (function(global, undefined) {
     return global.Map;
   }
 
+  // In case this module has not already been evaluated, import it now.
+  require('./_wrapObjectFreezeAndFriends');
+
   const hasOwn = Object.prototype.hasOwnProperty;
 
   /**

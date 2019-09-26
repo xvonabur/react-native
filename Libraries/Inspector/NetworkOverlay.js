@@ -88,16 +88,6 @@ class NetworkOverlay extends React.Component<Props, State> {
   _requestsListView: ?React.ElementRef<typeof FlatList>;
   _detailScrollView: ?React.ElementRef<typeof ScrollView>;
 
-  // Metrics are used to decide when if the request list should be sticky, and
-  // scroll to the bottom as new network requests come in, or if the user has
-  // intentionally scrolled away from the bottom - to instead flash the scroll bar
-  // and keep the current position
-  _requestsListViewScrollMetrics = {
-    offset: 0,
-    visibleLength: 0,
-    contentLength: 0,
-  };
-
   // Map of `socketId` -> `index in `this.state.requests`.
   _socketIdMap = {};
   // Map of `xhr._index` -> `index in `this.state.requests`.
@@ -131,7 +121,7 @@ class NetworkOverlay extends React.Component<Props, State> {
         {
           requests: this.state.requests.concat(_xhr),
         },
-        this._indicateAdditionalRequests,
+        this._scrollRequestsToBottom,
       );
     });
 
@@ -224,7 +214,7 @@ class NetworkOverlay extends React.Component<Props, State> {
           {
             requests: this.state.requests.concat(_webSocket),
           },
-          this._indicateAdditionalRequests,
+          this._scrollRequestsToBottom,
         );
       },
     );
@@ -393,35 +383,11 @@ class NetworkOverlay extends React.Component<Props, State> {
     );
   }
 
-  _indicateAdditionalRequests = (): void => {
+  _scrollRequestsToBottom(): void {
     if (this._requestsListView) {
-      const distanceFromEndThreshold = LISTVIEW_CELL_HEIGHT * 2;
-      const {
-        offset,
-        visibleLength,
-        contentLength,
-      } = this._requestsListViewScrollMetrics;
-      const distanceFromEnd = contentLength - visibleLength - offset;
-      const isCloseToEnd = distanceFromEnd <= distanceFromEndThreshold;
-      if (isCloseToEnd) {
-        this._requestsListView.scrollToEnd();
-      } else {
-        this._requestsListView.flashScrollIndicators();
-      }
+      this._requestsListView.scrollToEnd();
     }
-  };
-
-  _captureRequestsListView = (listRef: ?FlatList<NetworkRequestInfo>): void => {
-    this._requestsListView = listRef;
-  };
-
-  _requestsListViewOnScroll = (e: Object): void => {
-    this._requestsListViewScrollMetrics.offset = e.nativeEvent.contentOffset.y;
-    this._requestsListViewScrollMetrics.visibleLength =
-      e.nativeEvent.layoutMeasurement.height;
-    this._requestsListViewScrollMetrics.contentLength =
-      e.nativeEvent.contentSize.height;
-  };
+  }
 
   /**
    * Popup a scrollView to dynamically show detailed information of
@@ -480,8 +446,7 @@ class NetworkOverlay extends React.Component<Props, State> {
         </View>
 
         <FlatList
-          ref={this._captureRequestsListView}
-          onScroll={this._requestsListViewOnScroll}
+          ref={listRef => (this._requestsListView = listRef)}
           style={styles.listView}
           data={requests}
           renderItem={this._renderItem}

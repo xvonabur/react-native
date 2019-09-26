@@ -14,7 +14,7 @@ const AnimatedWithChildren = require('./AnimatedWithChildren');
 
 const invariant = require('invariant');
 
-type ValueXYListenerCallback = (value: {x: number, y: number}) => mixed;
+type ValueXYListenerCallback = (value: {x: number, y: number}) => void;
 
 let _uniqueId = 1;
 
