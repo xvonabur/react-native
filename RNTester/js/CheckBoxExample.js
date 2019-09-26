@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2017-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,20 +7,13 @@
  * @flow
  * @format
  */
-
 'use strict';
 
 const React = require('react');
 const ReactNative = require('react-native');
-const {CheckBox, Text, View, StyleSheet} = ReactNative;
+const {CheckBox, Text, View} = ReactNative;
 
-type BasicState = {|
-  trueCheckBoxIsOn: boolean,
-  falseCheckBoxIsOn: boolean,
-|};
-
-type BasicProps = $ReadOnly<{||}>;
-class BasicCheckBoxExample extends React.Component<BasicProps, BasicState> {
+class BasicCheckBoxExample extends React.Component<{}, $FlowFixMeState> {
   state = {
     trueCheckBoxIsOn: true,
     falseCheckBoxIsOn: false,
@@ -31,7 +24,7 @@ class BasicCheckBoxExample extends React.Component<BasicProps, BasicState> {
       <View>
         <CheckBox
           onValueChange={value => this.setState({falseCheckBoxIsOn: value})}
-          style={styles.checkbox}
+          style={{marginBottom: 10}}
           value={this.state.falseCheckBoxIsOn}
         />
         <CheckBox
@@ -43,25 +36,18 @@ class BasicCheckBoxExample extends React.Component<BasicProps, BasicState> {
   }
 }
 
-type DisabledProps = $ReadOnly<{||}>;
-class DisabledCheckBoxExample extends React.Component<DisabledProps> {
+class DisabledCheckBoxExample extends React.Component<{}, $FlowFixMeState> {
   render() {
     return (
       <View>
-        <CheckBox disabled={true} style={styles.checkbox} value={true} />
+        <CheckBox disabled={true} style={{marginBottom: 10}} value={true} />
         <CheckBox disabled={true} value={false} />
       </View>
     );
   }
 }
 
-type EventProps = $ReadOnly<{||}>;
-type EventState = {|
-  eventCheckBoxIsOn: boolean,
-  eventCheckBoxRegressionIsOn: boolean,
-|};
-
-class EventCheckBoxExample extends React.Component<EventProps, EventState> {
+class EventCheckBoxExample extends React.Component<{}, $FlowFixMeState> {
   state = {
     eventCheckBoxIsOn: false,
     eventCheckBoxRegressionIsOn: true,
@@ -69,16 +55,16 @@ class EventCheckBoxExample extends React.Component<EventProps, EventState> {
 
   render() {
     return (
-      <View style={styles.container}>
+      <View style={{flexDirection: 'row', justifyContent: 'space-around'}}>
         <View>
           <CheckBox
             onValueChange={value => this.setState({eventCheckBoxIsOn: value})}
-            style={styles.checkbox}
+            style={{marginBottom: 10}}
             value={this.state.eventCheckBoxIsOn}
           />
           <CheckBox
             onValueChange={value => this.setState({eventCheckBoxIsOn: value})}
-            style={styles.checkbox}
+            style={{marginBottom: 10}}
             value={this.state.eventCheckBoxIsOn}
           />
           <Text>{this.state.eventCheckBoxIsOn ? 'On' : 'Off'}</Text>
@@ -88,14 +74,14 @@ class EventCheckBoxExample extends React.Component<EventProps, EventState> {
             onValueChange={value =>
               this.setState({eventCheckBoxRegressionIsOn: value})
             }
-            style={styles.checkbox}
+            style={{marginBottom: 10}}
             value={this.state.eventCheckBoxRegressionIsOn}
           />
           <CheckBox
             onValueChange={value =>
               this.setState({eventCheckBoxRegressionIsOn: value})
             }
-            style={styles.checkbox}
+            style={{marginBottom: 10}}
             value={this.state.eventCheckBoxRegressionIsOn}
           />
           <Text>{this.state.eventCheckBoxRegressionIsOn ? 'On' : 'Off'}</Text>
@@ -105,20 +91,7 @@ class EventCheckBoxExample extends React.Component<EventProps, EventState> {
   }
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  checkbox: {
-    marginBottom: 10,
-  },
-});
-
-exports.title = '<CheckBox>';
-exports.displayName = 'CheckBoxExample';
-exports.description = 'Native boolean input';
-exports.examples = [
+let examples = [
   {
     title: 'CheckBoxes can be set to true or false',
     render(): React.Element<any> {
@@ -144,3 +117,8 @@ exports.examples = [
     },
   },
 ];
+
+exports.title = '<CheckBox>';
+exports.displayName = 'CheckBoxExample';
+exports.description = 'Native boolean input';
+exports.examples = examples;

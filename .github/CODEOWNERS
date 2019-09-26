@@ -7,5 +7,8 @@ React/Views/* @shergin
 React/Modules/* @shergin
 React/CxxBridge/* @mhorowitz
 ReactAndroid/src/main/java/com/facebook/react/animated/* @janicduplessis
-**/*.md @hramos @cpojer
-package.json @hramos @cpojer
+**/*.md @hramos
+package.json @hramos
+local-cli/core/* @grabbou @kureev
+local-cli/link/* @grabbou @kureev
+local-cli/unlink/* @grabbou @kureev

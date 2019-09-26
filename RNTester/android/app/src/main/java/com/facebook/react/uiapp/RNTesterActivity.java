@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -20,9 +20,9 @@ public class RNTesterActivity extends ReactActivity {
   public static class RNTesterActivityDelegate extends ReactActivityDelegate {
     private static final String PARAM_ROUTE = "route";
     private Bundle mInitialProps = null;
-    private final @Nullable ReactActivity mActivity;
+    private final @Nullable Activity mActivity;
 
-    public RNTesterActivityDelegate(ReactActivity activity, String mainComponentName) {
+    public RNTesterActivityDelegate(Activity activity, String mainComponentName) {
       super(activity, mainComponentName);
       this.mActivity = activity;
     }

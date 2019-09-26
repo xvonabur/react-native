@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -25,14 +25,13 @@ import com.facebook.yoga.YogaMeasureFunction;
 import com.facebook.yoga.YogaMeasureMode;
 import com.facebook.yoga.YogaMeasureOutput;
 import com.facebook.yoga.YogaNode;
-import javax.annotation.Nullable;
 
 /**
  * View manager for {@link ReactSwitch} components.
  */
 public class ReactSwitchManager extends SimpleViewManager<ReactSwitch> {
 
-  public static final String REACT_CLASS = "AndroidSwitch";
+  private static final String REACT_CLASS = "AndroidSwitch";
 
   static class ReactSwitchShadowNode extends LayoutShadowNode implements
       YogaMeasureFunction {
@@ -45,8 +44,34 @@ public class ReactSwitchManager extends SimpleViewManager<ReactSwitch> {
       initMeasureFunction();
     }
 
+    private ReactSwitchShadowNode(ReactSwitchShadowNode node) {
+      super(node);
+      mWidth = node.mWidth;
+      mHeight = node.mHeight;
+      mMeasured = node.mMeasured;
+    }
+
     private void initMeasureFunction() {
       setMeasureFunction(this);
+    }
+
+    @Override
+    public ReactShadowNodeImpl mutableCopy(long instanceHandle) {
+      ReactSwitchShadowNode reactShadowNode = (ReactSwitchShadowNode) super.mutableCopy(instanceHandle);
+      reactShadowNode.initMeasureFunction();
+      return reactShadowNode;
+    }
+
+    @Override
+    public ReactShadowNodeImpl mutableCopyWithNewChildren(long instanceHandle) {
+      ReactSwitchShadowNode reactShadowNode = (ReactSwitchShadowNode) super.mutableCopyWithNewChildren(instanceHandle);
+      reactShadowNode.initMeasureFunction();
+      return reactShadowNode;
+    }
+
+    @Override
+    protected ReactSwitchShadowNode copy() {
+      return new ReactSwitchShadowNode(this);
     }
 
     @Override
@@ -63,7 +88,7 @@ public class ReactSwitchManager extends SimpleViewManager<ReactSwitch> {
         ReactSwitch reactSwitch = new ReactSwitch(getThemedContext());
         reactSwitch.setShowText(false);
         final int spec = View.MeasureSpec.makeMeasureSpec(
-            0,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
             View.MeasureSpec.UNSPECIFIED);
         reactSwitch.measure(spec, spec);
         mWidth = reactSwitch.getMeasuredWidth();
@@ -109,11 +134,6 @@ public class ReactSwitchManager extends SimpleViewManager<ReactSwitch> {
     return view;
   }
 
-  @ReactProp(name = "disabled", defaultBoolean = false)
-  public void setDisabled(ReactSwitch view, boolean disabled) {
-    view.setEnabled(!disabled);
-  }
-
   @ReactProp(name = ViewProps.ENABLED, defaultBoolean = true)
   public void setEnabled(ReactSwitch view, boolean enabled) {
     view.setEnabled(enabled);
@@ -121,41 +141,29 @@ public class ReactSwitchManager extends SimpleViewManager<ReactSwitch> {
 
   @ReactProp(name = ViewProps.ON)
   public void setOn(ReactSwitch view, boolean on) {
-    this.setValue(view, on);
-  }
-
-  @ReactProp(name = "value")
-  public void setValue(ReactSwitch view, boolean value) {
     // we set the checked change listener to null and then restore it so that we don't fire an
     // onChange event to JS when JS itself is updating the value of the switch
     view.setOnCheckedChangeListener(null);
-    view.setOn(value);
+    view.setOn(on);
     view.setOnCheckedChangeListener(ON_CHECKED_CHANGE_LISTENER);
   }
 
   @ReactProp(name = "thumbTintColor", customType = "Color")
-  public void setThumbTintColor(ReactSwitch view, @Nullable Integer color) {
-    this.setThumbColor(view, color);
-  }
-
-  @ReactProp(name = "thumbColor", customType = "Color")
-  public void setThumbColor(ReactSwitch view, @Nullable Integer color) {
-    view.setThumbColor(color);
-  }
-
-  @ReactProp(name = "trackColorForFalse", customType = "Color")
-  public void setTrackColorForFalse(ReactSwitch view, @Nullable Integer color) {
-    view.setTrackColorForFalse(color);
-  }
-
-  @ReactProp(name = "trackColorForTrue", customType = "Color")
-  public void setTrackColorForTrue(ReactSwitch view, @Nullable Integer color) {
-    view.setTrackColorForTrue(color);
+  public void setThumbTintColor(ReactSwitch view, Integer color) {
+    if (color == null) {
+      view.getThumbDrawable().clearColorFilter();
+    } else {
+      view.getThumbDrawable().setColorFilter(color, PorterDuff.Mode.MULTIPLY);
+    }
   }
 
   @ReactProp(name = "trackTintColor", customType = "Color")
-  public void setTrackTintColor(ReactSwitch view, @Nullable Integer color) {
-    view.setTrackColor(color);
+  public void setTrackTintColor(ReactSwitch view, Integer color) {
+    if (color == null) {
+      view.getTrackDrawable().clearColorFilter();
+    } else {
+      view.getTrackDrawable().setColorFilter(color, PorterDuff.Mode.MULTIPLY);
+    }
   }
 
   @Override

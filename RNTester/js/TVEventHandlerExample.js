@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2017-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,15 +10,37 @@
 
 'use strict';
 
-const React = require('react');
-const ReactNative = require('react-native');
+var React = require('react');
+var ReactNative = require('react-native');
 
-const {Platform, View, Text, TouchableOpacity, TVEventHandler} = ReactNative;
+var {
+  Platform,
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  TVEventHandler,
+} = ReactNative;
 
-type Props = $ReadOnly<{||}>;
-type State = {|lastEventType: string|};
-class TVEventHandlerView extends React.Component<Props, State> {
-  constructor(props: Props) {
+exports.framework = 'React';
+exports.title = 'TVEventHandler example';
+exports.description = 'iOS alerts and action sheets';
+exports.examples = [
+  {
+    title: 'TVEventHandler',
+    render() {
+      return <TVEventHandlerView />;
+    },
+  },
+];
+
+class TVEventHandlerView extends React.Component<
+  $FlowFixMeProps,
+  {
+    lastEventType: string,
+  },
+> {
+  constructor(props) {
     super(props);
     this.state = {
       lastEventType: '',
@@ -74,15 +96,3 @@ class TVEventHandlerView extends React.Component<Props, State> {
     }
   }
 }
-
-exports.framework = 'React';
-exports.title = 'TVEventHandler example';
-exports.description = 'iOS alerts and action sheets';
-exports.examples = [
-  {
-    title: 'TVEventHandler',
-    render() {
-      return <TVEventHandlerView />;
-    },
-  },
-];

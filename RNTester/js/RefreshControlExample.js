@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -56,6 +56,9 @@ class Row extends React.Component {
 }
 
 class RefreshControlExample extends React.Component {
+  static title = '<RefreshControl>';
+  static description = 'Adds pull-to-refresh support to a scrollview.';
+
   state = {
     isRefreshing: false,
     loaded: 0,
@@ -115,13 +118,4 @@ class RefreshControlExample extends React.Component {
   };
 }
 
-exports.title = '<RefreshControl>';
-exports.description = 'Adds pull-to-refresh support to a scrollview.';
-exports.examples = [
-  {
-    title: 'Simple refresh',
-    render: function(): React.Element<typeof RefreshControlExample> {
-      return <RefreshControlExample />;
-    },
-  },
-];
+module.exports = RefreshControlExample;

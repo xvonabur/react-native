@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -8,27 +8,23 @@
  * This is a controlled component version of RCTDatePickerIOS
  *
  * @format
- * @flow strict-local
+ * @flow
  */
 
 'use strict';
 
 const React = require('React');
+const invariant = require('fbjs/lib/invariant');
 const StyleSheet = require('StyleSheet');
 const View = require('View');
 
-const invariant = require('invariant');
+const requireNativeComponent = require('requireNativeComponent');
 
 import type {ViewProps} from 'ViewPropTypes';
-import type {SyntheticEvent} from 'CoreEventTypes';
 
-const RCTDatePickerNativeComponent = require('RCTDatePickerNativeComponent');
+const RCTDatePickerIOS = requireNativeComponent('RCTDatePicker');
 
-type Event = SyntheticEvent<
-  $ReadOnly<{|
-    timestamp: number,
-  |}>,
->;
+type Event = Object;
 
 type Props = $ReadOnly<{|
   ...ViewProps,
@@ -117,7 +113,8 @@ class DatePickerIOS extends React.Component<Props> {
     mode: 'datetime',
   };
 
-  _picker: ?React.ElementRef<typeof RCTDatePickerNativeComponent> = null;
+  // $FlowFixMe How to type a native component to be able to call setNativeProps
+  _picker: ?React.ElementRef<typeof RCTDatePickerIOS> = null;
 
   componentDidUpdate() {
     if (this.props.date) {
@@ -145,8 +142,7 @@ class DatePickerIOS extends React.Component<Props> {
     );
     return (
       <View style={props.style}>
-        <RCTDatePickerNativeComponent
-          testID={props.testID}
+        <RCTDatePickerIOS
           ref={picker => {
             this._picker = picker;
           }}
@@ -158,11 +154,7 @@ class DatePickerIOS extends React.Component<Props> {
                 ? props.initialDate.getTime()
                 : undefined
           }
-          locale={
-            props.locale != null && props.locale !== ''
-              ? props.locale
-              : undefined
-          }
+          locale={props.locale ? props.locale : undefined}
           maximumDate={
             props.maximumDate ? props.maximumDate.getTime() : undefined
           }

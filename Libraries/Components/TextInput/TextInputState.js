@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,7 +10,7 @@
  * should be funneled through here
  *
  * @format
- * @flow strict-local
+ * @flow
  */
 
 'use strict';
@@ -42,8 +42,7 @@ function focusTextInput(textFieldID: ?number) {
     } else if (Platform.OS === 'android') {
       UIManager.dispatchViewManagerCommand(
         textFieldID,
-        UIManager.getViewManagerConfig('AndroidTextInput').Commands
-          .focusTextInput,
+        UIManager.AndroidTextInput.Commands.focusTextInput,
         null,
       );
     }
@@ -63,8 +62,7 @@ function blurTextInput(textFieldID: ?number) {
     } else if (Platform.OS === 'android') {
       UIManager.dispatchViewManagerCommand(
         textFieldID,
-        UIManager.getViewManagerConfig('AndroidTextInput').Commands
-          .blurTextInput,
+        UIManager.AndroidTextInput.Commands.blurTextInput,
         null,
       );
     }

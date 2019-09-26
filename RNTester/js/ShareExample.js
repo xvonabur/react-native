@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,21 +10,27 @@
 
 'use strict';
 
-const React = require('react');
-const ReactNative = require('react-native');
-const {StyleSheet, View, Text, TouchableHighlight, Share} = ReactNative;
+var React = require('react');
+var ReactNative = require('react-native');
+var {StyleSheet, View, Text, TouchableHighlight, Share} = ReactNative;
 
-type Props = $ReadOnly<{||}>;
-type State = {|result: string|};
+exports.framework = 'React';
+exports.title = 'Share';
+exports.description = 'Share data with other Apps.';
+exports.examples = [
+  {
+    title: 'Share Text Content',
+    render() {
+      return <ShareMessageExample />;
+    },
+  },
+];
 
-class ShareMessageExample extends React.Component<Props, State> {
+class ShareMessageExample extends React.Component<$FlowFixMeProps, any> {
   _shareMessage: Function;
   _shareText: Function;
   _showResult: Function;
 
-  /* $FlowFixMe(>=0.85.0 site=react_native_fb) This comment suppresses an error
-   * found when Flow v0.85 was deployed. To see the error, delete this comment
-   * and run Flow. */
   constructor(props) {
     super(props);
 
@@ -97,7 +103,7 @@ class ShareMessageExample extends React.Component<Props, State> {
   }
 }
 
-const styles = StyleSheet.create({
+var styles = StyleSheet.create({
   wrapper: {
     borderRadius: 5,
     marginBottom: 5,
@@ -107,15 +113,3 @@ const styles = StyleSheet.create({
     padding: 10,
   },
 });
-
-exports.framework = 'React';
-exports.title = 'Share';
-exports.description = 'Share data with other Apps.';
-exports.examples = [
-  {
-    title: 'Share Text Content',
-    render() {
-      return <ShareMessageExample />;
-    },
-  },
-];

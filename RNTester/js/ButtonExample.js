@@ -1,22 +1,22 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @flow strict-local
+ * @flow
  */
 
 'use strict';
 
 const React = require('react');
 const ReactNative = require('react-native');
-const {Alert, Button, View, StyleSheet} = ReactNative;
+const {Alert, Button, View} = ReactNative;
 
-function onButtonPress(buttonName) {
-  Alert.alert(`${buttonName} has been pressed!`);
-}
+const onButtonPress = () => {
+  Alert.alert('Button has been pressed!');
+};
 
 exports.displayName = 'ButtonExample';
 exports.framework = 'React';
@@ -33,8 +33,7 @@ exports.examples = [
     render: function() {
       return (
         <Button
-          onPress={() => onButtonPress('Simple')}
-          testID="simple_button"
+          onPress={onButtonPress}
           title="Press Me"
           accessibilityLabel="See an informative alert"
         />
@@ -50,8 +49,7 @@ exports.examples = [
     render: function() {
       return (
         <Button
-          onPress={() => onButtonPress('Purple')}
-          testID="purple_button"
+          onPress={onButtonPress}
           title="Press Purple"
           color="#841584"
           accessibilityLabel="Learn more about purple"
@@ -65,16 +63,14 @@ exports.examples = [
       'This layout strategy lets the title define the width of ' + 'the button',
     render: function() {
       return (
-        <View style={styles.container}>
+        <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
           <Button
-            onPress={() => onButtonPress('Left')}
-            testID="left_button"
+            onPress={onButtonPress}
             title="This looks great!"
             accessibilityLabel="This sounds great!"
           />
           <Button
-            onPress={() => onButtonPress('Right')}
-            testID="right_button"
+            onPress={onButtonPress}
             title="Ok!"
             color="#841584"
             accessibilityLabel="Ok, Great!"
@@ -90,8 +86,7 @@ exports.examples = [
       return (
         <Button
           disabled
-          onPress={() => onButtonPress('Disabled')}
-          testID="disabled_button"
+          onPress={onButtonPress}
           title="I Am Disabled"
           accessibilityLabel="See an informative alert"
         />
@@ -99,10 +94,3 @@ exports.examples = [
     },
   },
 ];
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-});

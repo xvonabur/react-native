@@ -1,4 +1,4 @@
-// Copyright (c) Facebook, Inc. and its affiliates.
+// Copyright (c) 2004-present, Facebook, Inc.
 
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
@@ -41,7 +41,6 @@ void ModuleRegistry::updateModuleNamesFromIndex(size_t index) {
 }
 
 void ModuleRegistry::registerModules(std::vector<std::unique_ptr<NativeModule>> modules) {
-  SystraceSection s_("ModuleRegistry::registerModules");
   if (modules_.empty() && unknownModules_.empty()) {
     modules_ = std::move(modules);
   } else {
@@ -68,7 +67,6 @@ void ModuleRegistry::registerModules(std::vector<std::unique_ptr<NativeModule>> 
 }
 
 std::vector<std::string> ModuleRegistry::moduleNames() {
-  SystraceSection s_("ModuleRegistry::moduleNames");
   std::vector<std::string> names;
   for (size_t i = 0; i < modules_.size(); i++) {
     std::string name = normalizeName(modules_[i]->getName());
@@ -90,13 +88,13 @@ folly::Optional<ModuleConfig> ModuleRegistry::getConfig(const std::string& name)
 
   if (it == modulesByName_.end()) {
     if (unknownModules_.find(name) != unknownModules_.end()) {
-      return folly::none;
+      return nullptr;
     }
     if (!moduleNotFoundCallback_ ||
         !moduleNotFoundCallback_(name) ||
         (it = modulesByName_.find(name)) == modulesByName_.end()) {
       unknownModules_.insert(name);
-      return folly::none;
+      return nullptr;
     }
   }
   size_t index = it->second;
@@ -108,12 +106,12 @@ folly::Optional<ModuleConfig> ModuleRegistry::getConfig(const std::string& name)
   folly::dynamic config = folly::dynamic::array(name);
 
   {
-    SystraceSection s_("ModuleRegistry::getConstants", "module", name);
+    SystraceSection s_("getConstants");
     config.push_back(module->getConstants());
   }
 
   {
-    SystraceSection s_("ModuleRegistry::getMethods", "module", name);
+    SystraceSection s_("getMethods");
     std::vector<MethodDescriptor> methods = module->getMethods();
 
     folly::dynamic methodNames = folly::dynamic::array;
@@ -143,7 +141,7 @@ folly::Optional<ModuleConfig> ModuleRegistry::getConfig(const std::string& name)
 
   if (config.size() == 2 && config[1].empty()) {
     // no constants or methods
-    return folly::none;
+    return nullptr;
   } else {
     return ModuleConfig{index, config};
   }

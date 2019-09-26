@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -23,7 +23,7 @@ import com.facebook.infer.annotation.Assertions;
  * spans affecting font size.
  */
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-public class CustomLetterSpacingSpan extends MetricAffectingSpan implements ReactSpan {
+public class CustomLetterSpacingSpan extends MetricAffectingSpan {
 
   private final float mLetterSpacing;
 
@@ -42,8 +42,10 @@ public class CustomLetterSpacingSpan extends MetricAffectingSpan implements Reac
   }
 
   private void apply(TextPaint paint) {
+    // mLetterSpacing and paint.getTextSize() are both in pixels,
+    // yielding an accurate em value.
     if (!Float.isNaN(mLetterSpacing)) {
-      paint.setLetterSpacing(mLetterSpacing);
+      paint.setLetterSpacing(mLetterSpacing / paint.getTextSize());
     }
   }
 }

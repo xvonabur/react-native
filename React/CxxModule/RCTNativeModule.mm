@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -71,16 +71,11 @@ void RCTNativeModule::invoke(unsigned int methodId, folly::dynamic &&params, int
     invokeInner(weakBridge, weakModuleData, methodId, std::move(params));
   };
 
-  if (m_bridge.valid) {
-    dispatch_queue_t queue = m_moduleData.methodQueue;
-    if (queue == RCTJSThread) {
-      block();
-    } else if (queue) {
-      dispatch_async(queue, block);
-    }
-  } else {
-    RCTLogWarn(@"Attempted to invoke `%u` (method ID) on `%@` (NativeModule name) with an invalid bridge.",
-               methodId, m_moduleData.name);
+  dispatch_queue_t queue = m_moduleData.methodQueue;
+  if (queue == RCTJSThread) {
+    block();
+  } else if (queue) {
+    dispatch_async(queue, block);
   }
 }
 

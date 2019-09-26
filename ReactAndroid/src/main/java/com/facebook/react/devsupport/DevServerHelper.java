@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,7 +10,6 @@ package com.facebook.react.devsupport;
 import android.content.Context;
 import android.os.AsyncTask;
 import android.os.Handler;
-import android.os.Looper;
 import android.widget.Toast;
 import com.facebook.common.logging.FLog;
 import com.facebook.infer.annotation.Assertions;
@@ -82,13 +81,6 @@ public class DevServerHelper {
     void onPackagerReloadCommand();
     void onPackagerDevMenuCommand();
     void onCaptureHeapCommand(final Responder responder);
-
-    // Allow apps to provide listeners for custom packager commands.
-    @Nullable Map<String, RequestHandler> customCommandHandlers();
-  }
-
-  public interface PackagerCustomCommandProvider {
-
   }
 
   public interface SymbolicationListener {
@@ -138,7 +130,7 @@ public class DevServerHelper {
       .build();
     mBundleDownloader = new BundleDownloader(mClient);
 
-    mRestartOnChangePollingHandler = new Handler(Looper.getMainLooper());
+    mRestartOnChangePollingHandler = new Handler();
     mPackageName = packageName;
   }
 
@@ -170,10 +162,6 @@ public class DevServerHelper {
             commandListener.onCaptureHeapCommand(responder);
           }
         });
-        Map<String, RequestHandler> customHandlers = commandListener.customCommandHandlers();
-        if (customHandlers != null) {
-          handlers.putAll(customHandlers);
-        }
         handlers.putAll(new FileIoHandler().handlers());
 
         ConnectionCallback onPackagerConnectedCallback =
@@ -383,16 +371,6 @@ public class DevServerHelper {
     mBundleDownloader.downloadBundleFromURL(callback, outputFile, bundleURL, bundleInfo, getDeltaClientType());
   }
 
-  public void downloadBundleFromURL(
-      DevBundleDownloadListener callback,
-      File outputFile,
-      String bundleURL,
-      BundleDownloader.BundleInfo bundleInfo,
-      Request.Builder requestBuilder) {
-    mBundleDownloader.downloadBundleFromURL(
-        callback, outputFile, bundleURL, bundleInfo, getDeltaClientType(), requestBuilder);
-  }
-
   private BundleDeltaClient.ClientType getDeltaClientType() {
     if (mSettings.isBundleDeltasCppEnabled()) {
       return BundleDeltaClient.ClientType.NATIVE;
@@ -540,7 +518,7 @@ public class DevServerHelper {
     mOnChangePollingEnabled = true;
     mOnServerContentChangeListener = onServerContentChangeListener;
     mOnChangePollingClient = new OkHttpClient.Builder()
-        .connectionPool(new ConnectionPool(1, LONG_POLL_KEEP_ALIVE_DURATION_MS, TimeUnit.MILLISECONDS))
+        .connectionPool(new ConnectionPool(1, LONG_POLL_KEEP_ALIVE_DURATION_MS, TimeUnit.MINUTES))
         .connectTimeout(HTTP_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         .build();
     enqueueOnChangeEndpointLongPolling();

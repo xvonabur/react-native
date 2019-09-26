@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,12 +9,11 @@
 
 #include <array>
 #include <cmath>
-#include <memory>
 #include <vector>
 
-#include <react/core/LayoutMetrics.h>
-#include <react/core/Sealable.h>
-#include <react/debug/DebugStringConvertible.h>
+#include <fabric/core/LayoutMetrics.h>
+#include <fabric/core/Sealable.h>
+#include <fabric/debug/DebugStringConvertible.h>
 
 namespace facebook {
 namespace react {
@@ -22,13 +21,19 @@ namespace react {
 struct LayoutConstraints;
 struct LayoutContext;
 
+class LayoutableShadowNode;
+using SharedLayoutableShadowNode = std::shared_ptr<const LayoutableShadowNode>;
+using SharedLayoutableShadowNodeList = std::vector<const SharedLayoutableShadowNode>;
+using LayoutableShadowNodeIterator = std::iterator<std::input_iterator_tag, const SharedLayoutableShadowNode>;
+
 /*
  * Describes all sufficient layout API (in approach-agnostic way)
  * which makes a concurrent layout possible.
  */
-class LayoutableShadowNode : public virtual Sealable {
- public:
-  virtual ~LayoutableShadowNode() noexcept = default;
+class LayoutableShadowNode:
+  public virtual Sealable {
+
+public:
 
   /*
    * Measures the node (and node content, propbably recursivly) with
@@ -41,9 +46,8 @@ class LayoutableShadowNode : public virtual Sealable {
    * Computes layout recusively.
    * Additional environmental constraints might be provided via `layoutContext`
    * argument.
-   * Default implementation basically calls `layoutChildren()` and then
-   * `layout()` (recursively), and provides some obvious performance
-   * optimization.
+   * Default implementation basically calls `layoutChildren()` and then `layout()`
+   * (recursively), and provides some obvious performance optimization.
    */
   virtual void layout(LayoutContext layoutContext);
 
@@ -52,20 +56,8 @@ class LayoutableShadowNode : public virtual Sealable {
    */
   virtual LayoutMetrics getLayoutMetrics() const;
 
-  /*
-   * Returns `true` if the node represents only information necessary for
-   * layout computation and can be safely removed from view hierarchy.
-   * Default implementation returns `false`.
-   */
-  virtual bool isLayoutOnly() const;
+protected:
 
-  /*
-   * Returns layout metrics relatively to the given ancestor node.
-   */
-  LayoutMetrics getRelativeLayoutMetrics(
-      const LayoutableShadowNode &ancestorLayoutableShadowNode) const;
-
- protected:
   /*
    * Clean or Dirty layout state:
    * Indicates whether all nodes (and possibly their subtrees) along the path
@@ -97,16 +89,13 @@ class LayoutableShadowNode : public virtual Sealable {
   /*
    * Returns layoutable children to interate on.
    */
-  virtual std::vector<LayoutableShadowNode *> getLayoutableChildNodes()
-      const = 0;
+  virtual SharedLayoutableShadowNodeList getLayoutableChildNodes() const = 0;
 
   /*
    * In case layout algorithm needs to mutate this (probably sealed) node,
    * it has to clone and replace it in the hierarchy before to do so.
    */
-  virtual LayoutableShadowNode *cloneAndReplaceChild(
-      LayoutableShadowNode *child,
-      int suggestedIndex = -1) = 0;
+  virtual SharedLayoutableShadowNode cloneAndReplaceChild(const SharedLayoutableShadowNode &child) = 0;
 
   /*
    * Sets layout metrics for the shadow node.
@@ -116,14 +105,12 @@ class LayoutableShadowNode : public virtual Sealable {
 
 #pragma mark - DebugStringConvertible
 
-#if RN_DEBUG_STRING_CONVERTIBLE
   SharedDebugStringConvertibleList getDebugProps() const;
-#endif
 
- private:
-  LayoutMetrics layoutMetrics_{};
-  bool hasNewLayout_{false};
-  bool isLayoutClean_{false};
+private:
+  LayoutMetrics layoutMetrics_ {};
+  bool hasNewLayout_ {false};
+  bool isLayoutClean_ {false};
 };
 
 } // namespace react

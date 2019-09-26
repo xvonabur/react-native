@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,21 +10,20 @@
 'use strict';
 
 const Animated = require('Animated');
-const DeprecatedViewPropTypes = require('DeprecatedViewPropTypes');
-const DeprecatedEdgeInsetsPropType = require('DeprecatedEdgeInsetsPropType');
+const EdgeInsetsPropType = require('EdgeInsetsPropType');
 const NativeMethodsMixin = require('NativeMethodsMixin');
-const Platform = require('Platform');
-const PropTypes = require('prop-types');
 const React = require('React');
+const createReactClass = require('create-react-class');
+const PropTypes = require('prop-types');
 const Touchable = require('Touchable');
 const TouchableWithoutFeedback = require('TouchableWithoutFeedback');
-
-const createReactClass = require('create-react-class');
+const ViewPropTypes = require('ViewPropTypes');
 
 import type {EdgeInsetsProp} from 'EdgeInsetsPropType';
-import type {ViewStyleProp} from 'StyleSheet';
 import type {Props as TouchableWithoutFeedbackProps} from 'TouchableWithoutFeedback';
-import type {PressEvent} from 'CoreEventTypes';
+import type {ViewStyleProp} from 'StyleSheet';
+
+type Event = Object;
 
 type State = {
   animationID: ?number,
@@ -36,8 +35,8 @@ const PRESS_RETENTION_OFFSET = {top: 20, left: 20, right: 20, bottom: 30};
 type Props = $ReadOnly<{|
   ...TouchableWithoutFeedbackProps,
 
-  onPressWithCompletion?: ?(fn: () => void) => void,
-  onPressAnimationComplete?: ?() => void,
+  onPressWithCompletion?: ?Function,
+  onPressAnimationComplete?: ?Function,
   pressRetentionOffset?: ?EdgeInsetsProp,
   releaseVelocity?: ?number,
   releaseBounciness?: ?number,
@@ -53,13 +52,11 @@ type Props = $ReadOnly<{|
  */
 const TouchableBounce = ((createReactClass({
   displayName: 'TouchableBounce',
-  mixins: [Touchable.Mixin.withoutDefaultFocusAndBlur, NativeMethodsMixin],
+  mixins: [Touchable.Mixin, NativeMethodsMixin],
 
   propTypes: {
-    /* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses an
-     * error found when Flow v0.89 was deployed. To see the error, delete this
-     * comment and run Flow. */
     ...TouchableWithoutFeedback.propTypes,
+
     // The function passed takes a callback to start the animation which should
     // be run after this onPress handler is done. You can use this (for example)
     // to update UI before starting the animation.
@@ -73,14 +70,14 @@ const TouchableBounce = ((createReactClass({
      * reactivated! Move it back and forth several times while the scroll view
      * is disabled. Ensure you pass in a constant to reduce memory allocations.
      */
-    pressRetentionOffset: DeprecatedEdgeInsetsPropType,
+    pressRetentionOffset: EdgeInsetsPropType,
     releaseVelocity: PropTypes.number.isRequired,
     releaseBounciness: PropTypes.number.isRequired,
     /**
      * Style to apply to the container/underlay. Most commonly used to make sure
      * rounded corners match the wrapped component.
      */
-    style: DeprecatedViewPropTypes.style,
+    style: ViewPropTypes.style,
   },
 
   getDefaultProps: function() {
@@ -89,9 +86,6 @@ const TouchableBounce = ((createReactClass({
 
   getInitialState: function(): State {
     return {
-      /* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses an
-       * error found when Flow v0.89 was deployed. To see the error, delete
-       * this comment and run Flow. */
       ...this.touchableGetInitialState(),
       scale: new Animated.Value(1),
     };
@@ -101,7 +95,7 @@ const TouchableBounce = ((createReactClass({
     value: number,
     velocity: number,
     bounciness: number,
-    callback?: ?() => void,
+    callback?: ?Function,
   ) {
     Animated.spring(this.state.scale, {
       toValue: value,
@@ -115,31 +109,17 @@ const TouchableBounce = ((createReactClass({
    * `Touchable.Mixin` self callbacks. The mixin will invoke these if they are
    * defined on your component.
    */
-  touchableHandleActivePressIn: function(e: PressEvent) {
+  touchableHandleActivePressIn: function(e: Event) {
     this.bounceTo(0.93, 0.1, 0);
     this.props.onPressIn && this.props.onPressIn(e);
   },
 
-  touchableHandleActivePressOut: function(e: PressEvent) {
+  touchableHandleActivePressOut: function(e: Event) {
     this.bounceTo(1, 0.4, 0);
     this.props.onPressOut && this.props.onPressOut(e);
   },
 
-  touchableHandleFocus: function(e: Event) {
-    if (Platform.isTV) {
-      this.bounceTo(0.93, 0.1, 0);
-    }
-    this.props.onFocus && this.props.onFocus(e);
-  },
-
-  touchableHandleBlur: function(e: Event) {
-    if (Platform.isTV) {
-      this.bounceTo(1, 0.4, 0);
-    }
-    this.props.onBlur && this.props.onBlur(e);
-  },
-
-  touchableHandlePress: function(e: PressEvent) {
+  touchableHandlePress: function(e: Event) {
     const onPressWithCompletion = this.props.onPressWithCompletion;
     if (onPressWithCompletion) {
       onPressWithCompletion(() => {
@@ -167,7 +147,7 @@ const TouchableBounce = ((createReactClass({
     return this.props.pressRetentionOffset || PRESS_RETENTION_OFFSET;
   },
 
-  touchableGetHitSlop: function(): ?EdgeInsetsProp {
+  touchableGetHitSlop: function(): ?Object {
     return this.props.hitSlop;
   },
 
@@ -181,37 +161,18 @@ const TouchableBounce = ((createReactClass({
         style={[{transform: [{scale: this.state.scale}]}, this.props.style]}
         accessible={this.props.accessible !== false}
         accessibilityLabel={this.props.accessibilityLabel}
-        accessibilityHint={this.props.accessibilityHint}
-        accessibilityRole={this.props.accessibilityRole}
-        accessibilityStates={this.props.accessibilityStates}
+        accessibilityComponentType={this.props.accessibilityComponentType}
+        accessibilityTraits={this.props.accessibilityTraits}
         nativeID={this.props.nativeID}
         testID={this.props.testID}
         hitSlop={this.props.hitSlop}
-        /* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses an
-         * error found when Flow v0.89 was deployed. To see the error, delete
-         * this comment and run Flow. */
         onStartShouldSetResponder={this.touchableHandleStartShouldSetResponder}
         onResponderTerminationRequest={
-          /* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses
-           * an error found when Flow v0.89 was deployed. To see the error,
-           * delete this comment and run Flow. */
           this.touchableHandleResponderTerminationRequest
         }
-        /* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses an
-         * error found when Flow v0.89 was deployed. To see the error, delete
-         * this comment and run Flow. */
         onResponderGrant={this.touchableHandleResponderGrant}
-        /* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses an
-         * error found when Flow v0.89 was deployed. To see the error, delete
-         * this comment and run Flow. */
         onResponderMove={this.touchableHandleResponderMove}
-        /* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses an
-         * error found when Flow v0.89 was deployed. To see the error, delete
-         * this comment and run Flow. */
         onResponderRelease={this.touchableHandleResponderRelease}
-        /* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses an
-         * error found when Flow v0.89 was deployed. To see the error, delete
-         * this comment and run Flow. */
         onResponderTerminate={this.touchableHandleResponderTerminate}>
         {this.props.children}
         {Touchable.renderDebugView({

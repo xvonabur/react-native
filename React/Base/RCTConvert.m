@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -53,20 +53,11 @@ RCT_NUMBER_CONVERTER(NSUInteger, unsignedIntegerValue)
 
 RCT_JSON_CONVERTER(NSArray)
 RCT_JSON_CONVERTER(NSDictionary)
+RCT_JSON_CONVERTER(NSString)
 RCT_JSON_CONVERTER(NSNumber)
 
 RCT_CUSTOM_CONVERTER(NSSet *, NSSet, [NSSet setWithArray:json])
 RCT_CUSTOM_CONVERTER(NSData *, NSData, [json dataUsingEncoding:NSUTF8StringEncoding])
-
-+ (NSString *)NSString:(id)json
-{
-  if ([json isKindOfClass:NSString.class]) {
-    return json;
-  } else if (json && json != (id)kCFNull) {
-    return [NSString stringWithFormat:@"%@",json];
-  }
-  return nil;
-}
 
 + (NSIndexSet *)NSIndexSet:(id)json
 {
@@ -98,14 +89,7 @@ RCT_CUSTOM_CONVERTER(NSData *, NSData, [json dataUsingEncoding:NSUTF8StringEncod
 
     // Check if it has a scheme
     if ([path rangeOfString:@":"].location != NSNotFound) {
-      NSMutableCharacterSet *urlAllowedCharacterSet = [NSMutableCharacterSet new];
-      [urlAllowedCharacterSet formUnionWithCharacterSet:[NSCharacterSet URLUserAllowedCharacterSet]];
-      [urlAllowedCharacterSet formUnionWithCharacterSet:[NSCharacterSet URLPasswordAllowedCharacterSet]];
-      [urlAllowedCharacterSet formUnionWithCharacterSet:[NSCharacterSet URLHostAllowedCharacterSet]];
-      [urlAllowedCharacterSet formUnionWithCharacterSet:[NSCharacterSet URLPathAllowedCharacterSet]];
-      [urlAllowedCharacterSet formUnionWithCharacterSet:[NSCharacterSet URLQueryAllowedCharacterSet]];
-      [urlAllowedCharacterSet formUnionWithCharacterSet:[NSCharacterSet URLFragmentAllowedCharacterSet]];
-      path = [path stringByAddingPercentEncodingWithAllowedCharacters:urlAllowedCharacterSet];
+      path = [path stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
       URL = [NSURL URLWithString:path];
       if (URL) {
         return URL;
@@ -377,22 +361,7 @@ RCT_MULTI_ENUM_CONVERTER(UIDataDetectorTypes, (@{
   @"none": @(UIDataDetectorTypeNone),
   @"all": @(UIDataDetectorTypeAll),
 }), UIDataDetectorTypePhoneNumber, unsignedLongLongValue)
-
-#if WEBKIT_IOS_10_APIS_AVAILABLE
-RCT_MULTI_ENUM_CONVERTER(WKDataDetectorTypes, (@{
- @"phoneNumber": @(WKDataDetectorTypePhoneNumber),
- @"link": @(WKDataDetectorTypeLink),
- @"address": @(WKDataDetectorTypeAddress),
- @"calendarEvent": @(WKDataDetectorTypeCalendarEvent),
- @"trackingNumber": @(WKDataDetectorTypeTrackingNumber),
- @"flightNumber": @(WKDataDetectorTypeFlightNumber),
- @"lookupSuggestion": @(WKDataDetectorTypeLookupSuggestion),
- @"none": @(WKDataDetectorTypeNone),
- @"all": @(WKDataDetectorTypeAll),
- }), WKDataDetectorTypePhoneNumber, unsignedLongLongValue)
- #endif // WEBKIT_IOS_10_APIS_AVAILABLE
-
- #endif // !TARGET_OS_TV
+#endif
 
 RCT_ENUM_CONVERTER(UIKeyboardAppearance, (@{
   @"default": @(UIKeyboardAppearanceDefault),
@@ -438,8 +407,6 @@ RCT_ENUM_CONVERTER(UIViewContentMode, (@{
 RCT_ENUM_CONVERTER(UIBarStyle, (@{
   @"default": @(UIBarStyleDefault),
   @"black": @(UIBarStyleBlack),
-  @"blackOpaque": @(UIBarStyleBlackOpaque),
-  @"blackTranslucent": @(UIBarStyleBlackTranslucent),  
 }), UIBarStyleDefault, integerValue)
 #endif
 

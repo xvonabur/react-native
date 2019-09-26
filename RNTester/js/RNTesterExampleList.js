@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -15,13 +15,15 @@ const React = require('react');
 const SectionList = require('SectionList');
 const StyleSheet = require('StyleSheet');
 const Text = require('Text');
+const TextInput = require('TextInput');
 const TouchableHighlight = require('TouchableHighlight');
 const RNTesterActions = require('./RNTesterActions');
-const RNTesterExampleFilter = require('./RNTesterExampleFilter');
+const RNTesterStatePersister = require('./RNTesterStatePersister');
 const View = require('View');
 
-import type {RNTesterExample} from 'RNTesterTypes';
-import type {ViewStyleProp} from 'StyleSheet';
+import type {RNTesterExample} from './RNTesterList.ios';
+import type {PassProps} from './RNTesterStatePersister';
+import type {DangerouslyImpreciseStyleProp} from 'StyleSheet';
 
 type Props = {
   onNavigate: Function,
@@ -29,7 +31,9 @@ type Props = {
     ComponentExamples: Array<RNTesterExample>,
     APIExamples: Array<RNTesterExample>,
   },
-  style?: ?ViewStyleProp,
+  persister: PassProps<*>,
+  searchTextInputStyle: DangerouslyImpreciseStyleProp,
+  style?: ?DangerouslyImpreciseStyleProp,
 };
 
 class RowComponent extends React.PureComponent<{
@@ -68,45 +72,45 @@ const renderSectionHeader = ({section}) => (
 
 class RNTesterExampleList extends React.Component<Props, $FlowFixMeState> {
   render() {
-    const filter = ({example, filterRegex}) =>
-      filterRegex.test(example.module.title) &&
-      (!Platform.isTV || example.supportsTVOS);
+    const filterText = this.props.persister.state.filter;
+    const filterRegex = new RegExp(String(filterText), 'i');
+    const filter = example =>
+      /* $FlowFixMe(>=0.68.0 site=react_native_fb) This comment suppresses an
+       * error found when Flow v0.68 was deployed. To see the error delete this
+       * comment and run Flow. */
+      this.props.disableSearch ||
+      (filterRegex.test(example.module.title) &&
+        (!Platform.isTV || example.supportsTVOS));
 
     const sections = [
       {
-        data: this.props.list.ComponentExamples,
+        data: this.props.list.ComponentExamples.filter(filter),
         title: 'COMPONENTS',
         key: 'c',
       },
       {
-        data: this.props.list.APIExamples,
+        data: this.props.list.APIExamples.filter(filter),
         title: 'APIS',
         key: 'a',
       },
     ];
-
     return (
       <View style={[styles.listContainer, this.props.style]}>
         {this._renderTitleRow()}
-        <RNTesterExampleFilter
-          testID="explorer_search"
+        {this._renderTextInput()}
+        <SectionList
+          ItemSeparatorComponent={ItemSeparator}
+          contentContainerStyle={{backgroundColor: 'white'}}
+          style={styles.list}
           sections={sections}
-          filter={filter}
-          render={({filteredSections}) => (
-            <SectionList
-              ItemSeparatorComponent={ItemSeparator}
-              contentContainerStyle={styles.sectionListContentContainer}
-              style={styles.list}
-              sections={filteredSections}
-              renderItem={this._renderItem}
-              enableEmptySections={true}
-              itemShouldUpdate={this._itemShouldUpdate}
-              keyboardShouldPersistTaps="handled"
-              automaticallyAdjustContentInsets={false}
-              keyboardDismissMode="on-drag"
-              renderSectionHeader={renderSectionHeader}
-            />
-          )}
+          renderItem={this._renderItem}
+          enableEmptySections={true}
+          itemShouldUpdate={this._itemShouldUpdate}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustContentInsets={false}
+          keyboardDismissMode="on-drag"
+          legacyImplementation={false}
+          renderSectionHeader={renderSectionHeader}
         />
       </View>
     );
@@ -148,6 +152,32 @@ class RNTesterExampleList extends React.Component<Props, $FlowFixMeState> {
     );
   }
 
+  _renderTextInput(): ?React.Element<any> {
+    /* $FlowFixMe(>=0.68.0 site=react_native_fb) This comment suppresses an
+     * error found when Flow v0.68 was deployed. To see the error delete this
+     * comment and run Flow. */
+    if (this.props.disableSearch) {
+      return null;
+    }
+    return (
+      <View style={styles.searchRow}>
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="always"
+          onChangeText={text => {
+            this.props.persister.setState(() => ({filter: text}));
+          }}
+          placeholder="Search..."
+          underlineColorAndroid="transparent"
+          style={[styles.searchTextInput, this.props.searchTextInputStyle]}
+          testID="explorer_search"
+          value={this.props.persister.state.filter}
+        />
+      </View>
+    );
+  }
+
   _handleRowPress(exampleKey: string): void {
     this.props.onNavigate(RNTesterActions.ExampleAction(exampleKey));
   }
@@ -155,6 +185,14 @@ class RNTesterExampleList extends React.Component<Props, $FlowFixMeState> {
 
 const ItemSeparator = ({highlighted}) => (
   <View style={highlighted ? styles.separatorHighlighted : styles.separator} />
+);
+
+RNTesterExampleList = RNTesterStatePersister.createContainer(
+  RNTesterExampleList,
+  {
+    cacheKeySuffix: () => 'mainList',
+    getInitialState: () => ({filter: ''}),
+  },
 );
 
 const styles = StyleSheet.create({
@@ -185,9 +223,6 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgb(217, 217, 217)',
   },
-  sectionListContentContainer: {
-    backgroundColor: 'white',
-  },
   rowTitleText: {
     fontSize: 17,
     fontWeight: '500',
@@ -196,6 +231,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#888888',
     lineHeight: 20,
+  },
+  searchRow: {
+    backgroundColor: '#eeeeee',
+    padding: 10,
+  },
+  searchTextInput: {
+    backgroundColor: 'white',
+    borderColor: '#cccccc',
+    borderRadius: 3,
+    borderWidth: 1,
+    paddingLeft: 8,
+    paddingVertical: 0,
+    height: 35,
   },
 });
 

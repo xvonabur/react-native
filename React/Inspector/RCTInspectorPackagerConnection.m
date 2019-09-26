@@ -1,8 +1,3 @@
-// Copyright (c) Facebook, Inc. and its affiliates.
-//
-// This source code is licensed under the MIT license found in the
-// LICENSE file in the root directory of this source tree.
-
 #import "RCTInspectorPackagerConnection.h"
 
 #if RCT_DEV
@@ -100,11 +95,9 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
 - (void)handleConnect:(NSDictionary *)payload
 {
   NSString *pageId = payload[@"pageId"];
-  RCTInspectorLocalConnection *existingConnection = _inspectorConnections[pageId];
-  if (existingConnection) {
+  if (_inspectorConnections[pageId]) {
     [_inspectorConnections removeObjectForKey:pageId];
-    [existingConnection disconnect];
-    RCTLogWarn(@"Already connected: %@", pageId);
+    RCTLogError(@"Already connected: %@", pageId);
     return;
   }
 
@@ -201,7 +194,7 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
     [self abort:@"Websocket exception"
       withCause:error];
   }
-  if (!_closed && [error code] != ECONNREFUSED) {
+  if (!_closed) {
     [self reconnect];
   }
 }

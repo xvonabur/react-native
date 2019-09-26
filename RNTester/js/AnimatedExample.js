@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,26 +10,10 @@
 
 'use strict';
 
-const React = require('react');
-const ReactNative = require('react-native');
-const {Animated, Easing, StyleSheet, Text, View} = ReactNative;
-const RNTesterButton = require('./RNTesterButton');
-
-const styles = StyleSheet.create({
-  content: {
-    backgroundColor: 'deepskyblue',
-    borderWidth: 1,
-    borderColor: 'dodgerblue',
-    padding: 20,
-    margin: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  rotatingImage: {
-    width: 70,
-    height: 70,
-  },
-});
+var React = require('react');
+var ReactNative = require('react-native');
+var {Animated, Easing, StyleSheet, Text, View} = ReactNative;
+var RNTesterButton = require('./RNTesterButton');
 
 exports.framework = 'React';
 exports.title = 'Animated - Examples';
@@ -74,11 +58,8 @@ exports.examples = [
           );
         }
       }
-
-      type Props = $ReadOnly<{||}>;
-      type State = {|show: boolean|};
-      class FadeInExample extends React.Component<Props, State> {
-        constructor(props: Props) {
+      class FadeInExample extends React.Component<$FlowFixMeProps, any> {
+        constructor(props) {
           super(props);
           this.state = {
             show: true,
@@ -177,7 +158,7 @@ exports.examples = [
         <View>
           <RNTesterButton
             onPress={() => {
-              const timing = Animated.timing;
+              var timing = Animated.timing;
               Animated.sequence([
                 // One after the other
                 timing(this.anims[0], {
@@ -242,59 +223,6 @@ exports.examples = [
     },
   },
   {
-    title: 'Rotating Images',
-    description: 'Simple Animated.Image rotation.',
-    render: function() {
-      this.anim = this.anim || new Animated.Value(0);
-      return (
-        <View>
-          <RNTesterButton
-            onPress={() => {
-              Animated.spring(this.anim, {
-                toValue: 0, // Returns to the start
-                velocity: 3, // Velocity makes it move
-                tension: -10, // Slow
-                friction: 1, // Oscillate a lot
-              }).start();
-            }}>
-            Press to Spin it!
-          </RNTesterButton>
-          <Animated.Image
-            source={require('./bunny.png')}
-            style={[
-              styles.rotatingImage,
-              {
-                transform: [
-                  {
-                    scale: this.anim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [1, 10],
-                    }),
-                  },
-                  {
-                    translateX: this.anim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, 100],
-                    }),
-                  },
-                  {
-                    rotate: this.anim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [
-                        '0deg',
-                        '360deg', // 'deg' or 'rad'
-                      ],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          />
-        </View>
-      );
-    },
-  },
-  {
     title: 'Continuous Interactions',
     description:
       'Gesture events, chaining, 2D ' +
@@ -303,3 +231,15 @@ exports.examples = [
     render: () => <Text>Checkout the Gratuitous Animation App!</Text>,
   },
 ];
+
+var styles = StyleSheet.create({
+  content: {
+    backgroundColor: 'deepskyblue',
+    borderWidth: 1,
+    borderColor: 'dodgerblue',
+    padding: 20,
+    margin: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+});

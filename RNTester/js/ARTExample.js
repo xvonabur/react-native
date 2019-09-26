@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2013-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,16 +10,15 @@
 
 'use strict';
 
-const React = require('react');
-const ReactNative = require('react-native');
-const {ART, Platform, View} = ReactNative;
+var React = require('react');
+var ReactNative = require('react-native');
+var {ART, Platform, View} = ReactNative;
 
-const {Surface, Path, Group, Shape} = ART;
+const {Surface, Path, Group, Transform, Shape} = ART;
 
-const scale = Platform.isTV ? 4 : 1;
+var scale = Platform.isTV ? 4 : 1;
 
-type Props = $ReadOnly<{||}>;
-class ARTExample extends React.Component<Props> {
+class ARTExample extends React.Component<{}> {
   render() {
     const pathRect = new Path()
       .moveTo(scale * 0, scale * 0)

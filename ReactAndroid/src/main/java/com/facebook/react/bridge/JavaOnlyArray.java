@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,9 +10,6 @@ package com.facebook.react.bridge;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 
 /**
  * Java {@link ArrayList} backed implementation of {@link ReadableArray} and {@link WritableArray}
@@ -98,7 +95,7 @@ public class JavaOnlyArray implements ReadableArray, WritableArray {
   }
 
   @Override
-  public @Nullable String getString(int index) {
+  public String getString(int index) {
     return (String) mBackingList.get(index);
   }
 
@@ -118,12 +115,12 @@ public class JavaOnlyArray implements ReadableArray, WritableArray {
   }
 
   @Override
-  public @Nonnull Dynamic getDynamic(int index) {
+  public Dynamic getDynamic(int index) {
     return DynamicFromArray.create(this, index);
   }
 
   @Override
-  public @Nonnull ReadableType getType(int index) {
+  public ReadableType getType(int index) {
     Object object = mBackingList.get(index);
 
     if (object == null) {
@@ -160,17 +157,17 @@ public class JavaOnlyArray implements ReadableArray, WritableArray {
   }
 
   @Override
-  public void pushString(@Nullable String value) {
+  public void pushString(String value) {
     mBackingList.add(value);
   }
 
   @Override
-  public void pushArray(@Nullable WritableArray array) {
+  public void pushArray(WritableArray array) {
     mBackingList.add(array);
   }
 
   @Override
-  public void pushMap(@Nullable WritableMap map) {
+  public void pushMap(WritableMap map) {
     mBackingList.add(map);
   }
 
@@ -180,7 +177,7 @@ public class JavaOnlyArray implements ReadableArray, WritableArray {
   }
 
   @Override
-  public @Nonnull ArrayList<Object> toArrayList() {
+  public ArrayList<Object> toArrayList() {
     return new ArrayList<Object>(mBackingList);
   }
 

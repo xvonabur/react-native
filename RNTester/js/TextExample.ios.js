@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -11,10 +11,10 @@
 'use strict';
 
 const Platform = require('Platform');
-const React = require('react');
-const ReactNative = require('react-native');
-const {Text, TextInput, View, LayoutAnimation, Button} = ReactNative;
-const TextLegend = require('./Shared/TextLegend');
+var React = require('react');
+var createReactClass = require('create-react-class');
+var ReactNative = require('react-native');
+var {Image, Text, TextInput, View, LayoutAnimation, Button} = ReactNative;
 
 type TextAlignExampleRTLState = {|
   isRTL: boolean,
@@ -91,7 +91,7 @@ class AttributeToggler extends React.Component<{}, $FlowFixMeState> {
   };
 
   render() {
-    const curStyle = {
+    var curStyle = {
       fontWeight: this.state.fontWeight,
       fontSize: this.state.fontSize,
     };
@@ -121,23 +121,12 @@ class AttributeToggler extends React.Component<{}, $FlowFixMeState> {
   }
 }
 
-type AdjustingFontSizeProps = $ReadOnly<{||}>;
-
-type AdjustingFontSizeState = {|
-  dynamicText: string,
-  shouldRender: boolean,
-|};
-
-class AdjustingFontSize extends React.Component<
-  AdjustingFontSizeProps,
-  AdjustingFontSizeState,
-> {
-  state = {
-    dynamicText: '',
-    shouldRender: true,
-  };
-
-  reset = () => {
+var AdjustingFontSize = createReactClass({
+  displayName: 'AdjustingFontSize',
+  getInitialState: function() {
+    return {dynamicText: '', shouldRender: true};
+  },
+  reset: function() {
     LayoutAnimation.easeInEaseOut();
     this.setState({
       shouldRender: false,
@@ -149,26 +138,23 @@ class AdjustingFontSize extends React.Component<
         shouldRender: true,
       });
     }, 300);
-  };
-
-  addText = () => {
+  },
+  addText: function() {
     this.setState({
       dynamicText:
         this.state.dynamicText +
         (Math.floor((Math.random() * 10) % 2) ? ' foo' : ' bar'),
     });
-  };
-
-  removeText = () => {
+  },
+  removeText: function() {
     this.setState({
       dynamicText: this.state.dynamicText.slice(
         0,
         this.state.dynamicText.length - 4,
       ),
     });
-  };
-
-  render() {
+  },
+  render: function() {
     if (!this.state.shouldRender) {
       return <View />;
     }
@@ -234,13 +220,13 @@ class AdjustingFontSize extends React.Component<
         </View>
       </View>
     );
-  }
-}
+  },
+});
 
 class TextBaseLineLayoutExample extends React.Component<*, *> {
   render() {
-    const texts = [];
-    for (let i = 9; i >= 0; i--) {
+    var texts = [];
+    for (var i = 9; i >= 0; i--) {
       texts.push(
         <Text key={i} style={{fontSize: 8 + i * 5, backgroundColor: '#eee'}}>
           {i}
@@ -269,6 +255,25 @@ class TextBaseLineLayoutExample extends React.Component<*, *> {
           {marker}
         </View>
 
+        <Text style={subtitleStyle}>{'Interleaving <View> and <Text>:'}</Text>
+        <View style={{flexDirection: 'row', alignItems: 'baseline'}}>
+          {marker}
+          <Text selectable={true}>
+            Some text.
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'baseline',
+                backgroundColor: '#eee',
+              }}>
+              {marker}
+              <Text>Text inside View.</Text>
+              {marker}
+            </View>
+          </Text>
+          {marker}
+        </View>
+
         <Text style={subtitleStyle}>{'<TextInput/>:'}</Text>
         <View style={{flexDirection: 'row', alignItems: 'baseline'}}>
           {marker}
@@ -289,130 +294,6 @@ class TextBaseLineLayoutExample extends React.Component<*, *> {
   }
 }
 
-class TextRenderInfoExample extends React.Component<*, *> {
-  state = {
-    textMetrics: {
-      x: 0,
-      y: 0,
-      width: 0,
-      height: 0,
-      capHeight: 0,
-      descender: 0,
-      ascender: 0,
-      xHeight: 0,
-    },
-    numberOfTextBlocks: 1,
-    fontSize: 14,
-  };
-
-  render() {
-    const topOfBox =
-      this.state.textMetrics.y +
-      this.state.textMetrics.height -
-      (this.state.textMetrics.descender + this.state.textMetrics.capHeight);
-    return (
-      <View>
-        <View>
-          <View
-            style={{
-              position: 'absolute',
-              left: this.state.textMetrics.x + this.state.textMetrics.width,
-              top: topOfBox,
-              width: 5,
-              height: Math.ceil(
-                this.state.textMetrics.capHeight -
-                  this.state.textMetrics.xHeight,
-              ),
-              backgroundColor: 'red',
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              left: this.state.textMetrics.x + this.state.textMetrics.width,
-              top:
-                topOfBox +
-                (this.state.textMetrics.capHeight -
-                  this.state.textMetrics.xHeight),
-              width: 5,
-              height: Math.ceil(this.state.textMetrics.xHeight),
-              backgroundColor: 'green',
-            }}
-          />
-          <Text
-            style={{fontSize: this.state.fontSize}}
-            onTextLayout={event => {
-              const {lines} = event.nativeEvent;
-              if (lines.length > 0) {
-                this.setState({textMetrics: lines[lines.length - 1]});
-              }
-            }}>
-            {new Array(this.state.numberOfTextBlocks)
-              .fill('A tiny block of text.')
-              .join(' ')}
-          </Text>
-        </View>
-        <Text
-          onPress={() =>
-            this.setState({
-              numberOfTextBlocks: this.state.numberOfTextBlocks + 1,
-            })
-          }>
-          More text
-        </Text>
-        <Text
-          onPress={() => this.setState({fontSize: this.state.fontSize + 1})}>
-          Increase size
-        </Text>
-        <Text
-          onPress={() => this.setState({fontSize: this.state.fontSize - 1})}>
-          Decrease size
-        </Text>
-      </View>
-    );
-  }
-}
-
-class TextWithCapBaseBox extends React.Component<*, *> {
-  state = {
-    textMetrics: {
-      x: 0,
-      y: 0,
-      width: 0,
-      height: 0,
-      capHeight: 0,
-      descender: 0,
-      ascender: 0,
-      xHeight: 0,
-    },
-  };
-  render() {
-    return (
-      <Text
-        onTextLayout={event => {
-          const {lines} = event.nativeEvent;
-          if (lines.length > 0) {
-            this.setState({textMetrics: lines[0]});
-          }
-        }}
-        style={[
-          {
-            marginTop: Math.ceil(
-              -(
-                this.state.textMetrics.ascender -
-                this.state.textMetrics.capHeight
-              ),
-            ),
-            marginBottom: Math.ceil(-this.state.textMetrics.descender),
-          },
-          this.props.style,
-        ]}>
-        {this.props.children}
-      </Text>
-    );
-  }
-}
-
 exports.title = '<Text>';
 exports.description = 'Base component for rendering styled text.';
 exports.displayName = 'TextExample';
@@ -427,30 +308,6 @@ exports.examples = [
         </Text>
       );
     },
-  },
-  {
-    title: "Substring Emoji (should only see 'test')",
-    render: function() {
-      return <Text>{'test🙃'.substring(0, 5)}</Text>;
-    },
-  },
-  {
-    title: 'Text metrics',
-    render: function() {
-      return <TextRenderInfoExample />;
-    },
-  },
-  {
-    title: 'Text metrics legend',
-    render: () => <TextLegend />,
-  },
-  {
-    title: 'Baseline capheight box',
-    render: () => (
-      <View style={{backgroundColor: 'red'}}>
-        <TextWithCapBaseBox>Some example text.</TextWithCapBaseBox>
-      </View>
-    ),
   },
   {
     title: 'Padding',
@@ -875,7 +732,7 @@ exports.examples = [
         <View>
           <Text>
             By default, text will respect Text Size accessibility setting on
-            iOS. It means that all font sizes will be increased or decreased
+            iOS. It means that all font sizes will be increased or descreased
             depending on the value of Text Size setting in{' '}
             <Text style={{fontWeight: 'bold'}}>
               Settings.app - Display & Brightness - Text Size
@@ -886,12 +743,28 @@ exports.examples = [
               '{'
             }false{'}"'} prop.
           </Text>
-          <Text allowFontScaling={false} style={{marginTop: 20, fontSize: 15}}>
-            This text will not scale.{' '}
-            <Text style={{fontSize: 15}}>
-              This text also won't scale because it inherits "allowFontScaling"
-              from its parent.
-            </Text>
+          <Text allowFontScaling={false} style={{marginTop: 20}}>
+            This text will not scale.
+          </Text>
+        </View>
+      );
+    },
+  },
+  {
+    title: 'Inline views',
+    render: function() {
+      return (
+        <View>
+          <Text>
+            This text contains an inline blue view{' '}
+            <View
+              style={{width: 25, height: 25, backgroundColor: 'steelblue'}}
+            />{' '}
+            and an inline image{' '}
+            <Image
+              source={require('./flux.png')}
+              style={{width: 30, height: 11, resizeMode: 'cover'}}
+            />. Neat, huh?
           </Text>
         </View>
       );
@@ -967,6 +840,31 @@ exports.examples = [
             2222{'\n'}
           </Text>
         </View>
+      );
+    },
+  },
+  {
+    title: 'Nested content',
+    render: function() {
+      return (
+        <Text>
+          This text has a view
+          <View style={{borderColor: 'red', borderWidth: 1}}>
+            <Text style={{borderColor: 'blue', borderWidth: 1}}>which has</Text>
+            <Text style={{borderColor: 'green', borderWidth: 1}}>
+              another text inside.
+            </Text>
+            <Text style={{borderColor: 'yellow', borderWidth: 1}}>
+              And moreover, it has another view
+              <View style={{borderColor: 'red', borderWidth: 1}}>
+                <Text style={{borderColor: 'blue', borderWidth: 1}}>
+                  with another text inside!
+                </Text>
+              </View>
+            </Text>
+          </View>
+          Because we need to go deeper.
+        </Text>
       );
     },
   },

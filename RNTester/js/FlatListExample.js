@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,12 +10,10 @@
 
 'use strict';
 
-import type {Item} from './ListExampleShared';
-
 const Alert = require('Alert');
 const React = require('react');
 const ReactNative = require('react-native');
-const {Animated, StyleSheet, View} = ReactNative;
+const {Animated, FlatList, StyleSheet, View} = ReactNative;
 
 const RNTesterPage = require('./RNTesterPage');
 
@@ -36,26 +34,18 @@ const {
   renderSmallSwitchOption,
 } = require('./ListExampleShared');
 
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
+
 const VIEWABILITY_CONFIG = {
   minimumViewTime: 3000,
   viewAreaCoveragePercentThreshold: 100,
   waitForInteraction: true,
 };
 
-type Props = $ReadOnly<{||}>;
-type State = {|
-  data: Array<Item>,
-  debug: boolean,
-  horizontal: boolean,
-  inverted: boolean,
-  filterText: string,
-  fixedHeight: boolean,
-  logViewable: boolean,
-  virtualized: boolean,
-  empty: boolean,
-|};
+class FlatListExample extends React.PureComponent<{}, $FlowFixMeState> {
+  static title = '<FlatList>';
+  static description = 'Performant, scrollable list of data.';
 
-class FlatListExample extends React.PureComponent<Props, State> {
   state = {
     data: genItemData(100),
     debug: false,
@@ -124,7 +114,7 @@ class FlatListExample extends React.PureComponent<Props, State> {
             </View>
           </View>
           <SeparatorComponent />
-          <Animated.FlatList
+          <AnimatedFlatList
             ItemSeparatorComponent={ItemSeparatorComponent}
             ListHeaderComponent={<HeaderComponent />}
             ListFooterComponent={FooterComponent}
@@ -143,6 +133,7 @@ class FlatListExample extends React.PureComponent<Props, State> {
             }
             keyboardShouldPersistTaps="always"
             keyboardDismissMode="on-drag"
+            legacyImplementation={false}
             numColumns={1}
             onEndReached={this._onEndReached}
             onRefresh={this._onRefresh}
@@ -210,7 +201,7 @@ class FlatListExample extends React.PureComponent<Props, State> {
     this._listRef.getNode().recordInteraction();
     pressItem(this, key);
   };
-  _listRef: Animated.FlatList;
+  _listRef: AnimatedFlatList;
 }
 
 const styles = StyleSheet.create({
@@ -232,13 +223,4 @@ const styles = StyleSheet.create({
   },
 });
 
-exports.title = '<FlatList>';
-exports.description = 'Performant, scrollable list of data.';
-exports.examples = [
-  {
-    title: 'Simple list of items',
-    render: function(): React.Element<typeof FlatListExample> {
-      return <FlatListExample />;
-    },
-  },
-];
+module.exports = FlatListExample;

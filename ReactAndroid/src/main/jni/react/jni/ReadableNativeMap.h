@@ -1,4 +1,4 @@
-// Copyright (c) Facebook, Inc. and its affiliates.
+// Copyright (c) 2004-present, Facebook, Inc.
 
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
@@ -18,10 +18,6 @@ namespace facebook {
 namespace react {
 
 struct WritableNativeMap;
-
-struct ReadableMap : jni::JavaClass<ReadableMap> {
-  static auto constexpr kJavaDescriptor = "Lcom/facebook/react/bridge/ReadableMap;";
-};
 
 struct ReadableNativeMap : jni::HybridClass<ReadableNativeMap, NativeMap> {
   static auto constexpr kJavaDescriptor = "Lcom/facebook/react/bridge/ReadableNativeMap;";

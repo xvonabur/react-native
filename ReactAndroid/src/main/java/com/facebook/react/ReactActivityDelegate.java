@@ -1,4 +1,4 @@
-// Copyright (c) Facebook, Inc. and its affiliates.
+// Copyright (c) 2004-present, Facebook, Inc.
 
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
@@ -11,6 +11,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.support.v4.app.FragmentActivity;
 import android.view.KeyEvent;
 
 import com.facebook.infer.annotation.Assertions;
@@ -29,6 +30,7 @@ import javax.annotation.Nullable;
 public class ReactActivityDelegate {
 
   private final @Nullable Activity mActivity;
+  private final @Nullable FragmentActivity mFragmentActivity;
   private final @Nullable String mMainComponentName;
 
   private @Nullable ReactRootView mReactRootView;
@@ -36,15 +38,18 @@ public class ReactActivityDelegate {
   private @Nullable PermissionListener mPermissionListener;
   private @Nullable Callback mPermissionsCallback;
 
-  @Deprecated
   public ReactActivityDelegate(Activity activity, @Nullable String mainComponentName) {
     mActivity = activity;
     mMainComponentName = mainComponentName;
+    mFragmentActivity = null;
   }
 
-  public ReactActivityDelegate(ReactActivity activity, @Nullable String mainComponentName) {
-    mActivity = activity;
+  public ReactActivityDelegate(
+    FragmentActivity fragmentActivity,
+    @Nullable String mainComponentName) {
+    mFragmentActivity = fragmentActivity;
     mMainComponentName = mainComponentName;
+    mActivity = null;
   }
 
   protected @Nullable Bundle getLaunchOptions() {
@@ -200,11 +205,14 @@ public class ReactActivityDelegate {
     };
   }
 
-  protected Context getContext() {
-    return Assertions.assertNotNull(mActivity);
+  private Context getContext() {
+    if (mActivity != null) {
+      return mActivity;
+    }
+    return Assertions.assertNotNull(mFragmentActivity);
   }
 
-  protected Activity getPlainActivity() {
+  private Activity getPlainActivity() {
     return ((Activity) getContext());
   }
 }

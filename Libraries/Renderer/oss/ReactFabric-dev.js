@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2013-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -17,82 +17,29 @@ if (__DEV__) {
 "use strict";
 
 require("InitializeCore");
+var invariant = require("fbjs/lib/invariant");
+var warning = require("fbjs/lib/warning");
 var ReactNativeViewConfigRegistry = require("ReactNativeViewConfigRegistry");
 var UIManager = require("UIManager");
 var React = require("react");
+var emptyObject = require("fbjs/lib/emptyObject");
 var deepDiffer = require("deepDiffer");
 var flattenStyle = require("flattenStyle");
 var deepFreezeAndThrowOnMutationInDev = require("deepFreezeAndThrowOnMutationInDev");
 var TextInputState = require("TextInputState");
 var FabricUIManager = require("FabricUIManager");
 var checkPropTypes = require("prop-types/checkPropTypes");
-var tracing = require("scheduler/tracing");
-var scheduler = require("scheduler");
 var ExceptionsManager = require("ExceptionsManager");
 
-/**
- * Use invariant() to assert state which your program assumes to be true.
- *
- * Provide sprintf-style format (only %s is supported) and arguments
- * to provide information about what broke and what you were
- * expecting.
- *
- * The invariant message will be stripped in production, but the invariant
- * will remain to ensure logic does not differ in production.
- */
-
-var validateFormat = function() {};
-
-{
-  validateFormat = function(format) {
-    if (format === undefined) {
-      throw new Error("invariant requires an error message argument");
-    }
-  };
-}
-
-function invariant(condition, format, a, b, c, d, e, f) {
-  validateFormat(format);
-
-  if (!condition) {
-    var error = void 0;
-    if (format === undefined) {
-      error = new Error(
-        "Minified exception occurred; use the non-minified dev environment " +
-          "for the full error message and additional helpful warnings."
-      );
-    } else {
-      var args = [a, b, c, d, e, f];
-      var argIndex = 0;
-      error = new Error(
-        format.replace(/%s/g, function() {
-          return args[argIndex++];
-        })
-      );
-      error.name = "Invariant Violation";
-    }
-
-    error.framesToPop = 1; // we don't care about invariant's own frame
-    throw error;
-  }
-}
-
-var invokeGuardedCallbackImpl = function(
-  name,
-  func,
-  context,
-  a,
-  b,
-  c,
-  d,
-  e,
-  f
-) {
+var invokeGuardedCallback = function(name, func, context, a, b, c, d, e, f) {
+  this._hasCaughtError = false;
+  this._caughtError = null;
   var funcArgs = Array.prototype.slice.call(arguments, 3);
   try {
     func.apply(context, funcArgs);
   } catch (error) {
-    this.onError(error);
+    this._caughtError = error;
+    this._hasCaughtError = true;
   }
 };
 
@@ -104,7 +51,7 @@ var invokeGuardedCallbackImpl = function(
   // invokeGuardedCallback uses a try-catch, all user exceptions are treated
   // like caught exceptions, and the DevTools won't pause unless the developer
   // takes the extra step of enabling pause on caught exceptions. This is
-  // unintuitive, though, because even though React has caught the error, from
+  // untintuitive, though, because even though React has caught the error, from
   // the developer's perspective, the error is uncaught.
   //
   // To preserve the expected "Pause on exceptions" behavior, we don't use a
@@ -161,18 +108,6 @@ var invokeGuardedCallbackImpl = function(
       // the error event at all.
       var didError = true;
 
-      // Keeps track of the value of window.event so that we can reset it
-      // during the callback to let user code access window.event in the
-      // browsers that support it.
-      var windowEvent = window.event;
-
-      // Keeps track of the descriptor of window.event to restore it after event
-      // dispatching: https://github.com/facebook/react/issues/13688
-      var windowEventDescriptor = Object.getOwnPropertyDescriptor(
-        window,
-        "event"
-      );
-
       // Create an event handler for our fake event. We will synchronously
       // dispatch our fake event using `dispatchEvent`. Inside the handler, we
       // call the user-provided callback.
@@ -183,18 +118,6 @@ var invokeGuardedCallbackImpl = function(
         // nested call would trigger the fake event handlers of any call higher
         // in the stack.
         fakeNode.removeEventListener(evtType, callCallback, false);
-
-        // We check for window.hasOwnProperty('event') to prevent the
-        // window.event assignment in both IE <= 10 as they throw an error
-        // "Member not found" in strict mode, and in Firefox which does not
-        // support window.event.
-        if (
-          typeof window.event !== "undefined" &&
-          window.hasOwnProperty("event")
-        ) {
-          window.event = windowEvent;
-        }
-
         func.apply(context, funcArgs);
         didError = false;
       }
@@ -215,23 +138,11 @@ var invokeGuardedCallbackImpl = function(
       var didSetError = false;
       var isCrossOriginError = false;
 
-      function handleWindowError(event) {
+      function onError(event) {
         error = event.error;
         didSetError = true;
         if (error === null && event.colno === 0 && event.lineno === 0) {
           isCrossOriginError = true;
-        }
-        if (event.defaultPrevented) {
-          // Some other error handler has prevented default.
-          // Browsers silence the error report if this happens.
-          // We'll remember this to later decide whether to log it or not.
-          if (error != null && typeof error === "object") {
-            try {
-              error._suppressLogging = true;
-            } catch (inner) {
-              // Ignore.
-            }
-          }
         }
       }
 
@@ -239,17 +150,13 @@ var invokeGuardedCallbackImpl = function(
       var evtType = "react-" + (name ? name : "invokeguardedcallback");
 
       // Attach our event handlers
-      window.addEventListener("error", handleWindowError);
+      window.addEventListener("error", onError);
       fakeNode.addEventListener(evtType, callCallback, false);
 
       // Synchronously dispatch our fake event. If the user-provided function
       // errors, it will trigger our global error handler.
       evt.initEvent(evtType, false, false);
       fakeNode.dispatchEvent(evt);
-
-      if (windowEventDescriptor) {
-        Object.defineProperty(window, "event", windowEventDescriptor);
-      }
 
       if (didError) {
         if (!didSetError) {
@@ -271,115 +178,116 @@ var invokeGuardedCallbackImpl = function(
               "See https://fb.me/react-crossorigin-error for more information."
           );
         }
-        this.onError(error);
+        this._hasCaughtError = true;
+        this._caughtError = error;
+      } else {
+        this._hasCaughtError = false;
+        this._caughtError = null;
       }
 
       // Remove our event listeners
-      window.removeEventListener("error", handleWindowError);
+      window.removeEventListener("error", onError);
     };
 
-    invokeGuardedCallbackImpl = invokeGuardedCallbackDev;
+    invokeGuardedCallback = invokeGuardedCallbackDev;
   }
 }
 
-var invokeGuardedCallbackImpl$1 = invokeGuardedCallbackImpl;
+var invokeGuardedCallback$1 = invokeGuardedCallback;
 
-// Used by Fiber to simulate a try-catch.
-var hasError = false;
-var caughtError = null;
+var ReactErrorUtils = {
+  // Used by Fiber to simulate a try-catch.
+  _caughtError: null,
+  _hasCaughtError: false,
 
-// Used by event system to capture/rethrow the first error.
-var hasRethrowError = false;
-var rethrowError = null;
+  // Used by event system to capture/rethrow the first error.
+  _rethrowError: null,
+  _hasRethrowError: false,
 
-var reporter = {
-  onError: function(error) {
-    hasError = true;
-    caughtError = error;
+  /**
+   * Call a function while guarding against errors that happens within it.
+   * Returns an error if it throws, otherwise null.
+   *
+   * In production, this is implemented using a try-catch. The reason we don't
+   * use a try-catch directly is so that we can swap out a different
+   * implementation in DEV mode.
+   *
+   * @param {String} name of the guard to use for logging or debugging
+   * @param {Function} func The function to invoke
+   * @param {*} context The context to use when calling the function
+   * @param {...*} args Arguments for function
+   */
+  invokeGuardedCallback: function(name, func, context, a, b, c, d, e, f) {
+    invokeGuardedCallback$1.apply(ReactErrorUtils, arguments);
+  },
+
+  /**
+   * Same as invokeGuardedCallback, but instead of returning an error, it stores
+   * it in a global so it can be rethrown by `rethrowCaughtError` later.
+   * TODO: See if _caughtError and _rethrowError can be unified.
+   *
+   * @param {String} name of the guard to use for logging or debugging
+   * @param {Function} func The function to invoke
+   * @param {*} context The context to use when calling the function
+   * @param {...*} args Arguments for function
+   */
+  invokeGuardedCallbackAndCatchFirstError: function(
+    name,
+    func,
+    context,
+    a,
+    b,
+    c,
+    d,
+    e,
+    f
+  ) {
+    ReactErrorUtils.invokeGuardedCallback.apply(this, arguments);
+    if (ReactErrorUtils.hasCaughtError()) {
+      var error = ReactErrorUtils.clearCaughtError();
+      if (!ReactErrorUtils._hasRethrowError) {
+        ReactErrorUtils._hasRethrowError = true;
+        ReactErrorUtils._rethrowError = error;
+      }
+    }
+  },
+
+  /**
+   * During execution of guarded functions we will capture the first error which
+   * we will rethrow to be handled by the top level error handler.
+   */
+  rethrowCaughtError: function() {
+    return rethrowCaughtError.apply(ReactErrorUtils, arguments);
+  },
+
+  hasCaughtError: function() {
+    return ReactErrorUtils._hasCaughtError;
+  },
+
+  clearCaughtError: function() {
+    if (ReactErrorUtils._hasCaughtError) {
+      var error = ReactErrorUtils._caughtError;
+      ReactErrorUtils._caughtError = null;
+      ReactErrorUtils._hasCaughtError = false;
+      return error;
+    } else {
+      invariant(
+        false,
+        "clearCaughtError was called but no error was captured. This error " +
+          "is likely caused by a bug in React. Please file an issue."
+      );
+    }
   }
 };
 
-/**
- * Call a function while guarding against errors that happens within it.
- * Returns an error if it throws, otherwise null.
- *
- * In production, this is implemented using a try-catch. The reason we don't
- * use a try-catch directly is so that we can swap out a different
- * implementation in DEV mode.
- *
- * @param {String} name of the guard to use for logging or debugging
- * @param {Function} func The function to invoke
- * @param {*} context The context to use when calling the function
- * @param {...*} args Arguments for function
- */
-function invokeGuardedCallback(name, func, context, a, b, c, d, e, f) {
-  hasError = false;
-  caughtError = null;
-  invokeGuardedCallbackImpl$1.apply(reporter, arguments);
-}
-
-/**
- * Same as invokeGuardedCallback, but instead of returning an error, it stores
- * it in a global so it can be rethrown by `rethrowCaughtError` later.
- * TODO: See if caughtError and rethrowError can be unified.
- *
- * @param {String} name of the guard to use for logging or debugging
- * @param {Function} func The function to invoke
- * @param {*} context The context to use when calling the function
- * @param {...*} args Arguments for function
- */
-function invokeGuardedCallbackAndCatchFirstError(
-  name,
-  func,
-  context,
-  a,
-  b,
-  c,
-  d,
-  e,
-  f
-) {
-  invokeGuardedCallback.apply(this, arguments);
-  if (hasError) {
-    var error = clearCaughtError();
-    if (!hasRethrowError) {
-      hasRethrowError = true;
-      rethrowError = error;
-    }
-  }
-}
-
-/**
- * During execution of guarded functions we will capture the first error which
- * we will rethrow to be handled by the top level error handler.
- */
-function rethrowCaughtError() {
-  if (hasRethrowError) {
-    var error = rethrowError;
-    hasRethrowError = false;
-    rethrowError = null;
+var rethrowCaughtError = function() {
+  if (ReactErrorUtils._hasRethrowError) {
+    var error = ReactErrorUtils._rethrowError;
+    ReactErrorUtils._rethrowError = null;
+    ReactErrorUtils._hasRethrowError = false;
     throw error;
   }
-}
-
-function hasCaughtError() {
-  return hasError;
-}
-
-function clearCaughtError() {
-  if (hasError) {
-    var error = caughtError;
-    hasError = false;
-    caughtError = null;
-    return error;
-  } else {
-    invariant(
-      false,
-      "clearCaughtError was called but no error was captured. This error " +
-        "is likely caused by a bug in React. Please file an issue."
-    );
-  }
-}
+};
 
 /**
  * Injectable ordering of event plugins.
@@ -591,91 +499,27 @@ function injectEventPluginsByName(injectedNamesToPlugins) {
   }
 }
 
-/**
- * Similar to invariant but only logs a warning if the condition is not met.
- * This can be used to log issues in development environments in critical
- * paths. Removing the logging code for production environments will keep the
- * same logic and follow the same code paths.
- */
-
-var warningWithoutStack = function() {};
-
-{
-  warningWithoutStack = function(condition, format) {
-    for (
-      var _len = arguments.length,
-        args = Array(_len > 2 ? _len - 2 : 0),
-        _key = 2;
-      _key < _len;
-      _key++
-    ) {
-      args[_key - 2] = arguments[_key];
-    }
-
-    if (format === undefined) {
-      throw new Error(
-        "`warningWithoutStack(condition, format, ...args)` requires a warning " +
-          "message argument"
-      );
-    }
-    if (args.length > 8) {
-      // Check before the condition to catch violations early.
-      throw new Error(
-        "warningWithoutStack() currently supports at most 8 arguments."
-      );
-    }
-    if (condition) {
-      return;
-    }
-    if (typeof console !== "undefined") {
-      var argsWithFormat = args.map(function(item) {
-        return "" + item;
-      });
-      argsWithFormat.unshift("Warning: " + format);
-
-      // We intentionally don't use spread (or .apply) directly because it
-      // breaks IE9: https://github.com/facebook/react/issues/13610
-      Function.prototype.apply.call(console.error, console, argsWithFormat);
-    }
-    try {
-      // --- Welcome to debugging React ---
-      // This error was thrown as a convenience so that you can use this stack
-      // to find the callsite that caused this warning to fire.
-      var argIndex = 0;
-      var message =
-        "Warning: " +
-        format.replace(/%s/g, function() {
-          return args[argIndex++];
-        });
-      throw new Error(message);
-    } catch (x) {}
-  };
-}
-
-var warningWithoutStack$1 = warningWithoutStack;
-
 var getFiberCurrentPropsFromNode = null;
 var getInstanceFromNode = null;
 var getNodeFromInstance = null;
 
-function setComponentTree(
-  getFiberCurrentPropsFromNodeImpl,
-  getInstanceFromNodeImpl,
-  getNodeFromInstanceImpl
-) {
-  getFiberCurrentPropsFromNode = getFiberCurrentPropsFromNodeImpl;
-  getInstanceFromNode = getInstanceFromNodeImpl;
-  getNodeFromInstance = getNodeFromInstanceImpl;
-  {
-    !(getNodeFromInstance && getInstanceFromNode)
-      ? warningWithoutStack$1(
-          false,
-          "EventPluginUtils.setComponentTree(...): Injected " +
-            "module is missing getNodeFromInstance or getInstanceFromNode."
-        )
-      : void 0;
+var injection$1 = {
+  injectComponentTree: function(Injected) {
+    getFiberCurrentPropsFromNode = Injected.getFiberCurrentPropsFromNode;
+    getInstanceFromNode = Injected.getInstanceFromNode;
+    getNodeFromInstance = Injected.getNodeFromInstance;
+
+    {
+      !(getNodeFromInstance && getInstanceFromNode)
+        ? warning(
+            false,
+            "EventPluginUtils.injection.injectComponentTree(...): Injected " +
+              "module is missing getNodeFromInstance or getInstanceFromNode."
+          )
+        : void 0;
+    }
   }
-}
+};
 
 var validateEventDispatches = void 0;
 {
@@ -686,19 +530,15 @@ var validateEventDispatches = void 0;
     var listenersIsArr = Array.isArray(dispatchListeners);
     var listenersLen = listenersIsArr
       ? dispatchListeners.length
-      : dispatchListeners
-        ? 1
-        : 0;
+      : dispatchListeners ? 1 : 0;
 
     var instancesIsArr = Array.isArray(dispatchInstances);
     var instancesLen = instancesIsArr
       ? dispatchInstances.length
-      : dispatchInstances
-        ? 1
-        : 0;
+      : dispatchInstances ? 1 : 0;
 
     !(instancesIsArr === listenersIsArr && instancesLen === listenersLen)
-      ? warningWithoutStack$1(false, "EventPluginUtils: Invalid `event`.")
+      ? warning(false, "EventPluginUtils: Invalid `event`.")
       : void 0;
   };
 }
@@ -706,20 +546,26 @@ var validateEventDispatches = void 0;
 /**
  * Dispatch the event to the listener.
  * @param {SyntheticEvent} event SyntheticEvent to handle
+ * @param {boolean} simulated If the event is simulated (changes exn behavior)
  * @param {function} listener Application-level callback
  * @param {*} inst Internal component instance
  */
-function executeDispatch(event, listener, inst) {
+function executeDispatch(event, simulated, listener, inst) {
   var type = event.type || "unknown-event";
   event.currentTarget = getNodeFromInstance(inst);
-  invokeGuardedCallbackAndCatchFirstError(type, listener, undefined, event);
+  ReactErrorUtils.invokeGuardedCallbackAndCatchFirstError(
+    type,
+    listener,
+    undefined,
+    event
+  );
   event.currentTarget = null;
 }
 
 /**
  * Standard/simple iteration through an event's collected dispatches.
  */
-function executeDispatchesInOrder(event) {
+function executeDispatchesInOrder(event, simulated) {
   var dispatchListeners = event._dispatchListeners;
   var dispatchInstances = event._dispatchInstances;
   {
@@ -731,10 +577,15 @@ function executeDispatchesInOrder(event) {
         break;
       }
       // Listeners and Instances are two parallel arrays that are always in sync.
-      executeDispatch(event, dispatchListeners[i], dispatchInstances[i]);
+      executeDispatch(
+        event,
+        simulated,
+        dispatchListeners[i],
+        dispatchInstances[i]
+      );
     }
   } else if (dispatchListeners) {
-    executeDispatch(event, dispatchListeners, dispatchInstances);
+    executeDispatch(event, simulated, dispatchListeners, dispatchInstances);
   }
   event._dispatchListeners = null;
   event._dispatchInstances = null;
@@ -887,19 +738,23 @@ var eventQueue = null;
  * Dispatches an event and releases it back into the pool, unless persistent.
  *
  * @param {?object} event Synthetic event to be dispatched.
+ * @param {boolean} simulated If the event is simulated (changes exn behavior)
  * @private
  */
-var executeDispatchesAndRelease = function(event) {
+var executeDispatchesAndRelease = function(event, simulated) {
   if (event) {
-    executeDispatchesInOrder(event);
+    executeDispatchesInOrder(event, simulated);
 
     if (!event.isPersistent()) {
       event.constructor.release(event);
     }
   }
 };
+var executeDispatchesAndReleaseSimulated = function(e) {
+  return executeDispatchesAndRelease(e, true);
+};
 var executeDispatchesAndReleaseTopLevel = function(e) {
-  return executeDispatchesAndRelease(e);
+  return executeDispatchesAndRelease(e, false);
 };
 
 function isInteractive(tag) {
@@ -1033,7 +888,7 @@ function extractEvents(
   return events;
 }
 
-function runEventsInBatch(events) {
+function runEventsInBatch(events, simulated) {
   if (events !== null) {
     eventQueue = accumulateInto(eventQueue, events);
   }
@@ -1047,14 +902,24 @@ function runEventsInBatch(events) {
     return;
   }
 
-  forEachAccumulated(processingEventQueue, executeDispatchesAndReleaseTopLevel);
+  if (simulated) {
+    forEachAccumulated(
+      processingEventQueue,
+      executeDispatchesAndReleaseSimulated
+    );
+  } else {
+    forEachAccumulated(
+      processingEventQueue,
+      executeDispatchesAndReleaseTopLevel
+    );
+  }
   invariant(
     !eventQueue,
     "processEventQueue(): Additional events were enqueued while processing " +
       "an event queue. Support for this has not yet been implemented."
   );
   // This would be a good time to rethrow if any of the event handlers threw.
-  rethrowCaughtError();
+  ReactErrorUtils.rethrowCaughtError();
 }
 
 function runExtractedEventsInBatch(
@@ -1069,28 +934,24 @@ function runExtractedEventsInBatch(
     nativeEvent,
     nativeEventTarget
   );
-  runEventsInBatch(events);
+  runEventsInBatch(events, false);
 }
 
-var FunctionComponent = 0;
-var ClassComponent = 1;
-var IndeterminateComponent = 2; // Before we know whether it is function or class
+var IndeterminateComponent = 0; // Before we know whether it is functional or class
+var FunctionalComponent = 1;
+var ClassComponent = 2;
 var HostRoot = 3; // Root of a host tree. Could be nested inside another node.
 var HostPortal = 4; // A subtree. Could be an entry point to a different renderer.
 var HostComponent = 5;
 var HostText = 6;
-var Fragment = 7;
-var Mode = 8;
-var ContextConsumer = 9;
-var ContextProvider = 10;
-var ForwardRef = 11;
-var Profiler = 12;
-var SuspenseComponent = 13;
-var MemoComponent = 14;
-var SimpleMemoComponent = 15;
-var LazyComponent = 16;
-var IncompleteClassComponent = 17;
-var DehydratedSuspenseComponent = 18;
+
+var Fragment = 10;
+var Mode = 11;
+var ContextConsumer = 12;
+var ContextProvider = 13;
+var ForwardRef = 14;
+var Profiler = 15;
+var TimeoutComponent = 16;
 
 function getParent(inst) {
   do {
@@ -1219,9 +1080,7 @@ function listenerAtPhase(inst, event, propagationPhase) {
  */
 function accumulateDirectionalDispatches(inst, phase, event) {
   {
-    !inst
-      ? warningWithoutStack$1(false, "Dispatching inst must not be null")
-      : void 0;
+    !inst ? warning(false, "Dispatching inst must not be null") : void 0;
   }
   var listener = listenerAtPhase(inst, event, phase);
   if (listener) {
@@ -1301,7 +1160,18 @@ function accumulateDirectDispatches(events) {
 
 /* eslint valid-typeof: 0 */
 
+var didWarnForAddedNewProperty = false;
 var EVENT_POOL_SIZE = 10;
+
+var shouldBeReleasedProperties = [
+  "dispatchConfig",
+  "_targetInst",
+  "nativeEvent",
+  "isDefaultPrevented",
+  "isPropagationStopped",
+  "_dispatchListeners",
+  "_dispatchInstances"
+];
 
 /**
  * @interface Event
@@ -1361,8 +1231,6 @@ function SyntheticEvent(
     delete this.nativeEvent;
     delete this.preventDefault;
     delete this.stopPropagation;
-    delete this.isDefaultPrevented;
-    delete this.isPropagationStopped;
   }
 
   this.dispatchConfig = dispatchConfig;
@@ -1468,34 +1336,14 @@ Object.assign(SyntheticEvent.prototype, {
         );
       }
     }
-    this.dispatchConfig = null;
-    this._targetInst = null;
-    this.nativeEvent = null;
-    this.isDefaultPrevented = functionThatReturnsFalse;
-    this.isPropagationStopped = functionThatReturnsFalse;
-    this._dispatchListeners = null;
-    this._dispatchInstances = null;
+    for (var i = 0; i < shouldBeReleasedProperties.length; i++) {
+      this[shouldBeReleasedProperties[i]] = null;
+    }
     {
       Object.defineProperty(
         this,
         "nativeEvent",
         getPooledWarningPropertyDefinition("nativeEvent", null)
-      );
-      Object.defineProperty(
-        this,
-        "isDefaultPrevented",
-        getPooledWarningPropertyDefinition(
-          "isDefaultPrevented",
-          functionThatReturnsFalse
-        )
-      );
-      Object.defineProperty(
-        this,
-        "isPropagationStopped",
-        getPooledWarningPropertyDefinition(
-          "isPropagationStopped",
-          functionThatReturnsFalse
-        )
       );
       Object.defineProperty(
         this,
@@ -1537,6 +1385,51 @@ SyntheticEvent.extend = function(Interface) {
   return Class;
 };
 
+/** Proxying after everything set on SyntheticEvent
+ * to resolve Proxy issue on some WebKit browsers
+ * in which some Event properties are set to undefined (GH#10010)
+ */
+{
+  var isProxySupported =
+    typeof Proxy === "function" &&
+    // https://github.com/facebook/react/issues/12011
+    !Object.isSealed(new Proxy({}, {}));
+
+  if (isProxySupported) {
+    /*eslint-disable no-func-assign */
+    SyntheticEvent = new Proxy(SyntheticEvent, {
+      construct: function(target, args) {
+        return this.apply(target, Object.create(target.prototype), args);
+      },
+      apply: function(constructor, that, args) {
+        return new Proxy(constructor.apply(that, args), {
+          set: function(target, prop, value) {
+            if (
+              prop !== "isPersistent" &&
+              !target.constructor.Interface.hasOwnProperty(prop) &&
+              shouldBeReleasedProperties.indexOf(prop) === -1
+            ) {
+              !(didWarnForAddedNewProperty || target.isPersistent())
+                ? warning(
+                    false,
+                    "This synthetic event is reused for performance reasons. If you're " +
+                      "seeing this, you're adding a new property in the synthetic event object. " +
+                      "The property is never released. See " +
+                      "https://fb.me/react-event-pooling for more information."
+                  )
+                : void 0;
+              didWarnForAddedNewProperty = true;
+            }
+            target[prop] = value;
+            return true;
+          }
+        });
+      }
+    });
+    /*eslint-enable no-func-assign */
+  }
+}
+
 addEventPoolingTo(SyntheticEvent);
 
 /**
@@ -1572,7 +1465,7 @@ function getPooledWarningPropertyDefinition(propName, getVal) {
   function warn(action, result) {
     var warningCondition = false;
     !warningCondition
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "This synthetic event is reused for performance reasons. If you're seeing this, " +
             "you're %s `%s` on a released/nullified synthetic event. %s. " +
@@ -1611,7 +1504,7 @@ function releasePooledEvent(event) {
   var EventConstructor = this;
   invariant(
     event instanceof EventConstructor,
-    "Trying to release an event instance into a pool of a different type."
+    "Trying to release an event instance  into a pool of a different type."
   );
   event.destructor();
   if (EventConstructor.eventPool.length < EVENT_POOL_SIZE) {
@@ -1625,12 +1518,14 @@ function addEventPoolingTo(EventConstructor) {
   EventConstructor.release = releasePooledEvent;
 }
 
+var SyntheticEvent$1 = SyntheticEvent;
+
 /**
  * `touchHistory` isn't actually on the native event, but putting it in the
  * interface will ensure that it is cleaned up when pooled/destroyed. The
  * `ResponderEventPlugin` will populate it appropriately.
  */
-var ResponderSyntheticEvent = SyntheticEvent.extend({
+var ResponderSyntheticEvent = SyntheticEvent$1.extend({
   touchHistory: function(nativeEvent) {
     return null; // Actually doesn't even look at the native event.
   }
@@ -1722,7 +1617,7 @@ function getTouchIdentifier(_ref) {
   invariant(identifier != null, "Touch object is missing identifier.");
   {
     !(identifier <= MAX_TOUCH_BANK)
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "Touch identifier %s is greater than maximum supported %s which causes " +
             "performance issues backfilling array locations for all of the indices.",
@@ -1829,7 +1724,7 @@ var ResponderTouchHistoryStore = {
         {
           var activeRecord = touchBank[touchHistory.indexOfSingleActiveTouch];
           !(activeRecord != null && activeRecord.touchActive)
-            ? warningWithoutStack$1(false, "Cannot find single active touch.")
+            ? warning(false, "Cannot find single active touch.")
             : void 0;
         }
       }
@@ -2384,9 +2279,7 @@ var ResponderEventPlugin = {
       ? eventTypes$1.responderStart
       : isResponderTouchMove
         ? eventTypes$1.responderMove
-        : isResponderTouchEnd
-          ? eventTypes$1.responderEnd
-          : null;
+        : isResponderTouchEnd ? eventTypes$1.responderEnd : null;
 
     if (incrementalTouch) {
       var gesture = ResponderSyntheticEvent.getPooled(
@@ -2409,9 +2302,7 @@ var ResponderEventPlugin = {
       noResponderTouches(nativeEvent);
     var finalTouch = isResponderTerminate
       ? eventTypes$1.responderTerminate
-      : isResponderRelease
-        ? eventTypes$1.responderRelease
-        : null;
+      : isResponderRelease ? eventTypes$1.responderRelease : null;
     if (finalTouch) {
       var finalEvent = ResponderSyntheticEvent.getPooled(
         finalTouch,
@@ -2442,8 +2333,14 @@ var ResponderEventPlugin = {
   }
 };
 
+var customBubblingEventTypes$1 =
+  ReactNativeViewConfigRegistry.customBubblingEventTypes;
+var customDirectEventTypes$1 =
+  ReactNativeViewConfigRegistry.customDirectEventTypes;
+var eventTypes$2 = ReactNativeViewConfigRegistry.eventTypes;
+
 var ReactNativeBridgeEventPlugin = {
-  eventTypes: ReactNativeViewConfigRegistry.eventTypes,
+  eventTypes: eventTypes$2,
 
   /**
    * @see {EventPluginHub.extractEvents}
@@ -2458,16 +2355,14 @@ var ReactNativeBridgeEventPlugin = {
       // Probably a node belonging to another renderer's tree.
       return null;
     }
-    var bubbleDispatchConfig =
-      ReactNativeViewConfigRegistry.customBubblingEventTypes[topLevelType];
-    var directDispatchConfig =
-      ReactNativeViewConfigRegistry.customDirectEventTypes[topLevelType];
+    var bubbleDispatchConfig = customBubblingEventTypes$1[topLevelType];
+    var directDispatchConfig = customDirectEventTypes$1[topLevelType];
     invariant(
       bubbleDispatchConfig || directDispatchConfig,
       'Unsupported top level event type "%s" dispatched',
       topLevelType
     );
-    var event = SyntheticEvent.getPooled(
+    var event = SyntheticEvent$1.getPooled(
       bubbleDispatchConfig || directDispatchConfig,
       targetInst,
       nativeEvent,
@@ -2524,6 +2419,13 @@ function getFiberCurrentPropsFromNode$1(inst) {
   return inst.canonical.currentProps;
 }
 
+var ReactFabricComponentTree = Object.freeze({
+  getClosestInstanceFromNode: getInstanceFromInstance,
+  getInstanceFromNode: getInstanceFromInstance,
+  getNodeFromInstance: getTagFromInstance,
+  getFiberCurrentPropsFromNode: getFiberCurrentPropsFromNode$1
+});
+
 // Module provided by RN:
 var ReactFabricGlobalResponderHandler = {
   onChange: function(from, to, blockNativeResponder) {
@@ -2536,11 +2438,7 @@ var ReactFabricGlobalResponderHandler = {
   }
 };
 
-setComponentTree(
-  getFiberCurrentPropsFromNode$1,
-  getInstanceFromInstance,
-  getTagFromInstance
-);
+injection$1.injectComponentTree(ReactFabricComponentTree);
 
 ResponderEventPlugin.injection.injectGlobalResponderHandler(
   ReactFabricGlobalResponderHandler
@@ -2570,17 +2468,10 @@ function set(key, value) {
   key._reactInternalFiber = value;
 }
 
-var ReactSharedInternals =
-  React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+var ReactInternals = React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
 
-// Prevent newer renderers from RTE when used with older react package versions.
-// Current owner and dispatcher used to share the same ref,
-// but PR #14548 split them out to better support the react-debug-tools package.
-if (!ReactSharedInternals.hasOwnProperty("ReactCurrentDispatcher")) {
-  ReactSharedInternals.ReactCurrentDispatcher = {
-    current: null
-  };
-}
+var ReactCurrentOwner = ReactInternals.ReactCurrentOwner;
+var ReactDebugCurrentFrame = ReactInternals.ReactDebugCurrentFrame;
 
 // The Symbol used to tag the ReactElement-like types. If there is no native Symbol
 // nor polyfill, then a plain number is used for performance.
@@ -2595,22 +2486,17 @@ var REACT_STRICT_MODE_TYPE = hasSymbol
 var REACT_PROFILER_TYPE = hasSymbol ? Symbol.for("react.profiler") : 0xead2;
 var REACT_PROVIDER_TYPE = hasSymbol ? Symbol.for("react.provider") : 0xeacd;
 var REACT_CONTEXT_TYPE = hasSymbol ? Symbol.for("react.context") : 0xeace;
-
-var REACT_CONCURRENT_MODE_TYPE = hasSymbol
-  ? Symbol.for("react.concurrent_mode")
-  : 0xeacf;
+var REACT_ASYNC_MODE_TYPE = hasSymbol ? Symbol.for("react.async_mode") : 0xeacf;
 var REACT_FORWARD_REF_TYPE = hasSymbol
   ? Symbol.for("react.forward_ref")
   : 0xead0;
-var REACT_SUSPENSE_TYPE = hasSymbol ? Symbol.for("react.suspense") : 0xead1;
-var REACT_MEMO_TYPE = hasSymbol ? Symbol.for("react.memo") : 0xead3;
-var REACT_LAZY_TYPE = hasSymbol ? Symbol.for("react.lazy") : 0xead4;
+var REACT_TIMEOUT_TYPE = hasSymbol ? Symbol.for("react.timeout") : 0xead1;
 
 var MAYBE_ITERATOR_SYMBOL = typeof Symbol === "function" && Symbol.iterator;
 var FAUX_ITERATOR_SYMBOL = "@@iterator";
 
 function getIteratorFn(maybeIterable) {
-  if (maybeIterable === null || typeof maybeIterable !== "object") {
+  if (maybeIterable === null || typeof maybeIterable === "undefined") {
     return null;
   }
   var maybeIterator =
@@ -2622,73 +2508,40 @@ function getIteratorFn(maybeIterable) {
   return null;
 }
 
-var Pending = 0;
-var Resolved = 1;
-var Rejected = 2;
+function getComponentName(fiber) {
+  var type = fiber.type;
 
-function refineResolvedLazyComponent(lazyComponent) {
-  return lazyComponent._status === Resolved ? lazyComponent._result : null;
-}
-
-function getWrappedName(outerType, innerType, wrapperName) {
-  var functionName = innerType.displayName || innerType.name || "";
-  return (
-    outerType.displayName ||
-    (functionName !== "" ? wrapperName + "(" + functionName + ")" : wrapperName)
-  );
-}
-
-function getComponentName(type) {
-  if (type == null) {
-    // Host root, text node or just invalid type.
-    return null;
-  }
-  {
-    if (typeof type.tag === "number") {
-      warningWithoutStack$1(
-        false,
-        "Received an unexpected object in getComponentName(). " +
-          "This is likely a bug in React. Please file an issue."
-      );
-    }
-  }
   if (typeof type === "function") {
-    return type.displayName || type.name || null;
+    return type.displayName || type.name;
   }
   if (typeof type === "string") {
     return type;
   }
   switch (type) {
-    case REACT_CONCURRENT_MODE_TYPE:
-      return "ConcurrentMode";
+    case REACT_ASYNC_MODE_TYPE:
+      return "AsyncMode";
+    case REACT_CONTEXT_TYPE:
+      return "Context.Consumer";
     case REACT_FRAGMENT_TYPE:
-      return "Fragment";
+      return "ReactFragment";
     case REACT_PORTAL_TYPE:
-      return "Portal";
+      return "ReactPortal";
     case REACT_PROFILER_TYPE:
-      return "Profiler";
+      return "Profiler(" + fiber.pendingProps.id + ")";
+    case REACT_PROVIDER_TYPE:
+      return "Context.Provider";
     case REACT_STRICT_MODE_TYPE:
       return "StrictMode";
-    case REACT_SUSPENSE_TYPE:
-      return "Suspense";
+    case REACT_TIMEOUT_TYPE:
+      return "Timeout";
   }
-  if (typeof type === "object") {
+  if (typeof type === "object" && type !== null) {
     switch (type.$$typeof) {
-      case REACT_CONTEXT_TYPE:
-        return "Context.Consumer";
-      case REACT_PROVIDER_TYPE:
-        return "Context.Provider";
       case REACT_FORWARD_REF_TYPE:
-        return getWrappedName(type, type.render, "ForwardRef");
-      case REACT_MEMO_TYPE:
-        return getComponentName(type.type);
-      case REACT_LAZY_TYPE: {
-        var thenable = type;
-        var resolvedThenable = refineResolvedLazyComponent(thenable);
-        if (resolvedThenable) {
-          return getComponentName(resolvedThenable);
-        }
-      }
+        var functionName = type.render.displayName || type.render.name || "";
+        return functionName !== ""
+          ? "ForwardRef(" + functionName + ")"
+          : "ForwardRef";
     }
   }
   return null;
@@ -2708,18 +2561,12 @@ var Callback = /*              */ 32;
 var DidCapture = /*            */ 64;
 var Ref = /*                   */ 128;
 var Snapshot = /*              */ 256;
-var Passive = /*               */ 512;
-
-// Passive & Update & Callback & Ref & Snapshot
-var LifecycleEffectMask = /*   */ 932;
 
 // Union of all host effects
-var HostEffectMask = /*        */ 1023;
+var HostEffectMask = /*        */ 511;
 
-var Incomplete = /*            */ 1024;
-var ShouldCapture = /*         */ 2048;
-
-var ReactCurrentOwner$1 = ReactSharedInternals.ReactCurrentOwner;
+var Incomplete = /*            */ 512;
+var ShouldCapture = /*         */ 1024;
 
 var MOUNTING = 1;
 var MOUNTED = 2;
@@ -2760,19 +2607,19 @@ function isFiberMounted(fiber) {
 
 function isMounted(component) {
   {
-    var owner = ReactCurrentOwner$1.current;
+    var owner = ReactCurrentOwner.current;
     if (owner !== null && owner.tag === ClassComponent) {
       var ownerFiber = owner;
       var instance = ownerFiber.stateNode;
       !instance._warnedAboutRefsInRender
-        ? warningWithoutStack$1(
+        ? warning(
             false,
             "%s is accessing isMounted inside its render() function. " +
               "render() should be a pure function of props and state. It should " +
               "never access something that requires stale data from the previous " +
               "render, such as refs. Move this logic to componentDidMount and " +
               "componentDidUpdate instead.",
-            getComponentName(ownerFiber.type) || "A component"
+            getComponentName(ownerFiber) || "A component"
           )
         : void 0;
       instance._warnedAboutRefsInRender = true;
@@ -2952,37 +2799,63 @@ function findCurrentHostFiber(parent) {
   return null;
 }
 
+function findCurrentHostFiberWithNoPortals(parent) {
+  var currentParent = findCurrentFiberUsingSlowPath(parent);
+  if (!currentParent) {
+    return null;
+  }
+
+  // Next we'll drill down this component to find the first HostComponent/Text.
+  var node = currentParent;
+  while (true) {
+    if (node.tag === HostComponent || node.tag === HostText) {
+      return node;
+    } else if (node.child && node.tag !== HostPortal) {
+      node.child.return = node;
+      node = node.child;
+      continue;
+    }
+    if (node === currentParent) {
+      return null;
+    }
+    while (!node.sibling) {
+      if (!node.return || node.return === currentParent) {
+        return null;
+      }
+      node = node.return;
+    }
+    node.sibling.return = node.return;
+    node = node.sibling;
+  }
+  // Flow needs the return null here, but ESLint complains about it.
+  // eslint-disable-next-line no-unreachable
+  return null;
+}
+
 /**
  * In the future, we should cleanup callbacks by cancelling them instead of
  * using this.
  */
-function mountSafeCallback_NOT_REALLY_SAFE(context, callback) {
+function mountSafeCallback(context, callback) {
   return function() {
     if (!callback) {
       return undefined;
     }
-    // This protects against createClass() components.
-    // We don't know if there is code depending on it.
-    // We intentionally don't use isMounted() because even accessing
-    // isMounted property on a React ES6 class will trigger a warning.
     if (typeof context.__isMounted === "boolean") {
+      // TODO(gaearon): this is gross and should be removed.
+      // It is currently necessary because View uses createClass,
+      // and so any measure() calls on View (which are done by React
+      // DevTools) trigger the isMounted() deprecation warning.
       if (!context.__isMounted) {
         return undefined;
       }
+      // The else branch is important so that we don't
+      // trigger the deprecation warning by calling isMounted.
+    } else if (typeof context.isMounted === "function") {
+      if (!context.isMounted()) {
+        return undefined;
+      }
     }
-
-    // FIXME: there used to be other branches that protected
-    // against unmounted host components. But RN host components don't
-    // define isMounted() anymore, so those checks didn't do anything.
-
-    // They caused false positive warning noise so we removed them:
-    // https://github.com/facebook/react-native/issues/18868#issuecomment-413579095
-
-    // However, this means that the callback is NOT guaranteed to be safe
-    // for host components. The solution we should implement is to make
-    // UIManager.measure() and similar calls truly cancelable. Then we
-    // can change our own code calling them to cancel when something unmounts.
-
     return callback.apply(context, arguments);
   };
 }
@@ -3024,7 +2897,7 @@ function warnForStyleProps(props, validAttributes) {
 }
 
 // Modules provided by RN:
-var emptyObject = {};
+var emptyObject$1 = {};
 
 /**
  * Create a payload that contains all the updates between two sets of props.
@@ -3069,8 +2942,8 @@ function restoreDeletedValuesInNestedArray(
       if (!removedKeys[propKey]) {
         continue;
       }
-      var nextProp = obj[propKey];
-      if (nextProp === undefined) {
+      var _nextProp = obj[propKey];
+      if (_nextProp === undefined) {
         continue;
       }
 
@@ -3079,16 +2952,16 @@ function restoreDeletedValuesInNestedArray(
         continue; // not a valid native prop
       }
 
-      if (typeof nextProp === "function") {
-        nextProp = true;
+      if (typeof _nextProp === "function") {
+        _nextProp = true;
       }
-      if (typeof nextProp === "undefined") {
-        nextProp = null;
+      if (typeof _nextProp === "undefined") {
+        _nextProp = null;
       }
 
       if (typeof attributeConfig !== "object") {
         // case: !Object is the default case
-        updatePayload[propKey] = nextProp;
+        updatePayload[propKey] = _nextProp;
       } else if (
         typeof attributeConfig.diff === "function" ||
         typeof attributeConfig.process === "function"
@@ -3096,8 +2969,8 @@ function restoreDeletedValuesInNestedArray(
         // case: CustomAttributeConfiguration
         var nextValue =
           typeof attributeConfig.process === "function"
-            ? attributeConfig.process(nextProp)
-            : nextProp;
+            ? attributeConfig.process(_nextProp)
+            : _nextProp;
         updatePayload[propKey] = nextValue;
       }
       removedKeys[propKey] = false;
@@ -3428,7 +3301,7 @@ function diffProperties(updatePayload, prevProps, nextProps, validAttributes) {
  */
 function addProperties(updatePayload, props, validAttributes) {
   // TODO: Fast path
-  return diffProperties(updatePayload, emptyObject, props, validAttributes);
+  return diffProperties(updatePayload, emptyObject$1, props, validAttributes);
 }
 
 /**
@@ -3437,7 +3310,12 @@ function addProperties(updatePayload, props, validAttributes) {
  */
 function clearProperties(updatePayload, prevProps, validAttributes) {
   // TODO: Fast path
-  return diffProperties(updatePayload, prevProps, emptyObject, validAttributes);
+  return diffProperties(
+    updatePayload,
+    prevProps,
+    emptyObject$1,
+    validAttributes
+  );
 }
 
 function create(props, validAttributes) {
@@ -3471,6 +3349,13 @@ var now$1 = hasNativePerformanceNow
 var scheduledCallback = null;
 var frameDeadline = 0;
 
+var frameDeadlineObject = {
+  timeRemaining: function() {
+    return frameDeadline - now$1();
+  },
+  didTimeout: false
+};
+
 function setTimeoutCallback() {
   // TODO (bvaughn) Hard-coded 5ms unblocks initial async testing.
   // React API probably changing to boolean rather than time remaining.
@@ -3481,7 +3366,7 @@ function setTimeoutCallback() {
   var callback = scheduledCallback;
   scheduledCallback = null;
   if (callback !== null) {
-    callback();
+    callback(frameDeadlineObject);
   }
 }
 
@@ -3500,26 +3385,10 @@ function cancelDeferredCallback$1(callbackID) {
   clearTimeout(callbackID); // Timeouts are always numbers on RN
 }
 
-function shouldYield$1() {
-  return frameDeadline <= now$1();
-}
-
-var debugRenderPhaseSideEffects = false;
-var debugRenderPhaseSideEffectsForStrictMode = false;
-var enableUserTimingAPI = true;
-var replayFailedUnitOfWorkWithInvokeGuardedCallback = true;
-var warnAboutDeprecatedLifecycles = false;
-var enableProfilerTimer = true;
-var enableSchedulerTracing = true;
-var enableSuspenseServerRenderer = false;
-
-var warnAboutDeprecatedSetNativeProps = false;
-
-// Only used in www builds.
-
 // Use to restore controlled state after a change event has fired.
 
-var restoreImpl = null;
+var fiberHostComponent = null;
+
 var restoreTarget = null;
 var restoreQueue = null;
 
@@ -3532,12 +3401,17 @@ function restoreStateOfTarget(target) {
     return;
   }
   invariant(
-    typeof restoreImpl === "function",
-    "setRestoreImplementation() needs to be called to handle a target for controlled " +
+    fiberHostComponent &&
+      typeof fiberHostComponent.restoreControlledState === "function",
+    "Fiber needs to be injected to handle a fiber target for controlled " +
       "events. This error is likely caused by a bug in React. Please file an issue."
   );
   var props = getFiberCurrentPropsFromNode(internalInstance.stateNode);
-  restoreImpl(internalInstance.stateNode, internalInstance.type, props);
+  fiberHostComponent.restoreControlledState(
+    internalInstance.stateNode,
+    internalInstance.type,
+    props
+  );
 }
 
 function needsStateRestore() {
@@ -3568,10 +3442,13 @@ function restoreStateIfNeeded() {
 // scheduled work and instead do synchronous work.
 
 // Defaults
-var _batchedUpdatesImpl = function(fn, bookkeeping) {
+var _batchedUpdates = function(fn, bookkeeping) {
   return fn(bookkeeping);
 };
-var _flushInteractiveUpdatesImpl = function() {};
+var _interactiveUpdates = function(fn, a, b) {
+  return fn(a, b);
+};
+var _flushInteractiveUpdates = function() {};
 
 var isBatching = false;
 function batchedUpdates(fn, bookkeeping) {
@@ -3582,7 +3459,7 @@ function batchedUpdates(fn, bookkeeping) {
   }
   isBatching = true;
   try {
-    return _batchedUpdatesImpl(fn, bookkeeping);
+    return _batchedUpdates(fn, bookkeeping);
   } finally {
     // Here we wait until all updates have propagated, which is important
     // when using controlled components within layers:
@@ -3594,20 +3471,19 @@ function batchedUpdates(fn, bookkeeping) {
       // If a controlled event was fired, we may need to restore the state of
       // the DOM node back to the controlled value. This is necessary when React
       // bails out of the update without touching the DOM.
-      _flushInteractiveUpdatesImpl();
+      _flushInteractiveUpdates();
       restoreStateIfNeeded();
     }
   }
 }
 
-function setBatchingImplementation(
-  batchedUpdatesImpl,
-  interactiveUpdatesImpl,
-  flushInteractiveUpdatesImpl
-) {
-  _batchedUpdatesImpl = batchedUpdatesImpl;
-  _flushInteractiveUpdatesImpl = flushInteractiveUpdatesImpl;
-}
+var injection$2 = {
+  injectRenderer: function(renderer) {
+    _batchedUpdates = renderer.batchedUpdates;
+    _interactiveUpdates = renderer.interactiveUpdates;
+    _flushInteractiveUpdates = renderer.flushInteractiveUpdates;
+  }
+};
 
 function dispatchEvent(target, topLevelType, nativeEvent) {
   var targetFiber = target;
@@ -3647,10 +3523,6 @@ var insertInContainerBefore = shim;
 var removeChild = shim;
 var removeChildFromContainer = shim;
 var resetTextContent = shim;
-var hideInstance = shim;
-var hideTextInstance = shim;
-var unhideInstance = shim;
-var unhideTextInstance = shim;
 
 // Renderers that don't support hydration
 // can re-export everything from this module.
@@ -3658,38 +3530,28 @@ var unhideTextInstance = shim;
 function shim$1() {
   invariant(
     false,
-    "The current renderer does not support hydration. " +
+    "The current renderer does not support hyration. " +
       "This error is likely caused by a bug in React. " +
       "Please file an issue."
   );
 }
 
 // Hydration (when unsupported)
-
 var supportsHydration = false;
 var canHydrateInstance = shim$1;
 var canHydrateTextInstance = shim$1;
-var canHydrateSuspenseInstance = shim$1;
-var isSuspenseInstancePending = shim$1;
-var isSuspenseInstanceFallback = shim$1;
-var registerSuspenseInstanceRetry = shim$1;
 var getNextHydratableSibling = shim$1;
 var getFirstHydratableChild = shim$1;
 var hydrateInstance = shim$1;
 var hydrateTextInstance = shim$1;
-var getNextHydratableInstanceAfterSuspenseInstance = shim$1;
-var clearSuspenseBoundary = shim$1;
-var clearSuspenseBoundaryFromContainer = shim$1;
 var didNotMatchHydratedContainerTextInstance = shim$1;
 var didNotMatchHydratedTextInstance = shim$1;
 var didNotHydrateContainerInstance = shim$1;
 var didNotHydrateInstance = shim$1;
 var didNotFindHydratableContainerInstance = shim$1;
 var didNotFindHydratableContainerTextInstance = shim$1;
-var didNotFindHydratableContainerSuspenseInstance = shim$1;
 var didNotFindHydratableInstance = shim$1;
 var didNotFindHydratableTextInstance = shim$1;
-var didNotFindHydratableSuspenseInstance = shim$1;
 
 function _classCallCheck(instance, Constructor) {
   if (!(instance instanceof Constructor)) {
@@ -3734,10 +3596,7 @@ var ReactFabricHostComponent = (function() {
   };
 
   ReactFabricHostComponent.prototype.measure = function measure(callback) {
-    UIManager.measure(
-      this._nativeTag,
-      mountSafeCallback_NOT_REALLY_SAFE(this, callback)
-    );
+    UIManager.measure(this._nativeTag, mountSafeCallback(this, callback));
   };
 
   ReactFabricHostComponent.prototype.measureInWindow = function measureInWindow(
@@ -3745,7 +3604,7 @@ var ReactFabricHostComponent = (function() {
   ) {
     UIManager.measureInWindow(
       this._nativeTag,
-      mountSafeCallback_NOT_REALLY_SAFE(this, callback)
+      mountSafeCallback(this, callback)
     );
   };
 
@@ -3757,8 +3616,8 @@ var ReactFabricHostComponent = (function() {
     UIManager.measureLayout(
       this._nativeTag,
       relativeToNativeNode,
-      mountSafeCallback_NOT_REALLY_SAFE(this, onFail),
-      mountSafeCallback_NOT_REALLY_SAFE(this, onSuccess)
+      mountSafeCallback(this, onFail),
+      mountSafeCallback(this, onSuccess)
     );
   };
 
@@ -3766,15 +3625,6 @@ var ReactFabricHostComponent = (function() {
     nativeProps
   ) {
     {
-      if (warnAboutDeprecatedSetNativeProps) {
-        warningWithoutStack$1(
-          false,
-          "Warning: Calling ref.setNativeProps(nativeProps) " +
-            "is deprecated and will be removed in a future release. " +
-            "Use the setNativeProps export from the react-native package instead." +
-            "\n\timport {setNativeProps} from 'react-native';\n\tsetNativeProps(ref, nativeProps);\n"
-        );
-      }
       warnForStyleProps(nativeProps, this.viewConfig.validAttributes);
     }
 
@@ -3944,16 +3794,9 @@ function shouldSetTextContent(type, props) {
 
 // The Fabric renderer is secondary to the existing React Native renderer.
 var isPrimaryRenderer = false;
-var now$$1 = now$1;
-var scheduleDeferredCallback$$1 = scheduleDeferredCallback$1;
-var cancelDeferredCallback$$1 = cancelDeferredCallback$1;
-var shouldYield$$1 = shouldYield$1;
-
-var scheduleTimeout = setTimeout;
-var cancelTimeout = clearTimeout;
-var noTimeout = -1;
-var schedulePassiveEffects = scheduleDeferredCallback$$1;
-var cancelPassiveEffects = cancelDeferredCallback$$1;
+var now = now$1;
+var scheduleDeferredCallback = scheduleDeferredCallback$1;
+var cancelDeferredCallback = cancelDeferredCallback$1;
 
 // -------------------
 //     Persistence
@@ -3975,60 +3818,32 @@ function cloneInstance(
   var clone = void 0;
   if (keepChildren) {
     if (updatePayload !== null) {
-      clone = FabricUIManager.cloneNodeWithNewProps(node, updatePayload);
+      clone = FabricUIManager.cloneNodeWithNewProps(
+        node,
+        updatePayload,
+        internalInstanceHandle
+      );
     } else {
-      clone = FabricUIManager.cloneNode(node);
+      clone = FabricUIManager.cloneNode(node, internalInstanceHandle);
     }
   } else {
     if (updatePayload !== null) {
       clone = FabricUIManager.cloneNodeWithNewChildrenAndProps(
         node,
-        updatePayload
+        updatePayload,
+        internalInstanceHandle
       );
     } else {
-      clone = FabricUIManager.cloneNodeWithNewChildren(node);
+      clone = FabricUIManager.cloneNodeWithNewChildren(
+        node,
+        internalInstanceHandle
+      );
     }
   }
   return {
     node: clone,
     canonical: instance.canonical
   };
-}
-
-function cloneHiddenInstance(instance, type, props, internalInstanceHandle) {
-  var viewConfig = instance.canonical.viewConfig;
-  var node = instance.node;
-  var updatePayload = create(
-    { style: { display: "none" } },
-    viewConfig.validAttributes
-  );
-  return {
-    node: FabricUIManager.cloneNodeWithNewProps(node, updatePayload),
-    canonical: instance.canonical
-  };
-}
-
-function cloneUnhiddenInstance(instance, type, props, internalInstanceHandle) {
-  var viewConfig = instance.canonical.viewConfig;
-  var node = instance.node;
-  var updatePayload = diff(
-    Object.assign({}, props, { style: [props.style, { display: "none" }] }),
-    props,
-    viewConfig.validAttributes
-  );
-  return {
-    node: FabricUIManager.cloneNodeWithNewProps(node, updatePayload),
-    canonical: instance.canonical
-  };
-}
-
-function createHiddenTextInstance(
-  text,
-  rootContainerInstance,
-  hostContext,
-  internalInstanceHandle
-) {
-  throw new Error("Not yet implemented.");
 }
 
 function createContainerChildSet(container) {
@@ -4043,116 +3858,117 @@ function finalizeContainerChildren(container, newChildren) {
   FabricUIManager.completeRoot(container, newChildren);
 }
 
-var BEFORE_SLASH_RE = /^(.*)[\\\/]/;
-
 var describeComponentFrame = function(name, source, ownerName) {
-  var sourceInfo = "";
-  if (source) {
-    var path = source.fileName;
-    var fileName = path.replace(BEFORE_SLASH_RE, "");
-    {
-      // In DEV, include code for a common special case:
-      // prefer "folder/index.js" instead of just "index.js".
-      if (/^index\./.test(fileName)) {
-        var match = path.match(BEFORE_SLASH_RE);
-        if (match) {
-          var pathBeforeSlash = match[1];
-          if (pathBeforeSlash) {
-            var folderName = pathBeforeSlash.replace(BEFORE_SLASH_RE, "");
-            fileName = folderName + "/" + fileName;
-          }
-        }
-      }
-    }
-    sourceInfo = " (at " + fileName + ":" + source.lineNumber + ")";
-  } else if (ownerName) {
-    sourceInfo = " (created by " + ownerName + ")";
-  }
-  return "\n    in " + (name || "Unknown") + sourceInfo;
+  return (
+    "\n    in " +
+    (name || "Unknown") +
+    (source
+      ? " (at " +
+        source.fileName.replace(/^.*[\\\/]/, "") +
+        ":" +
+        source.lineNumber +
+        ")"
+      : ownerName ? " (created by " + ownerName + ")" : "")
+  );
 };
-
-var ReactDebugCurrentFrame = ReactSharedInternals.ReactDebugCurrentFrame;
 
 function describeFiber(fiber) {
   switch (fiber.tag) {
-    case HostRoot:
-    case HostPortal:
-    case HostText:
-    case Fragment:
-    case ContextProvider:
-    case ContextConsumer:
-      return "";
-    default:
+    case IndeterminateComponent:
+    case FunctionalComponent:
+    case ClassComponent:
+    case HostComponent:
       var owner = fiber._debugOwner;
       var source = fiber._debugSource;
-      var name = getComponentName(fiber.type);
+      var name = getComponentName(fiber);
       var ownerName = null;
       if (owner) {
-        ownerName = getComponentName(owner.type);
+        ownerName = getComponentName(owner);
       }
       return describeComponentFrame(name, source, ownerName);
+    default:
+      return "";
   }
 }
 
-function getStackByFiberInDevAndProd(workInProgress) {
+// This function can only be called with a work-in-progress fiber and
+// only during begin or complete phase. Do not call it under any other
+// circumstances.
+function getStackAddendumByWorkInProgressFiber(workInProgress) {
   var info = "";
   var node = workInProgress;
   do {
     info += describeFiber(node);
+    // Otherwise this return pointer might point to the wrong tree:
     node = node.return;
   } while (node);
   return info;
 }
 
-var current = null;
-var phase = null;
-
-function getCurrentFiberOwnerNameInDevOrNull() {
+function getCurrentFiberOwnerName() {
   {
-    if (current === null) {
+    var fiber = ReactDebugCurrentFiber.current;
+    if (fiber === null) {
       return null;
     }
-    var owner = current._debugOwner;
+    var owner = fiber._debugOwner;
     if (owner !== null && typeof owner !== "undefined") {
-      return getComponentName(owner.type);
+      return getComponentName(owner);
     }
   }
   return null;
 }
 
-function getCurrentFiberStackInDev() {
+function getCurrentFiberStackAddendum() {
   {
-    if (current === null) {
-      return "";
+    var fiber = ReactDebugCurrentFiber.current;
+    if (fiber === null) {
+      return null;
     }
     // Safe because if current fiber exists, we are reconciling,
     // and it is guaranteed to be the work-in-progress version.
-    return getStackByFiberInDevAndProd(current);
+    return getStackAddendumByWorkInProgressFiber(fiber);
   }
-  return "";
+  return null;
 }
 
 function resetCurrentFiber() {
-  {
-    ReactDebugCurrentFrame.getCurrentStack = null;
-    current = null;
-    phase = null;
-  }
+  ReactDebugCurrentFrame.getCurrentStack = null;
+  ReactDebugCurrentFiber.current = null;
+  ReactDebugCurrentFiber.phase = null;
 }
 
 function setCurrentFiber(fiber) {
-  {
-    ReactDebugCurrentFrame.getCurrentStack = getCurrentFiberStackInDev;
-    current = fiber;
-    phase = null;
-  }
+  ReactDebugCurrentFrame.getCurrentStack = getCurrentFiberStackAddendum;
+  ReactDebugCurrentFiber.current = fiber;
+  ReactDebugCurrentFiber.phase = null;
 }
 
-function setCurrentPhase(lifeCyclePhase) {
-  {
-    phase = lifeCyclePhase;
-  }
+function setCurrentPhase(phase) {
+  ReactDebugCurrentFiber.phase = phase;
 }
+
+var ReactDebugCurrentFiber = {
+  current: null,
+  phase: null,
+  resetCurrentFiber: resetCurrentFiber,
+  setCurrentFiber: setCurrentFiber,
+  setCurrentPhase: setCurrentPhase,
+  getCurrentFiberOwnerName: getCurrentFiberOwnerName,
+  getCurrentFiberStackAddendum: getCurrentFiberStackAddendum
+};
+
+var debugRenderPhaseSideEffects = false;
+var debugRenderPhaseSideEffectsForStrictMode = false;
+var enableUserTimingAPI = true;
+var enableGetDerivedStateFromCatch = false;
+var enableSuspense = false;
+var warnAboutDeprecatedLifecycles = false;
+var warnAboutLegacyContextAPI = false;
+var replayFailedUnitOfWorkWithInvokeGuardedCallback = true;
+var enableProfilerTimer = true;
+
+// Only used in www builds.
 
 // Prefix measurements so that it's possible to filter them.
 // Longer prefixes are hard to read in DevTools.
@@ -4191,9 +4007,9 @@ var formatMarkName = function(markName) {
   return reactEmoji + " " + markName;
 };
 
-var formatLabel = function(label, warning) {
-  var prefix = warning ? warningEmoji + " " : reactEmoji + " ";
-  var suffix = warning ? " Warning: " + warning : "";
+var formatLabel = function(label, warning$$1) {
+  var prefix = warning$$1 ? warningEmoji + " " : reactEmoji + " ";
+  var suffix = warning$$1 ? " Warning: " + warning$$1 : "";
   return "" + prefix + label + suffix;
 };
 
@@ -4205,9 +4021,9 @@ var clearMark = function(markName) {
   performance.clearMarks(formatMarkName(markName));
 };
 
-var endMark = function(label, markName, warning) {
+var endMark = function(label, markName, warning$$1) {
   var formattedMarkName = formatMarkName(markName);
-  var formattedLabel = formatLabel(label, warning);
+  var formattedLabel = formatLabel(label, warning$$1);
   try {
     performance.measure(formattedLabel, formattedMarkName);
   } catch (err) {}
@@ -4235,7 +4051,7 @@ var getFiberLabel = function(componentName, isMounted, phase) {
 };
 
 var beginFiberMark = function(fiber, phase) {
-  var componentName = getComponentName(fiber.type) || "Unknown";
+  var componentName = getComponentName(fiber) || "Unknown";
   var debugID = fiber._debugID;
   var isMounted = fiber.alternate !== null;
   var label = getFiberLabel(componentName, isMounted, phase);
@@ -4254,7 +4070,7 @@ var beginFiberMark = function(fiber, phase) {
 };
 
 var clearFiberMark = function(fiber, phase) {
-  var componentName = getComponentName(fiber.type) || "Unknown";
+  var componentName = getComponentName(fiber) || "Unknown";
   var debugID = fiber._debugID;
   var isMounted = fiber.alternate !== null;
   var label = getFiberLabel(componentName, isMounted, phase);
@@ -4262,13 +4078,13 @@ var clearFiberMark = function(fiber, phase) {
   clearMark(markName);
 };
 
-var endFiberMark = function(fiber, phase, warning) {
-  var componentName = getComponentName(fiber.type) || "Unknown";
+var endFiberMark = function(fiber, phase, warning$$1) {
+  var componentName = getComponentName(fiber) || "Unknown";
   var debugID = fiber._debugID;
   var isMounted = fiber.alternate !== null;
   var label = getFiberLabel(componentName, isMounted, phase);
   var markName = getFiberMarkName(label, debugID);
-  endMark(label, markName, warning);
+  endMark(label, markName, warning$$1);
 };
 
 var shouldIgnoreFiber = function(fiber) {
@@ -4360,13 +4176,13 @@ function stopRequestCallbackTimer(didExpire, expirationTime) {
   if (enableUserTimingAPI) {
     if (supportsUserTiming) {
       isWaitingForCallback = false;
-      var warning = didExpire ? "React was blocked by main thread" : null;
+      var warning$$1 = didExpire ? "React was blocked by main thread" : null;
       endMark(
         "(Waiting for async callback... will force flush in " +
           expirationTime +
           " ms)",
         "(Waiting for async callback...)",
-        warning
+        warning$$1
       );
     }
   }
@@ -4424,12 +4240,8 @@ function stopFailedWorkTimer(fiber) {
       return;
     }
     fiber._debugIsCurrentlyTiming = false;
-    var warning =
-      fiber.tag === SuspenseComponent ||
-      fiber.tag === DehydratedSuspenseComponent
-        ? "Rendering was suspended"
-        : "An error was thrown inside this error boundary";
-    endFiberMark(fiber, null, warning);
+    var warning$$1 = "An error was thrown inside this error boundary";
+    endFiberMark(fiber, null, warning$$1);
   }
 }
 
@@ -4453,10 +4265,10 @@ function stopPhaseTimer() {
       return;
     }
     if (currentPhase !== null && currentPhaseFiber !== null) {
-      var warning = hasScheduledUpdateInCurrentPhase
+      var warning$$1 = hasScheduledUpdateInCurrentPhase
         ? "Scheduled a cascading update"
         : null;
-      endFiberMark(currentPhaseFiber, currentPhase, warning);
+      endFiberMark(currentPhaseFiber, currentPhase, warning$$1);
     }
     currentPhase = null;
     currentPhaseFiber = null;
@@ -4483,17 +4295,17 @@ function stopWorkLoopTimer(interruptedBy, didCompleteRoot) {
     if (!supportsUserTiming) {
       return;
     }
-    var warning = null;
+    var warning$$1 = null;
     if (interruptedBy !== null) {
       if (interruptedBy.tag === HostRoot) {
-        warning = "A top-level update interrupted the previous render";
+        warning$$1 = "A top-level update interrupted the previous render";
       } else {
-        var componentName = getComponentName(interruptedBy.type) || "Unknown";
-        warning =
+        var componentName = getComponentName(interruptedBy) || "Unknown";
+        warning$$1 =
           "An update to " + componentName + " interrupted the previous render";
       }
     } else if (commitCountInCurrentWorkLoop > 1) {
-      warning = "There were cascading updates";
+      warning$$1 = "There were cascading updates";
     }
     commitCountInCurrentWorkLoop = 0;
     var label = didCompleteRoot
@@ -4501,7 +4313,7 @@ function stopWorkLoopTimer(interruptedBy, didCompleteRoot) {
       : "(React Tree Reconciliation: Yielded)";
     // Pause any measurements until the next loop.
     pauseTimers();
-    endMark(label, "(React Tree Reconciliation)", warning);
+    endMark(label, "(React Tree Reconciliation)", warning$$1);
   }
 }
 
@@ -4523,18 +4335,18 @@ function stopCommitTimer() {
       return;
     }
 
-    var warning = null;
+    var warning$$1 = null;
     if (hasScheduledUpdateInCurrentCommit) {
-      warning = "Lifecycle hook scheduled a cascading update";
+      warning$$1 = "Lifecycle hook scheduled a cascading update";
     } else if (commitCountInCurrentWorkLoop > 0) {
-      warning = "Caused by a cascading update in earlier commit";
+      warning$$1 = "Caused by a cascading update in earlier commit";
     }
     hasScheduledUpdateInCurrentCommit = false;
     commitCountInCurrentWorkLoop++;
     isCommitting = false;
     labelsInCurrentCommit.clear();
 
-    endMark("(Committing Changes)", "(Committing Changes)", warning);
+    endMark("(Committing Changes)", "(Committing Changes)", warning$$1);
   }
 }
 
@@ -4632,14 +4444,14 @@ function createCursor(defaultValue) {
 function pop(cursor, fiber) {
   if (index < 0) {
     {
-      warningWithoutStack$1(false, "Unexpected pop.");
+      warning(false, "Unexpected pop.");
     }
     return;
   }
 
   {
     if (fiber !== fiberStack[index]) {
-      warningWithoutStack$1(false, "Unexpected Fiber popped.");
+      warning(false, "Unexpected Fiber popped.");
     }
   }
 
@@ -4669,7 +4481,7 @@ function push(cursor, value, fiber) {
 function checkThatStackIsEmpty() {
   {
     if (index !== -1) {
-      warningWithoutStack$1(
+      warning(
         false,
         "Expected an empty stack. Something was not reset properly."
       );
@@ -4691,28 +4503,20 @@ var warnedAboutMissingGetChildContext = void 0;
   warnedAboutMissingGetChildContext = {};
 }
 
-var emptyContextObject = {};
-{
-  Object.freeze(emptyContextObject);
-}
-
 // A cursor to the current merged context object on the stack.
-var contextStackCursor = createCursor(emptyContextObject);
+var contextStackCursor = createCursor(emptyObject);
 // A cursor to a boolean indicating whether the context has changed.
 var didPerformWorkStackCursor = createCursor(false);
 // Keep track of the previous context object that was on the stack.
 // We use this to get access to the parent context after we have already
 // pushed the next context provider, and now need to merge their contexts.
-var previousContext = emptyContextObject;
+var previousContext = emptyObject;
 
-function getUnmaskedContext(
-  workInProgress,
-  Component,
-  didPushOwnContextIfProvider
-) {
-  if (didPushOwnContextIfProvider && isContextProvider(Component)) {
+function getUnmaskedContext(workInProgress) {
+  var hasOwnContext = isContextProvider(workInProgress);
+  if (hasOwnContext) {
     // If the fiber is a context provider itself, when we read its context
-    // we may have already pushed its own child context on the stack. A context
+    // we have already pushed its own child context on the stack. A context
     // provider should not "see" its own child context. Therefore we read the
     // previous (parent) context instead for a context provider.
     return previousContext;
@@ -4730,7 +4534,7 @@ function getMaskedContext(workInProgress, unmaskedContext) {
   var type = workInProgress.type;
   var contextTypes = type.contextTypes;
   if (!contextTypes) {
-    return emptyContextObject;
+    return emptyObject;
   }
 
   // Avoid recreating masked context unless unmasked context has changed.
@@ -4750,13 +4554,13 @@ function getMaskedContext(workInProgress, unmaskedContext) {
   }
 
   {
-    var name = getComponentName(type) || "Unknown";
+    var name = getComponentName(workInProgress) || "Unknown";
     checkPropTypes(
       contextTypes,
       context,
       "context",
       name,
-      getCurrentFiberStackInDev
+      ReactDebugCurrentFiber.getCurrentFiberStackAddendum
     );
   }
 
@@ -4773,12 +4577,19 @@ function hasContextChanged() {
   return didPerformWorkStackCursor.current;
 }
 
-function isContextProvider(type) {
-  var childContextTypes = type.childContextTypes;
-  return childContextTypes !== null && childContextTypes !== undefined;
+function isContextConsumer(fiber) {
+  return fiber.tag === ClassComponent && fiber.type.contextTypes != null;
 }
 
-function popContext(fiber) {
+function isContextProvider(fiber) {
+  return fiber.tag === ClassComponent && fiber.type.childContextTypes != null;
+}
+
+function popContextProvider(fiber) {
+  if (!isContextProvider(fiber)) {
+    return;
+  }
+
   pop(didPerformWorkStackCursor, fiber);
   pop(contextStackCursor, fiber);
 }
@@ -4790,7 +4601,7 @@ function popTopLevelContextObject(fiber) {
 
 function pushTopLevelContextObject(fiber, context, didChange) {
   invariant(
-    contextStackCursor.current === emptyContextObject,
+    contextStackCursor.current === emptyObject,
     "Unexpected context found on stack. " +
       "This error is likely caused by a bug in React. Please file an issue."
   );
@@ -4799,19 +4610,19 @@ function pushTopLevelContextObject(fiber, context, didChange) {
   push(didPerformWorkStackCursor, didChange, fiber);
 }
 
-function processChildContext(fiber, type, parentContext) {
+function processChildContext(fiber, parentContext) {
   var instance = fiber.stateNode;
-  var childContextTypes = type.childContextTypes;
+  var childContextTypes = fiber.type.childContextTypes;
 
   // TODO (bvaughn) Replace this behavior with an invariant() in the future.
   // It has only been added in Fiber to match the (unintentional) behavior in Stack.
   if (typeof instance.getChildContext !== "function") {
     {
-      var componentName = getComponentName(type) || "Unknown";
+      var componentName = getComponentName(fiber) || "Unknown";
 
       if (!warnedAboutMissingGetChildContext[componentName]) {
         warnedAboutMissingGetChildContext[componentName] = true;
-        warningWithoutStack$1(
+        warning(
           false,
           "%s.childContextTypes is specified but there is no getChildContext() method " +
             "on the instance. You can either define getChildContext() on %s or remove " +
@@ -4826,24 +4637,24 @@ function processChildContext(fiber, type, parentContext) {
 
   var childContext = void 0;
   {
-    setCurrentPhase("getChildContext");
+    ReactDebugCurrentFiber.setCurrentPhase("getChildContext");
   }
   startPhaseTimer(fiber, "getChildContext");
   childContext = instance.getChildContext();
   stopPhaseTimer();
   {
-    setCurrentPhase(null);
+    ReactDebugCurrentFiber.setCurrentPhase(null);
   }
   for (var contextKey in childContext) {
     invariant(
       contextKey in childContextTypes,
       '%s.getChildContext(): key "%s" is not defined in childContextTypes.',
-      getComponentName(type) || "Unknown",
+      getComponentName(fiber) || "Unknown",
       contextKey
     );
   }
   {
-    var name = getComponentName(type) || "Unknown";
+    var name = getComponentName(fiber) || "Unknown";
     checkPropTypes(
       childContextTypes,
       childContext,
@@ -4854,7 +4665,7 @@ function processChildContext(fiber, type, parentContext) {
       // context from the parent component instance. The stack will be missing
       // because it's outside of the reconciliation, and so the pointer has not
       // been set. This is rare and doesn't matter. We'll also remove that API.
-      getCurrentFiberStackInDev
+      ReactDebugCurrentFiber.getCurrentFiberStackAddendum
     );
   }
 
@@ -4862,13 +4673,17 @@ function processChildContext(fiber, type, parentContext) {
 }
 
 function pushContextProvider(workInProgress) {
+  if (!isContextProvider(workInProgress)) {
+    return false;
+  }
+
   var instance = workInProgress.stateNode;
   // We push the context as early as possible to ensure stack integrity.
   // If the instance does not exist yet, we will push null at first,
   // and replace it on the stack later when invalidating the context.
   var memoizedMergedChildContext =
     (instance && instance.__reactInternalMemoizedMergedChildContext) ||
-    emptyContextObject;
+    emptyObject;
 
   // Remember the parent context so we can merge with it later.
   // Inherit the parent's did-perform-work value to avoid inadvertently blocking updates.
@@ -4883,7 +4698,7 @@ function pushContextProvider(workInProgress) {
   return true;
 }
 
-function invalidateContextProvider(workInProgress, type, didChange) {
+function invalidateContextProvider(workInProgress, didChange) {
   var instance = workInProgress.stateNode;
   invariant(
     instance,
@@ -4895,11 +4710,7 @@ function invalidateContextProvider(workInProgress, type, didChange) {
     // Merge parent and own context.
     // Skip this if we're not updating due to sCU.
     // This avoids unnecessarily recomputing memoized values.
-    var mergedContext = processChildContext(
-      workInProgress,
-      type,
-      previousContext
-    );
+    var mergedContext = processChildContext(workInProgress, previousContext);
     instance.__reactInternalMemoizedMergedChildContext = mergedContext;
 
     // Replace the old (or empty) context with the new one.
@@ -4925,129 +4736,41 @@ function findCurrentUnmaskedContext(fiber) {
   );
 
   var node = fiber;
-  do {
-    switch (node.tag) {
-      case HostRoot:
-        return node.stateNode.context;
-      case ClassComponent: {
-        var Component = node.type;
-        if (isContextProvider(Component)) {
-          return node.stateNode.__reactInternalMemoizedMergedChildContext;
-        }
-        break;
-      }
+  while (node.tag !== HostRoot) {
+    if (isContextProvider(node)) {
+      return node.stateNode.__reactInternalMemoizedMergedChildContext;
     }
-    node = node.return;
-  } while (node !== null);
-  invariant(
-    false,
-    "Found unexpected detached subtree parent. " +
-      "This error is likely caused by a bug in React. Please file an issue."
-  );
-}
-
-var onCommitFiberRoot = null;
-var onCommitFiberUnmount = null;
-var hasLoggedError = false;
-
-function catchErrors(fn) {
-  return function(arg) {
-    try {
-      return fn(arg);
-    } catch (err) {
-      if (true && !hasLoggedError) {
-        hasLoggedError = true;
-        warningWithoutStack$1(
-          false,
-          "React DevTools encountered an error: %s",
-          err
-        );
-      }
-    }
-  };
-}
-
-var isDevToolsPresent = typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined";
-
-function injectInternals(internals) {
-  if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ === "undefined") {
-    // No DevTools
-    return false;
+    var parent = node.return;
+    invariant(
+      parent,
+      "Found unexpected detached subtree parent. " +
+        "This error is likely caused by a bug in React. Please file an issue."
+    );
+    node = parent;
   }
-  var hook = __REACT_DEVTOOLS_GLOBAL_HOOK__;
-  if (hook.isDisabled) {
-    // This isn't a real property on the hook, but it can be set to opt out
-    // of DevTools integration and associated warnings and logs.
-    // https://github.com/facebook/react/issues/3877
-    return true;
-  }
-  if (!hook.supportsFiber) {
-    {
-      warningWithoutStack$1(
-        false,
-        "The installed version of React DevTools is too old and will not work " +
-          "with the current version of React. Please update React DevTools. " +
-          "https://fb.me/react-devtools"
-      );
-    }
-    // DevTools exists, even though it doesn't support Fiber.
-    return true;
-  }
-  try {
-    var rendererID = hook.inject(internals);
-    // We have successfully injected, so now it is safe to set up hooks.
-    onCommitFiberRoot = catchErrors(function(root) {
-      return hook.onCommitFiberRoot(rendererID, root);
-    });
-    onCommitFiberUnmount = catchErrors(function(fiber) {
-      return hook.onCommitFiberUnmount(rendererID, fiber);
-    });
-  } catch (err) {
-    // Catch all errors because it is unsafe to throw during initialization.
-    {
-      warningWithoutStack$1(
-        false,
-        "React DevTools encountered an error: %s.",
-        err
-      );
-    }
-  }
-  // DevTools exists
-  return true;
-}
-
-function onCommitRoot(root) {
-  if (typeof onCommitFiberRoot === "function") {
-    onCommitFiberRoot(root);
-  }
-}
-
-function onCommitUnmount(fiber) {
-  if (typeof onCommitFiberUnmount === "function") {
-    onCommitFiberUnmount(fiber);
-  }
+  return node.stateNode.context;
 }
 
 // Max 31 bit integer. The max integer size in V8 for 32-bit systems.
 // Math.pow(2, 30) - 1
 // 0b111111111111111111111111111111
-var maxSigned31BitInt = 1073741823;
+var MAX_SIGNED_31_BIT_INT = 1073741823;
 
 var NoWork = 0;
-var Never = 1;
-var Sync = maxSigned31BitInt;
+var Sync = 1;
+var Never = MAX_SIGNED_31_BIT_INT;
 
 var UNIT_SIZE = 10;
-var MAGIC_NUMBER_OFFSET = maxSigned31BitInt - 1;
+var MAGIC_NUMBER_OFFSET = 2;
 
 // 1 unit of expiration time represents 10ms.
 function msToExpirationTime(ms) {
   // Always add an offset so that we don't clash with the magic number for NoWork.
-  return MAGIC_NUMBER_OFFSET - ((ms / UNIT_SIZE) | 0);
+  return ((ms / UNIT_SIZE) | 0) + MAGIC_NUMBER_OFFSET;
 }
 
 function expirationTimeToMs(expirationTime) {
-  return (MAGIC_NUMBER_OFFSET - expirationTime) * UNIT_SIZE;
+  return (expirationTime - MAGIC_NUMBER_OFFSET) * UNIT_SIZE;
 }
 
 function ceiling(num, precision) {
@@ -5056,49 +4779,16 @@ function ceiling(num, precision) {
 
 function computeExpirationBucket(currentTime, expirationInMs, bucketSizeMs) {
   return (
-    MAGIC_NUMBER_OFFSET -
+    MAGIC_NUMBER_OFFSET +
     ceiling(
-      MAGIC_NUMBER_OFFSET - currentTime + expirationInMs / UNIT_SIZE,
+      currentTime - MAGIC_NUMBER_OFFSET + expirationInMs / UNIT_SIZE,
       bucketSizeMs / UNIT_SIZE
     )
   );
 }
 
-var LOW_PRIORITY_EXPIRATION = 5000;
-var LOW_PRIORITY_BATCH_SIZE = 250;
-
-function computeAsyncExpiration(currentTime) {
-  return computeExpirationBucket(
-    currentTime,
-    LOW_PRIORITY_EXPIRATION,
-    LOW_PRIORITY_BATCH_SIZE
-  );
-}
-
-// We intentionally set a higher expiration time for interactive updates in
-// dev than in production.
-//
-// If the main thread is being blocked so long that you hit the expiration,
-// it's a problem that could be solved with better scheduling.
-//
-// People will be more likely to notice this and fix it with the long
-// expiration time in development.
-//
-// In production we opt for better UX at the risk of masking scheduling
-// problems, by expiring fast.
-var HIGH_PRIORITY_EXPIRATION = 500;
-var HIGH_PRIORITY_BATCH_SIZE = 100;
-
-function computeInteractiveExpiration(currentTime) {
-  return computeExpirationBucket(
-    currentTime,
-    HIGH_PRIORITY_EXPIRATION,
-    HIGH_PRIORITY_BATCH_SIZE
-  );
-}
-
 var NoContext = 0;
-var ConcurrentMode = 1;
+var AsyncMode = 1;
 var StrictMode = 2;
 var ProfileMode = 4;
 
@@ -5134,7 +4824,6 @@ function FiberNode(tag, pendingProps, key, mode) {
   // Instance
   this.tag = tag;
   this.key = key;
-  this.elementType = null;
   this.type = null;
   this.stateNode = null;
 
@@ -5150,7 +4839,6 @@ function FiberNode(tag, pendingProps, key, mode) {
   this.memoizedProps = null;
   this.updateQueue = null;
   this.memoizedState = null;
-  this.contextDependencies = null;
 
   this.mode = mode;
 
@@ -5162,35 +4850,14 @@ function FiberNode(tag, pendingProps, key, mode) {
   this.lastEffect = null;
 
   this.expirationTime = NoWork;
-  this.childExpirationTime = NoWork;
 
   this.alternate = null;
 
   if (enableProfilerTimer) {
-    // Note: The following is done to avoid a v8 performance cliff.
-    //
-    // Initializing the fields below to smis and later updating them with
-    // double values will cause Fibers to end up having separate shapes.
-    // This behavior/bug has something to do with Object.preventExtension().
-    // Fortunately this only impacts DEV builds.
-    // Unfortunately it makes React unusably slow for some applications.
-    // To work around this, initialize the fields below with doubles.
-    //
-    // Learn more about this here:
-    // https://github.com/facebook/react/issues/14365
-    // https://bugs.chromium.org/p/v8/issues/detail?id=8538
-    this.actualDuration = Number.NaN;
-    this.actualStartTime = Number.NaN;
-    this.selfBaseDuration = Number.NaN;
-    this.treeBaseDuration = Number.NaN;
-
-    // It's okay to replace the initial doubles with smis after initialization.
-    // This won't trigger the performance cliff mentioned above,
-    // and it simplifies other profiler code (including DevTools).
     this.actualDuration = 0;
-    this.actualStartTime = -1;
-    this.selfBaseDuration = 0;
-    this.treeBaseDuration = 0;
+    this.actualStartTime = 0;
+    this.selfBaseTime = 0;
+    this.treeBaseTime = 0;
   }
 
   {
@@ -5223,31 +4890,7 @@ var createFiber = function(tag, pendingProps, key, mode) {
 };
 
 function shouldConstruct(Component) {
-  var prototype = Component.prototype;
-  return !!(prototype && prototype.isReactComponent);
-}
-
-function isSimpleFunctionComponent(type) {
-  return (
-    typeof type === "function" &&
-    !shouldConstruct(type) &&
-    type.defaultProps === undefined
-  );
-}
-
-function resolveLazyComponentTag(Component) {
-  if (typeof Component === "function") {
-    return shouldConstruct(Component) ? ClassComponent : FunctionComponent;
-  } else if (Component !== undefined && Component !== null) {
-    var $$typeof = Component.$$typeof;
-    if ($$typeof === REACT_FORWARD_REF_TYPE) {
-      return ForwardRef;
-    }
-    if ($$typeof === REACT_MEMO_TYPE) {
-      return MemoComponent;
-    }
-  }
-  return IndeterminateComponent;
+  return !!(Component.prototype && Component.prototype.isReactComponent);
 }
 
 // This is used to create an alternate fiber to do work on.
@@ -5265,7 +4908,6 @@ function createWorkInProgress(current, pendingProps, expirationTime) {
       current.key,
       current.mode
     );
-    workInProgress.elementType = current.elementType;
     workInProgress.type = current.type;
     workInProgress.stateNode = current.stateNode;
 
@@ -5296,18 +4938,16 @@ function createWorkInProgress(current, pendingProps, expirationTime) {
       // This has the downside of resetting values for different priority renders,
       // But works for yielding (the common case) and should support resuming.
       workInProgress.actualDuration = 0;
-      workInProgress.actualStartTime = -1;
+      workInProgress.actualStartTime = 0;
     }
   }
 
-  workInProgress.childExpirationTime = current.childExpirationTime;
-  workInProgress.expirationTime = current.expirationTime;
+  workInProgress.expirationTime = expirationTime;
 
   workInProgress.child = current.child;
   workInProgress.memoizedProps = current.memoizedProps;
   workInProgress.memoizedState = current.memoizedState;
   workInProgress.updateQueue = current.updateQueue;
-  workInProgress.contextDependencies = current.contextDependencies;
 
   // These will be overridden during the parent's reconciliation
   workInProgress.sibling = current.sibling;
@@ -5315,130 +4955,16 @@ function createWorkInProgress(current, pendingProps, expirationTime) {
   workInProgress.ref = current.ref;
 
   if (enableProfilerTimer) {
-    workInProgress.selfBaseDuration = current.selfBaseDuration;
-    workInProgress.treeBaseDuration = current.treeBaseDuration;
+    workInProgress.selfBaseTime = current.selfBaseTime;
+    workInProgress.treeBaseTime = current.treeBaseTime;
   }
 
   return workInProgress;
 }
 
-function createHostRootFiber(isConcurrent) {
-  var mode = isConcurrent ? ConcurrentMode | StrictMode : NoContext;
-
-  if (enableProfilerTimer && isDevToolsPresent) {
-    // Always collect profile timings when DevTools are present.
-    // This enables DevTools to start capturing timing at any point–
-    // Without some nodes in the tree having empty base times.
-    mode |= ProfileMode;
-  }
-
+function createHostRootFiber(isAsync) {
+  var mode = isAsync ? AsyncMode | StrictMode : NoContext;
   return createFiber(HostRoot, null, null, mode);
-}
-
-function createFiberFromTypeAndProps(
-  type, // React$ElementType
-  key,
-  pendingProps,
-  owner,
-  mode,
-  expirationTime
-) {
-  var fiber = void 0;
-
-  var fiberTag = IndeterminateComponent;
-  // The resolved type is set if we know what the final type will be. I.e. it's not lazy.
-  var resolvedType = type;
-  if (typeof type === "function") {
-    if (shouldConstruct(type)) {
-      fiberTag = ClassComponent;
-    }
-  } else if (typeof type === "string") {
-    fiberTag = HostComponent;
-  } else {
-    getTag: switch (type) {
-      case REACT_FRAGMENT_TYPE:
-        return createFiberFromFragment(
-          pendingProps.children,
-          mode,
-          expirationTime,
-          key
-        );
-      case REACT_CONCURRENT_MODE_TYPE:
-        return createFiberFromMode(
-          pendingProps,
-          mode | ConcurrentMode | StrictMode,
-          expirationTime,
-          key
-        );
-      case REACT_STRICT_MODE_TYPE:
-        return createFiberFromMode(
-          pendingProps,
-          mode | StrictMode,
-          expirationTime,
-          key
-        );
-      case REACT_PROFILER_TYPE:
-        return createFiberFromProfiler(pendingProps, mode, expirationTime, key);
-      case REACT_SUSPENSE_TYPE:
-        return createFiberFromSuspense(pendingProps, mode, expirationTime, key);
-      default: {
-        if (typeof type === "object" && type !== null) {
-          switch (type.$$typeof) {
-            case REACT_PROVIDER_TYPE:
-              fiberTag = ContextProvider;
-              break getTag;
-            case REACT_CONTEXT_TYPE:
-              // This is a consumer
-              fiberTag = ContextConsumer;
-              break getTag;
-            case REACT_FORWARD_REF_TYPE:
-              fiberTag = ForwardRef;
-              break getTag;
-            case REACT_MEMO_TYPE:
-              fiberTag = MemoComponent;
-              break getTag;
-            case REACT_LAZY_TYPE:
-              fiberTag = LazyComponent;
-              resolvedType = null;
-              break getTag;
-          }
-        }
-        var info = "";
-        {
-          if (
-            type === undefined ||
-            (typeof type === "object" &&
-              type !== null &&
-              Object.keys(type).length === 0)
-          ) {
-            info +=
-              " You likely forgot to export your component from the file " +
-              "it's defined in, or you might have mixed up default and " +
-              "named imports.";
-          }
-          var ownerName = owner ? getComponentName(owner.type) : null;
-          if (ownerName) {
-            info += "\n\nCheck the render method of `" + ownerName + "`.";
-          }
-        }
-        invariant(
-          false,
-          "Element type is invalid: expected a string (for built-in " +
-            "components) or a class/function (for composite components) " +
-            "but got: %s.%s",
-          type == null ? type : typeof type,
-          info
-        );
-      }
-    }
-  }
-
-  fiber = createFiber(fiberTag, pendingProps, key, mode);
-  fiber.elementType = type;
-  fiber.type = resolvedType;
-  fiber.expirationTime = expirationTime;
-
-  return fiber;
 }
 
 function createFiberFromElement(element, mode, expirationTime) {
@@ -5446,22 +4972,101 @@ function createFiberFromElement(element, mode, expirationTime) {
   {
     owner = element._owner;
   }
+
+  var fiber = void 0;
   var type = element.type;
   var key = element.key;
   var pendingProps = element.props;
-  var fiber = createFiberFromTypeAndProps(
-    type,
-    key,
-    pendingProps,
-    owner,
-    mode,
-    expirationTime
-  );
+
+  var fiberTag = void 0;
+  if (typeof type === "function") {
+    fiberTag = shouldConstruct(type) ? ClassComponent : IndeterminateComponent;
+  } else if (typeof type === "string") {
+    fiberTag = HostComponent;
+  } else {
+    switch (type) {
+      case REACT_FRAGMENT_TYPE:
+        return createFiberFromFragment(
+          pendingProps.children,
+          mode,
+          expirationTime,
+          key
+        );
+      case REACT_ASYNC_MODE_TYPE:
+        fiberTag = Mode;
+        mode |= AsyncMode | StrictMode;
+        break;
+      case REACT_STRICT_MODE_TYPE:
+        fiberTag = Mode;
+        mode |= StrictMode;
+        break;
+      case REACT_PROFILER_TYPE:
+        return createFiberFromProfiler(pendingProps, mode, expirationTime, key);
+      case REACT_TIMEOUT_TYPE:
+        fiberTag = TimeoutComponent;
+        // Suspense does not require async, but its children should be strict
+        // mode compatible.
+        mode |= StrictMode;
+        break;
+      default:
+        fiberTag = getFiberTagFromObjectType(type, owner);
+        break;
+    }
+  }
+
+  fiber = createFiber(fiberTag, pendingProps, key, mode);
+  fiber.type = type;
+  fiber.expirationTime = expirationTime;
+
   {
     fiber._debugSource = element._source;
     fiber._debugOwner = element._owner;
   }
+
   return fiber;
+}
+
+function getFiberTagFromObjectType(type, owner) {
+  var $$typeof =
+    typeof type === "object" && type !== null ? type.$$typeof : null;
+
+  switch ($$typeof) {
+    case REACT_PROVIDER_TYPE:
+      return ContextProvider;
+    case REACT_CONTEXT_TYPE:
+      // This is a consumer
+      return ContextConsumer;
+    case REACT_FORWARD_REF_TYPE:
+      return ForwardRef;
+    default: {
+      var info = "";
+      {
+        if (
+          type === undefined ||
+          (typeof type === "object" &&
+            type !== null &&
+            Object.keys(type).length === 0)
+        ) {
+          info +=
+            " You likely forgot to export your component from the file " +
+            "it's defined in, or you might have mixed up default and " +
+            "named imports.";
+        }
+        var ownerName = owner ? getComponentName(owner) : null;
+        if (ownerName) {
+          info += "\n\nCheck the render method of `" + ownerName + "`.";
+        }
+      }
+      invariant(
+        false,
+        "Element type is invalid: expected a string (for built-in " +
+          "components) or a class/function (for composite components) " +
+          "but got: %s.%s",
+        type == null ? type : typeof type,
+        info
+      );
+    }
+  }
 }
 
 function createFiberFromFragment(elements, mode, expirationTime, key) {
@@ -5476,7 +5081,7 @@ function createFiberFromProfiler(pendingProps, mode, expirationTime, key) {
       typeof pendingProps.id !== "string" ||
       typeof pendingProps.onRender !== "function"
     ) {
-      warningWithoutStack$1(
+      invariant(
         false,
         'Profiler must specify an "id" string and "onRender" function as props'
       );
@@ -5484,38 +5089,9 @@ function createFiberFromProfiler(pendingProps, mode, expirationTime, key) {
   }
 
   var fiber = createFiber(Profiler, pendingProps, key, mode | ProfileMode);
-  // TODO: The Profiler fiber shouldn't have a type. It has a tag.
-  fiber.elementType = REACT_PROFILER_TYPE;
   fiber.type = REACT_PROFILER_TYPE;
   fiber.expirationTime = expirationTime;
 
-  return fiber;
-}
-
-function createFiberFromMode(pendingProps, mode, expirationTime, key) {
-  var fiber = createFiber(Mode, pendingProps, key, mode);
-
-  // TODO: The Mode fiber shouldn't have a type. It has a tag.
-  var type =
-    (mode & ConcurrentMode) === NoContext
-      ? REACT_STRICT_MODE_TYPE
-      : REACT_CONCURRENT_MODE_TYPE;
-  fiber.elementType = type;
-  fiber.type = type;
-
-  fiber.expirationTime = expirationTime;
-  return fiber;
-}
-
-function createFiberFromSuspense(pendingProps, mode, expirationTime, key) {
-  var fiber = createFiber(SuspenseComponent, pendingProps, key, mode);
-
-  // TODO: The SuspenseComponent fiber shouldn't have a type. It has a tag.
-  var type = REACT_SUSPENSE_TYPE;
-  fiber.elementType = type;
-  fiber.type = type;
-
-  fiber.expirationTime = expirationTime;
   return fiber;
 }
 
@@ -5527,8 +5103,6 @@ function createFiberFromText(content, mode, expirationTime) {
 
 function createFiberFromHostInstanceForDeletion() {
   var fiber = createFiber(HostComponent, null, null, NoContext);
-  // TODO: These should not need a type.
-  fiber.elementType = "DELETED";
   fiber.type = "DELETED";
   return fiber;
 }
@@ -5561,7 +5135,6 @@ function assignFiberPropertiesInDEV(target, source) {
 
   target.tag = source.tag;
   target.key = source.key;
-  target.elementType = source.elementType;
   target.type = source.type;
   target.stateNode = source.stateNode;
   target.return = source.return;
@@ -5573,20 +5146,18 @@ function assignFiberPropertiesInDEV(target, source) {
   target.memoizedProps = source.memoizedProps;
   target.updateQueue = source.updateQueue;
   target.memoizedState = source.memoizedState;
-  target.contextDependencies = source.contextDependencies;
   target.mode = source.mode;
   target.effectTag = source.effectTag;
   target.nextEffect = source.nextEffect;
   target.firstEffect = source.firstEffect;
   target.lastEffect = source.lastEffect;
   target.expirationTime = source.expirationTime;
-  target.childExpirationTime = source.childExpirationTime;
   target.alternate = source.alternate;
   if (enableProfilerTimer) {
     target.actualDuration = source.actualDuration;
     target.actualStartTime = source.actualStartTime;
-    target.selfBaseDuration = source.selfBaseDuration;
-    target.treeBaseDuration = source.treeBaseDuration;
+    target.selfBaseTime = source.selfBaseTime;
+    target.treeBaseTime = source.treeBaseTime;
   }
   target._debugID = source._debugID;
   target._debugSource = source._debugSource;
@@ -5597,90 +5168,107 @@ function assignFiberPropertiesInDEV(target, source) {
 
 // TODO: This should be lifted into the renderer.
 
-// The following attributes are only used by interaction tracing builds.
-// They enable interactions to be associated with their async work,
-// And expose interaction metadata to the React DevTools Profiler plugin.
-// Note that these attributes are only defined when the enableSchedulerTracing flag is enabled.
-
-// Exported FiberRoot type includes all properties,
-// To avoid requiring potentially error-prone :any casts throughout the project.
-// Profiling properties are only safe to access in profiling builds (when enableSchedulerTracing is true).
-// The types are defined separately within this file to ensure they stay in sync.
-// (We don't have to use an inline :any cast when enableSchedulerTracing is disabled.)
-
-function createFiberRoot(containerInfo, isConcurrent, hydrate) {
+function createFiberRoot(containerInfo, isAsync, hydrate) {
   // Cyclic construction. This cheats the type system right now because
   // stateNode is any.
-  var uninitializedFiber = createHostRootFiber(isConcurrent);
+  var uninitializedFiber = createHostRootFiber(isAsync);
+  var root = {
+    current: uninitializedFiber,
+    containerInfo: containerInfo,
+    pendingChildren: null,
 
-  var root = void 0;
-  if (enableSchedulerTracing) {
-    root = {
-      current: uninitializedFiber,
-      containerInfo: containerInfo,
-      pendingChildren: null,
+    earliestPendingTime: NoWork,
+    latestPendingTime: NoWork,
+    earliestSuspendedTime: NoWork,
+    latestSuspendedTime: NoWork,
+    latestPingedTime: NoWork,
 
-      earliestPendingTime: NoWork,
-      latestPendingTime: NoWork,
-      earliestSuspendedTime: NoWork,
-      latestSuspendedTime: NoWork,
-      latestPingedTime: NoWork,
+    didError: false,
 
-      pingCache: null,
-
-      didError: false,
-
-      pendingCommitExpirationTime: NoWork,
-      finishedWork: null,
-      timeoutHandle: noTimeout,
-      context: null,
-      pendingContext: null,
-      hydrate: hydrate,
-      nextExpirationTimeToWorkOn: NoWork,
-      expirationTime: NoWork,
-      firstBatch: null,
-      nextScheduledRoot: null,
-
-      interactionThreadID: tracing.unstable_getThreadID(),
-      memoizedInteractions: new Set(),
-      pendingInteractionMap: new Map()
-    };
-  } else {
-    root = {
-      current: uninitializedFiber,
-      containerInfo: containerInfo,
-      pendingChildren: null,
-
-      pingCache: null,
-
-      earliestPendingTime: NoWork,
-      latestPendingTime: NoWork,
-      earliestSuspendedTime: NoWork,
-      latestSuspendedTime: NoWork,
-      latestPingedTime: NoWork,
-
-      didError: false,
-
-      pendingCommitExpirationTime: NoWork,
-      finishedWork: null,
-      timeoutHandle: noTimeout,
-      context: null,
-      pendingContext: null,
-      hydrate: hydrate,
-      nextExpirationTimeToWorkOn: NoWork,
-      expirationTime: NoWork,
-      firstBatch: null,
-      nextScheduledRoot: null
-    };
-  }
-
+    pendingCommitExpirationTime: NoWork,
+    finishedWork: null,
+    context: null,
+    pendingContext: null,
+    hydrate: hydrate,
+    nextExpirationTimeToWorkOn: NoWork,
+    expirationTime: NoWork,
+    firstBatch: null,
+    nextScheduledRoot: null
+  };
   uninitializedFiber.stateNode = root;
-
-  // The reason for the way the Flow types are structured in this file,
-  // Is to avoid needing :any casts everywhere interaction tracing fields are used.
-  // Unfortunately that requires an :any cast for non-interaction tracing capable builds.
-  // $FlowFixMe Remove this :any cast and replace it with something better.
   return root;
+}
+
+var onCommitFiberRoot = null;
+var onCommitFiberUnmount = null;
+var hasLoggedError = false;
+
+function catchErrors(fn) {
+  return function(arg) {
+    try {
+      return fn(arg);
+    } catch (err) {
+      if (true && !hasLoggedError) {
+        hasLoggedError = true;
+        warning(false, "React DevTools encountered an error: %s", err);
+      }
+    }
+  };
+}
+
+function injectInternals(internals) {
+  if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ === "undefined") {
+    // No DevTools
+    return false;
+  }
+  var hook = __REACT_DEVTOOLS_GLOBAL_HOOK__;
+  if (hook.isDisabled) {
+    // This isn't a real property on the hook, but it can be set to opt out
+    // of DevTools integration and associated warnings and logs.
+    // https://github.com/facebook/react/issues/3877
+    return true;
+  }
+  if (!hook.supportsFiber) {
+    {
+      warning(
+        false,
+        "The installed version of React DevTools is too old and will not work " +
+          "with the current version of React. Please update React DevTools. " +
+          "https://fb.me/react-devtools"
+      );
+    }
+    // DevTools exists, even though it doesn't support Fiber.
+    return true;
+  }
+  try {
+    var rendererID = hook.inject(internals);
+    // We have successfully injected, so now it is safe to set up hooks.
+    onCommitFiberRoot = catchErrors(function(root) {
+      return hook.onCommitFiberRoot(rendererID, root);
+    });
+    onCommitFiberUnmount = catchErrors(function(fiber) {
+      return hook.onCommitFiberUnmount(rendererID, fiber);
+    });
+  } catch (err) {
+    // Catch all errors because it is unsafe to throw during initialization.
+    {
+      warning(false, "React DevTools encountered an error: %s.", err);
+    }
+  }
+  // DevTools exists
+  return true;
+}
+
+function onCommitRoot(root) {
+  if (typeof onCommitFiberRoot === "function") {
+    onCommitFiberRoot(root);
+  }
+}
+
+function onCommitUnmount(fiber) {
+  if (typeof onCommitFiberUnmount === "function") {
+    onCommitFiberUnmount(fiber);
+  }
 }
 
 /**
@@ -5731,7 +5319,7 @@ var lowPriorityWarning = function() {};
   lowPriorityWarning = function(condition, format) {
     if (format === undefined) {
       throw new Error(
-        "`lowPriorityWarning(condition, format, ...args)` requires a warning " +
+        "`warning(condition, format, ...args)` requires a warning " +
           "message argument"
       );
     }
@@ -5802,14 +5390,14 @@ var ReactStrictModeWarnings = {
       lifecycleWarningsMap,
       strictRoot
     ) {
-      var lifecyclesWarningMessages = [];
+      var lifecyclesWarningMesages = [];
 
       Object.keys(lifecycleWarningsMap).forEach(function(lifecycle) {
         var lifecycleWarnings = lifecycleWarningsMap[lifecycle];
         if (lifecycleWarnings.length > 0) {
           var componentNames = new Set();
           lifecycleWarnings.forEach(function(fiber) {
-            componentNames.add(getComponentName(fiber.type) || "Component");
+            componentNames.add(getComponentName(fiber) || "Component");
             didWarnAboutUnsafeLifecycles.add(fiber.type);
           });
 
@@ -5817,7 +5405,7 @@ var ReactStrictModeWarnings = {
           var suggestion = LIFECYCLE_SUGGESTIONS[lifecycle];
           var sortedComponentNames = setToSortedString(componentNames);
 
-          lifecyclesWarningMessages.push(
+          lifecyclesWarningMesages.push(
             formatted +
               ": Please update the following components to use " +
               (suggestion + " instead: " + sortedComponentNames)
@@ -5825,17 +5413,19 @@ var ReactStrictModeWarnings = {
         }
       });
 
-      if (lifecyclesWarningMessages.length > 0) {
-        var strictRootComponentStack = getStackByFiberInDevAndProd(strictRoot);
+      if (lifecyclesWarningMesages.length > 0) {
+        var strictRootComponentStack = getStackAddendumByWorkInProgressFiber(
+          strictRoot
+        );
 
-        warningWithoutStack$1(
+        warning(
           false,
           "Unsafe lifecycle methods were found within a strict-mode tree:%s" +
             "\n\n%s" +
             "\n\nLearn more about this warning here:" +
             "\nhttps://fb.me/react-strict-mode-warnings",
           strictRootComponentStack,
-          lifecyclesWarningMessages.join("\n\n")
+          lifecyclesWarningMesages.join("\n\n")
         );
       }
     });
@@ -5861,7 +5451,7 @@ var ReactStrictModeWarnings = {
     if (pendingComponentWillMountWarnings.length > 0) {
       var uniqueNames = new Set();
       pendingComponentWillMountWarnings.forEach(function(fiber) {
-        uniqueNames.add(getComponentName(fiber.type) || "Component");
+        uniqueNames.add(getComponentName(fiber) || "Component");
         didWarnAboutDeprecatedLifecycles.add(fiber.type);
       });
 
@@ -5884,7 +5474,7 @@ var ReactStrictModeWarnings = {
     if (pendingComponentWillReceivePropsWarnings.length > 0) {
       var _uniqueNames = new Set();
       pendingComponentWillReceivePropsWarnings.forEach(function(fiber) {
-        _uniqueNames.add(getComponentName(fiber.type) || "Component");
+        _uniqueNames.add(getComponentName(fiber) || "Component");
         didWarnAboutDeprecatedLifecycles.add(fiber.type);
       });
 
@@ -5906,7 +5496,7 @@ var ReactStrictModeWarnings = {
     if (pendingComponentWillUpdateWarnings.length > 0) {
       var _uniqueNames2 = new Set();
       pendingComponentWillUpdateWarnings.forEach(function(fiber) {
-        _uniqueNames2.add(getComponentName(fiber.type) || "Component");
+        _uniqueNames2.add(getComponentName(fiber) || "Component");
         didWarnAboutDeprecatedLifecycles.add(fiber.type);
       });
 
@@ -5963,7 +5553,7 @@ var ReactStrictModeWarnings = {
   ) {
     var strictRoot = findStrictRoot(fiber);
     if (strictRoot === null) {
-      warningWithoutStack$1(
+      warning(
         false,
         "Expected to find a StrictMode component in a strict mode tree. " +
           "This error is likely caused by a bug in React. Please file an issue."
@@ -6030,7 +5620,7 @@ var ReactStrictModeWarnings = {
   ) {
     var strictRoot = findStrictRoot(fiber);
     if (strictRoot === null) {
-      warningWithoutStack$1(
+      warning(
         false,
         "Expected to find a StrictMode component in a strict mode tree. " +
           "This error is likely caused by a bug in React. Please file an issue."
@@ -6062,14 +5652,16 @@ var ReactStrictModeWarnings = {
     pendingLegacyContextWarning.forEach(function(fiberArray, strictRoot) {
       var uniqueNames = new Set();
       fiberArray.forEach(function(fiber) {
-        uniqueNames.add(getComponentName(fiber.type) || "Component");
+        uniqueNames.add(getComponentName(fiber) || "Component");
         didWarnAboutLegacyContext.add(fiber.type);
       });
 
       var sortedNames = setToSortedString(uniqueNames);
-      var strictRootComponentStack = getStackByFiberInDevAndProd(strictRoot);
+      var strictRootComponentStack = getStackAddendumByWorkInProgressFiber(
+        strictRoot
+      );
 
-      warningWithoutStack$1(
+      warning(
         false,
         "Legacy context API has been detected within a strict-mode tree: %s" +
           "\n\nPlease update the following components: %s" +
@@ -6092,9 +5684,7 @@ var ReactFiberInstrumentation = {
 
 var ReactFiberInstrumentation_1 = ReactFiberInstrumentation;
 
-// TODO: Offscreen updates should never suspend. However, a promise that
-// suspended inside an offscreen subtree should be able to ping at the priority
-// of the outer render.
+// TODO: Offscreen updates
 
 function markPendingPriorityLevel(root, expirationTime) {
   // If there's a gap between completing a failed root and retrying it,
@@ -6108,21 +5698,21 @@ function markPendingPriorityLevel(root, expirationTime) {
     // No other pending updates.
     root.earliestPendingTime = root.latestPendingTime = expirationTime;
   } else {
-    if (earliestPendingTime < expirationTime) {
+    if (earliestPendingTime > expirationTime) {
       // This is the earliest pending update.
       root.earliestPendingTime = expirationTime;
     } else {
       var latestPendingTime = root.latestPendingTime;
-      if (latestPendingTime > expirationTime) {
+      if (latestPendingTime < expirationTime) {
         // This is the latest pending update
         root.latestPendingTime = expirationTime;
       }
     }
   }
-  findNextExpirationTimeToWorkOn(expirationTime, root);
+  findNextPendingPriorityLevel(root);
 }
 
-function markCommittedPriorityLevels(root, earliestRemainingTime) {
+function markCommittedPriorityLevels(root, currentTime, earliestRemainingTime) {
   root.didError = false;
 
   if (earliestRemainingTime === NoWork) {
@@ -6132,23 +5722,19 @@ function markCommittedPriorityLevels(root, earliestRemainingTime) {
     root.earliestSuspendedTime = NoWork;
     root.latestSuspendedTime = NoWork;
     root.latestPingedTime = NoWork;
-    findNextExpirationTimeToWorkOn(NoWork, root);
+    findNextPendingPriorityLevel(root);
     return;
-  }
-
-  if (earliestRemainingTime < root.latestPingedTime) {
-    root.latestPingedTime = NoWork;
   }
 
   // Let's see if the previous latest known pending level was just flushed.
   var latestPendingTime = root.latestPendingTime;
   if (latestPendingTime !== NoWork) {
-    if (latestPendingTime > earliestRemainingTime) {
+    if (latestPendingTime < earliestRemainingTime) {
       // We've flushed all the known pending levels.
       root.earliestPendingTime = root.latestPendingTime = NoWork;
     } else {
       var earliestPendingTime = root.earliestPendingTime;
-      if (earliestPendingTime > earliestRemainingTime) {
+      if (earliestPendingTime < earliestRemainingTime) {
         // We've flushed the earliest known pending level. Set this to the
         // latest pending time.
         root.earliestPendingTime = root.latestPendingTime;
@@ -6165,12 +5751,12 @@ function markCommittedPriorityLevels(root, earliestRemainingTime) {
     // There's no suspended work. Treat the earliest remaining level as a
     // pending level.
     markPendingPriorityLevel(root, earliestRemainingTime);
-    findNextExpirationTimeToWorkOn(NoWork, root);
+    findNextPendingPriorityLevel(root);
     return;
   }
 
   var latestSuspendedTime = root.latestSuspendedTime;
-  if (earliestRemainingTime < latestSuspendedTime) {
+  if (earliestRemainingTime > latestSuspendedTime) {
     // The earliest remaining level is later than all the suspended work. That
     // means we've flushed all the suspended work.
     root.earliestSuspendedTime = NoWork;
@@ -6180,49 +5766,39 @@ function markCommittedPriorityLevels(root, earliestRemainingTime) {
     // There's no suspended work. Treat the earliest remaining level as a
     // pending level.
     markPendingPriorityLevel(root, earliestRemainingTime);
-    findNextExpirationTimeToWorkOn(NoWork, root);
+    findNextPendingPriorityLevel(root);
     return;
   }
 
-  if (earliestRemainingTime > earliestSuspendedTime) {
+  if (earliestRemainingTime < earliestSuspendedTime) {
     // The earliest remaining time is earlier than all the suspended work.
     // Treat it as a pending update.
     markPendingPriorityLevel(root, earliestRemainingTime);
-    findNextExpirationTimeToWorkOn(NoWork, root);
+    findNextPendingPriorityLevel(root);
     return;
   }
 
   // The earliest remaining time falls within the range of known suspended
   // levels. We should treat this as suspended work.
-  findNextExpirationTimeToWorkOn(NoWork, root);
+  findNextPendingPriorityLevel(root);
 }
 
-function hasLowerPriorityWork(root, erroredExpirationTime) {
-  var latestPendingTime = root.latestPendingTime;
-  var latestSuspendedTime = root.latestSuspendedTime;
-  var latestPingedTime = root.latestPingedTime;
+function hasLowerPriorityWork(root, renderExpirationTime) {
   return (
-    (latestPendingTime !== NoWork &&
-      latestPendingTime < erroredExpirationTime) ||
-    (latestSuspendedTime !== NoWork &&
-      latestSuspendedTime < erroredExpirationTime) ||
-    (latestPingedTime !== NoWork && latestPingedTime < erroredExpirationTime)
+    renderExpirationTime !== root.latestPendingTime &&
+    renderExpirationTime !== root.latestSuspendedTime
   );
 }
 
-function isPriorityLevelSuspended(root, expirationTime) {
-  var earliestSuspendedTime = root.earliestSuspendedTime;
-  var latestSuspendedTime = root.latestSuspendedTime;
-  return (
-    earliestSuspendedTime !== NoWork &&
-    expirationTime <= earliestSuspendedTime &&
-    expirationTime >= latestSuspendedTime
-  );
-}
-
-function markSuspendedPriorityLevel(root, suspendedTime) {
-  root.didError = false;
-  clearPing(root, suspendedTime);
+function markSuspendedPriorityLevel(root, suspendedTime, didError) {
+  if (didError && !hasLowerPriorityWork(root, suspendedTime)) {
+    // TODO: When we add back resuming, we need to ensure the progressed work
+    // is thrown out and not reused during the restarted render. One way to
+    // invalidate the progressed work is to restart at expirationTime + 1.
+    root.didError = true;
+    findNextPendingPriorityLevel(root);
+    return;
+  }
 
   // First, check the known pending levels and update them if needed.
   var earliestPendingTime = root.earliestPendingTime;
@@ -6242,149 +5818,974 @@ function markSuspendedPriorityLevel(root, suspendedTime) {
     root.latestPendingTime = earliestPendingTime;
   }
 
+  // Next, if we're working on the lowest known suspended level, clear the ping.
+  // TODO: What if a promise suspends and pings before the root completes?
+  var latestSuspendedTime = root.latestSuspendedTime;
+  if (latestSuspendedTime === suspendedTime) {
+    root.latestPingedTime = NoWork;
+  }
+
   // Finally, update the known suspended levels.
   var earliestSuspendedTime = root.earliestSuspendedTime;
-  var latestSuspendedTime = root.latestSuspendedTime;
   if (earliestSuspendedTime === NoWork) {
     // No other suspended levels.
     root.earliestSuspendedTime = root.latestSuspendedTime = suspendedTime;
   } else {
-    if (earliestSuspendedTime < suspendedTime) {
+    if (earliestSuspendedTime > suspendedTime) {
       // This is the earliest suspended level.
       root.earliestSuspendedTime = suspendedTime;
-    } else if (latestSuspendedTime > suspendedTime) {
+    } else if (latestSuspendedTime < suspendedTime) {
       // This is the latest suspended level
       root.latestSuspendedTime = suspendedTime;
     }
   }
-
-  findNextExpirationTimeToWorkOn(suspendedTime, root);
+  findNextPendingPriorityLevel(root);
 }
 
 function markPingedPriorityLevel(root, pingedTime) {
-  root.didError = false;
-
-  // TODO: When we add back resuming, we need to ensure the progressed work
-  // is thrown out and not reused during the restarted render. One way to
-  // invalidate the progressed work is to restart at expirationTime + 1.
-  var latestPingedTime = root.latestPingedTime;
-  if (latestPingedTime === NoWork || latestPingedTime > pingedTime) {
-    root.latestPingedTime = pingedTime;
-  }
-  findNextExpirationTimeToWorkOn(pingedTime, root);
-}
-
-function clearPing(root, completedTime) {
-  var latestPingedTime = root.latestPingedTime;
-  if (latestPingedTime >= completedTime) {
-    root.latestPingedTime = NoWork;
-  }
-}
-
-function findEarliestOutstandingPriorityLevel(root, renderExpirationTime) {
-  var earliestExpirationTime = renderExpirationTime;
-
-  var earliestPendingTime = root.earliestPendingTime;
-  var earliestSuspendedTime = root.earliestSuspendedTime;
-  if (earliestPendingTime > earliestExpirationTime) {
-    earliestExpirationTime = earliestPendingTime;
-  }
-  if (earliestSuspendedTime > earliestExpirationTime) {
-    earliestExpirationTime = earliestSuspendedTime;
-  }
-  return earliestExpirationTime;
-}
-
-function didExpireAtExpirationTime(root, currentTime) {
-  var expirationTime = root.expirationTime;
-  if (expirationTime !== NoWork && currentTime <= expirationTime) {
-    // The root has expired. Flush all work up to the current time.
-    root.nextExpirationTimeToWorkOn = currentTime;
-  }
-}
-
-function findNextExpirationTimeToWorkOn(completedExpirationTime, root) {
-  var earliestSuspendedTime = root.earliestSuspendedTime;
   var latestSuspendedTime = root.latestSuspendedTime;
+  if (latestSuspendedTime !== NoWork && latestSuspendedTime <= pingedTime) {
+    var latestPingedTime = root.latestPingedTime;
+    if (latestPingedTime === NoWork || latestPingedTime < pingedTime) {
+      root.latestPingedTime = pingedTime;
+    }
+  }
+  findNextPendingPriorityLevel(root);
+}
+
+function findNextPendingPriorityLevel(root) {
+  var earliestSuspendedTime = root.earliestSuspendedTime;
   var earliestPendingTime = root.earliestPendingTime;
-  var latestPingedTime = root.latestPingedTime;
-
-  // Work on the earliest pending time. Failing that, work on the latest
-  // pinged time.
-  var nextExpirationTimeToWorkOn =
-    earliestPendingTime !== NoWork ? earliestPendingTime : latestPingedTime;
-
-  // If there is no pending or pinged work, check if there's suspended work
-  // that's lower priority than what we just completed.
-  if (
-    nextExpirationTimeToWorkOn === NoWork &&
-    (completedExpirationTime === NoWork ||
-      latestSuspendedTime < completedExpirationTime)
-  ) {
-    // The lowest priority suspended work is the work most likely to be
-    // committed next. Let's start rendering it again, so that if it times out,
-    // it's ready to commit.
-    nextExpirationTimeToWorkOn = latestSuspendedTime;
+  var nextExpirationTimeToWorkOn = void 0;
+  var expirationTime = void 0;
+  if (earliestSuspendedTime === NoWork) {
+    // Fast path. There's no suspended work.
+    nextExpirationTimeToWorkOn = expirationTime = earliestPendingTime;
+  } else if (earliestPendingTime !== NoWork) {
+    // Check if there's known pending work.
+    nextExpirationTimeToWorkOn = earliestPendingTime;
+    expirationTime =
+      earliestSuspendedTime < earliestPendingTime
+        ? earliestSuspendedTime
+        : earliestPendingTime;
+  } else {
+    // Finally, if a suspended level was pinged, work on that. Otherwise there's
+    // nothing to work on.
+    nextExpirationTimeToWorkOn = expirationTime = root.latestPingedTime;
   }
 
-  var expirationTime = nextExpirationTimeToWorkOn;
-  if (expirationTime !== NoWork && earliestSuspendedTime > expirationTime) {
-    // Expire using the earliest known expiration time.
-    expirationTime = earliestSuspendedTime;
+  if (root.didError) {
+    // Revert to synchronous mode.
+    expirationTime = Sync;
   }
 
   root.nextExpirationTimeToWorkOn = nextExpirationTimeToWorkOn;
   root.expirationTime = expirationTime;
 }
 
-/**
- * Similar to invariant but only logs a warning if the condition is not met.
- * This can be used to log issues in development environments in critical
- * paths. Removing the logging code for production environments will keep the
- * same logic and follow the same code paths.
- */
+// UpdateQueue is a linked list of prioritized updates.
+//
+// Like fibers, update queues come in pairs: a current queue, which represents
+// the visible state of the screen, and a work-in-progress queue, which is
+// can be mutated and processed asynchronously before it is committed — a form
+// of double buffering. If a work-in-progress render is discarded before
+// finishing, we create a new work-in-progress by cloning the current queue.
+//
+// Both queues share a persistent, singly-linked list structure. To schedule an
+// update, we append it to the end of both queues. Each queue maintains a
+// pointer to first update in the persistent list that hasn't been processed.
+// The work-in-progress pointer always has a position equal to or greater than
+// the current queue, since we always work on that one. The current queue's
+// pointer is only updated during the commit phase, when we swap in the
+// work-in-progress.
+//
+// For example:
+//
+//   Current pointer:           A - B - C - D - E - F
+//   Work-in-progress pointer:              D - E - F
+//                                          ^
+//                                          The work-in-progress queue has
+//                                          processed more updates than current.
+//
+// The reason we append to both queues is because otherwise we might drop
+// updates without ever processing them. For example, if we only add updates to
+// the work-in-progress queue, some updates could be lost whenever a work-in
+// -progress render restarts by cloning from current. Similarly, if we only add
+// updates to the current queue, the updates will be lost whenever an already
+// in-progress queue commits and swaps with the current queue. However, by
+// adding to both queues, we guarantee that the update will be part of the next
+// work-in-progress. (And because the work-in-progress queue becomes the
+// current queue once it commits, there's no danger of applying the same
+// update twice.)
+//
+// Prioritization
+// --------------
+//
+// Updates are not sorted by priority, but by insertion; new updates are always
+// appended to the end of the list.
+//
+// The priority is still important, though. When processing the update queue
+// during the render phase, only the updates with sufficient priority are
+// included in the result. If we skip an update because it has insufficient
+// priority, it remains in the queue to be processed later, during a lower
+// priority render. Crucially, all updates subsequent to a skipped update also
+// remain in the queue *regardless of their priority*. That means high priority
+// updates are sometimes processed twice, at two separate priorities. We also
+// keep track of a base state, that represents the state before the first
+// update in the queue is applied.
+//
+// For example:
+//
+//   Given a base state of '', and the following queue of updates
+//
+//     A1 - B2 - C1 - D2
+//
+//   where the number indicates the priority, and the update is applied to the
+//   previous state by appending a letter, React will process these updates as
+//   two separate renders, one per distinct priority level:
+//
+//   First render, at priority 1:
+//     Base state: ''
+//     Updates: [A1, C1]
+//     Result state: 'AC'
+//
+//   Second render, at priority 2:
+//     Base state: 'A'            <-  The base state does not include C1,
+//                                    because B2 was skipped.
+//     Updates: [B2, C1, D2]      <-  C1 was rebased on top of B2
+//     Result state: 'ABCD'
+//
+// Because we process updates in insertion order, and rebase high priority
+// updates when preceding updates are skipped, the final result is deterministic
+// regardless of priority. Intermediate state may vary according to system
+// resources, but the final state is always the same.
 
-var warning = warningWithoutStack$1;
+var UpdateState = 0;
+var ReplaceState = 1;
+var ForceUpdate = 2;
+var CaptureUpdate = 3;
 
+// Global state that is reset at the beginning of calling `processUpdateQueue`.
+// It should only be read right after calling `processUpdateQueue`, via
+// `checkHasForceUpdateAfterProcessing`.
+var hasForceUpdate = false;
+
+var didWarnUpdateInsideUpdate = void 0;
+var currentlyProcessingQueue = void 0;
+var resetCurrentlyProcessingQueue = void 0;
 {
-  warning = function(condition, format) {
-    if (condition) {
-      return;
-    }
-    var ReactDebugCurrentFrame = ReactSharedInternals.ReactDebugCurrentFrame;
-    var stack = ReactDebugCurrentFrame.getStackAddendum();
-    // eslint-disable-next-line react-internal/warning-and-invariant-args
-
-    for (
-      var _len = arguments.length,
-        args = Array(_len > 2 ? _len - 2 : 0),
-        _key = 2;
-      _key < _len;
-      _key++
-    ) {
-      args[_key - 2] = arguments[_key];
-    }
-
-    warningWithoutStack$1.apply(
-      undefined,
-      [false, format + "%s"].concat(args, [stack])
-    );
+  didWarnUpdateInsideUpdate = false;
+  currentlyProcessingQueue = null;
+  resetCurrentlyProcessingQueue = function() {
+    currentlyProcessingQueue = null;
   };
 }
 
-var warning$1 = warning;
+function createUpdateQueue(baseState) {
+  var queue = {
+    expirationTime: NoWork,
+    baseState: baseState,
+    firstUpdate: null,
+    lastUpdate: null,
+    firstCapturedUpdate: null,
+    lastCapturedUpdate: null,
+    firstEffect: null,
+    lastEffect: null,
+    firstCapturedEffect: null,
+    lastCapturedEffect: null
+  };
+  return queue;
+}
+
+function cloneUpdateQueue(currentQueue) {
+  var queue = {
+    expirationTime: currentQueue.expirationTime,
+    baseState: currentQueue.baseState,
+    firstUpdate: currentQueue.firstUpdate,
+    lastUpdate: currentQueue.lastUpdate,
+
+    // TODO: With resuming, if we bail out and resuse the child tree, we should
+    // keep these effects.
+    firstCapturedUpdate: null,
+    lastCapturedUpdate: null,
+
+    firstEffect: null,
+    lastEffect: null,
+
+    firstCapturedEffect: null,
+    lastCapturedEffect: null
+  };
+  return queue;
+}
+
+function createUpdate(expirationTime) {
+  return {
+    expirationTime: expirationTime,
+
+    tag: UpdateState,
+    payload: null,
+    callback: null,
+
+    next: null,
+    nextEffect: null
+  };
+}
+
+function appendUpdateToQueue(queue, update, expirationTime) {
+  // Append the update to the end of the list.
+  if (queue.lastUpdate === null) {
+    // Queue is empty
+    queue.firstUpdate = queue.lastUpdate = update;
+  } else {
+    queue.lastUpdate.next = update;
+    queue.lastUpdate = update;
+  }
+  if (
+    queue.expirationTime === NoWork ||
+    queue.expirationTime > expirationTime
+  ) {
+    // The incoming update has the earliest expiration of any update in the
+    // queue. Update the queue's expiration time.
+    queue.expirationTime = expirationTime;
+  }
+}
+
+function enqueueUpdate(fiber, update, expirationTime) {
+  // Update queues are created lazily.
+  var alternate = fiber.alternate;
+  var queue1 = void 0;
+  var queue2 = void 0;
+  if (alternate === null) {
+    // There's only one fiber.
+    queue1 = fiber.updateQueue;
+    queue2 = null;
+    if (queue1 === null) {
+      queue1 = fiber.updateQueue = createUpdateQueue(fiber.memoizedState);
+    }
+  } else {
+    // There are two owners.
+    queue1 = fiber.updateQueue;
+    queue2 = alternate.updateQueue;
+    if (queue1 === null) {
+      if (queue2 === null) {
+        // Neither fiber has an update queue. Create new ones.
+        queue1 = fiber.updateQueue = createUpdateQueue(fiber.memoizedState);
+        queue2 = alternate.updateQueue = createUpdateQueue(
+          alternate.memoizedState
+        );
+      } else {
+        // Only one fiber has an update queue. Clone to create a new one.
+        queue1 = fiber.updateQueue = cloneUpdateQueue(queue2);
+      }
+    } else {
+      if (queue2 === null) {
+        // Only one fiber has an update queue. Clone to create a new one.
+        queue2 = alternate.updateQueue = cloneUpdateQueue(queue1);
+      } else {
+        // Both owners have an update queue.
+      }
+    }
+  }
+  if (queue2 === null || queue1 === queue2) {
+    // There's only a single queue.
+    appendUpdateToQueue(queue1, update, expirationTime);
+  } else {
+    // There are two queues. We need to append the update to both queues,
+    // while accounting for the persistent structure of the list — we don't
+    // want the same update to be added multiple times.
+    if (queue1.lastUpdate === null || queue2.lastUpdate === null) {
+      // One of the queues is not empty. We must add the update to both queues.
+      appendUpdateToQueue(queue1, update, expirationTime);
+      appendUpdateToQueue(queue2, update, expirationTime);
+    } else {
+      // Both queues are non-empty. The last update is the same in both lists,
+      // because of structural sharing. So, only append to one of the lists.
+      appendUpdateToQueue(queue1, update, expirationTime);
+      // But we still need to update the `lastUpdate` pointer of queue2.
+      queue2.lastUpdate = update;
+    }
+  }
+
+  {
+    if (
+      fiber.tag === ClassComponent &&
+      (currentlyProcessingQueue === queue1 ||
+        (queue2 !== null && currentlyProcessingQueue === queue2)) &&
+      !didWarnUpdateInsideUpdate
+    ) {
+      warning(
+        false,
+        "An update (setState, replaceState, or forceUpdate) was scheduled " +
+          "from inside an update function. Update functions should be pure, " +
+          "with zero side-effects. Consider using componentDidUpdate or a " +
+          "callback."
+      );
+      didWarnUpdateInsideUpdate = true;
+    }
+  }
+}
+
+function enqueueCapturedUpdate(workInProgress, update, renderExpirationTime) {
+  // Captured updates go into a separate list, and only on the work-in-
+  // progress queue.
+  var workInProgressQueue = workInProgress.updateQueue;
+  if (workInProgressQueue === null) {
+    workInProgressQueue = workInProgress.updateQueue = createUpdateQueue(
+      workInProgress.memoizedState
+    );
+  } else {
+    // TODO: I put this here rather than createWorkInProgress so that we don't
+    // clone the queue unnecessarily. There's probably a better way to
+    // structure this.
+    workInProgressQueue = ensureWorkInProgressQueueIsAClone(
+      workInProgress,
+      workInProgressQueue
+    );
+  }
+
+  // Append the update to the end of the list.
+  if (workInProgressQueue.lastCapturedUpdate === null) {
+    // This is the first render phase update
+    workInProgressQueue.firstCapturedUpdate = workInProgressQueue.lastCapturedUpdate = update;
+  } else {
+    workInProgressQueue.lastCapturedUpdate.next = update;
+    workInProgressQueue.lastCapturedUpdate = update;
+  }
+  if (
+    workInProgressQueue.expirationTime === NoWork ||
+    workInProgressQueue.expirationTime > renderExpirationTime
+  ) {
+    // The incoming update has the earliest expiration of any update in the
+    // queue. Update the queue's expiration time.
+    workInProgressQueue.expirationTime = renderExpirationTime;
+  }
+}
+
+function ensureWorkInProgressQueueIsAClone(workInProgress, queue) {
+  var current = workInProgress.alternate;
+  if (current !== null) {
+    // If the work-in-progress queue is equal to the current queue,
+    // we need to clone it first.
+    if (queue === current.updateQueue) {
+      queue = workInProgress.updateQueue = cloneUpdateQueue(queue);
+    }
+  }
+  return queue;
+}
+
+function getStateFromUpdate(
+  workInProgress,
+  queue,
+  update,
+  prevState,
+  nextProps,
+  instance
+) {
+  switch (update.tag) {
+    case ReplaceState: {
+      var _payload = update.payload;
+      if (typeof _payload === "function") {
+        // Updater function
+        {
+          if (
+            debugRenderPhaseSideEffects ||
+            (debugRenderPhaseSideEffectsForStrictMode &&
+              workInProgress.mode & StrictMode)
+          ) {
+            _payload.call(instance, prevState, nextProps);
+          }
+        }
+        return _payload.call(instance, prevState, nextProps);
+      }
+      // State object
+      return _payload;
+    }
+    case CaptureUpdate: {
+      workInProgress.effectTag =
+        (workInProgress.effectTag & ~ShouldCapture) | DidCapture;
+    }
+    // Intentional fallthrough
+    case UpdateState: {
+      var _payload2 = update.payload;
+      var partialState = void 0;
+      if (typeof _payload2 === "function") {
+        // Updater function
+        {
+          if (
+            debugRenderPhaseSideEffects ||
+            (debugRenderPhaseSideEffectsForStrictMode &&
+              workInProgress.mode & StrictMode)
+          ) {
+            _payload2.call(instance, prevState, nextProps);
+          }
+        }
+        partialState = _payload2.call(instance, prevState, nextProps);
+      } else {
+        // Partial state object
+        partialState = _payload2;
+      }
+      if (partialState === null || partialState === undefined) {
+        // Null and undefined are treated as no-ops.
+        return prevState;
+      }
+      // Merge the partial state and the previous state.
+      return Object.assign({}, prevState, partialState);
+    }
+    case ForceUpdate: {
+      hasForceUpdate = true;
+      return prevState;
+    }
+  }
+  return prevState;
+}
+
+function processUpdateQueue(
+  workInProgress,
+  queue,
+  props,
+  instance,
+  renderExpirationTime
+) {
+  hasForceUpdate = false;
+
+  if (
+    queue.expirationTime === NoWork ||
+    queue.expirationTime > renderExpirationTime
+  ) {
+    // Insufficient priority. Bailout.
+    return;
+  }
+
+  queue = ensureWorkInProgressQueueIsAClone(workInProgress, queue);
+
+  {
+    currentlyProcessingQueue = queue;
+  }
+
+  // These values may change as we process the queue.
+  var newBaseState = queue.baseState;
+  var newFirstUpdate = null;
+  var newExpirationTime = NoWork;
+
+  // Iterate through the list of updates to compute the result.
+  var update = queue.firstUpdate;
+  var resultState = newBaseState;
+  while (update !== null) {
+    var updateExpirationTime = update.expirationTime;
+    if (updateExpirationTime > renderExpirationTime) {
+      // This update does not have sufficient priority. Skip it.
+      if (newFirstUpdate === null) {
+        // This is the first skipped update. It will be the first update in
+        // the new list.
+        newFirstUpdate = update;
+        // Since this is the first update that was skipped, the current result
+        // is the new base state.
+        newBaseState = resultState;
+      }
+      // Since this update will remain in the list, update the remaining
+      // expiration time.
+      if (
+        newExpirationTime === NoWork ||
+        newExpirationTime > updateExpirationTime
+      ) {
+        newExpirationTime = updateExpirationTime;
+      }
+    } else {
+      // This update does have sufficient priority. Process it and compute
+      // a new result.
+      resultState = getStateFromUpdate(
+        workInProgress,
+        queue,
+        update,
+        resultState,
+        props,
+        instance
+      );
+      var _callback = update.callback;
+      if (_callback !== null) {
+        workInProgress.effectTag |= Callback;
+        // Set this to null, in case it was mutated during an aborted render.
+        update.nextEffect = null;
+        if (queue.lastEffect === null) {
+          queue.firstEffect = queue.lastEffect = update;
+        } else {
+          queue.lastEffect.nextEffect = update;
+          queue.lastEffect = update;
+        }
+      }
+    }
+    // Continue to the next update.
+    update = update.next;
+  }
+
+  // Separately, iterate though the list of captured updates.
+  var newFirstCapturedUpdate = null;
+  update = queue.firstCapturedUpdate;
+  while (update !== null) {
+    var _updateExpirationTime = update.expirationTime;
+    if (_updateExpirationTime > renderExpirationTime) {
+      // This update does not have sufficient priority. Skip it.
+      if (newFirstCapturedUpdate === null) {
+        // This is the first skipped captured update. It will be the first
+        // update in the new list.
+        newFirstCapturedUpdate = update;
+        // If this is the first update that was skipped, the current result is
+        // the new base state.
+        if (newFirstUpdate === null) {
+          newBaseState = resultState;
+        }
+      }
+      // Since this update will remain in the list, update the remaining
+      // expiration time.
+      if (
+        newExpirationTime === NoWork ||
+        newExpirationTime > _updateExpirationTime
+      ) {
+        newExpirationTime = _updateExpirationTime;
+      }
+    } else {
+      // This update does have sufficient priority. Process it and compute
+      // a new result.
+      resultState = getStateFromUpdate(
+        workInProgress,
+        queue,
+        update,
+        resultState,
+        props,
+        instance
+      );
+      var _callback2 = update.callback;
+      if (_callback2 !== null) {
+        workInProgress.effectTag |= Callback;
+        // Set this to null, in case it was mutated during an aborted render.
+        update.nextEffect = null;
+        if (queue.lastCapturedEffect === null) {
+          queue.firstCapturedEffect = queue.lastCapturedEffect = update;
+        } else {
+          queue.lastCapturedEffect.nextEffect = update;
+          queue.lastCapturedEffect = update;
+        }
+      }
+    }
+    update = update.next;
+  }
+
+  if (newFirstUpdate === null) {
+    queue.lastUpdate = null;
+  }
+  if (newFirstCapturedUpdate === null) {
+    queue.lastCapturedUpdate = null;
+  } else {
+    workInProgress.effectTag |= Callback;
+  }
+  if (newFirstUpdate === null && newFirstCapturedUpdate === null) {
+    // We processed every update, without skipping. That means the new base
+    // state is the same as the result state.
+    newBaseState = resultState;
+  }
+
+  queue.baseState = newBaseState;
+  queue.firstUpdate = newFirstUpdate;
+  queue.firstCapturedUpdate = newFirstCapturedUpdate;
+  queue.expirationTime = newExpirationTime;
+
+  workInProgress.memoizedState = resultState;
+
+  {
+    currentlyProcessingQueue = null;
+  }
+}
+
+function callCallback(callback, context) {
+  invariant(
+    typeof callback === "function",
+    "Invalid argument passed as callback. Expected a function. Instead " +
+      "received: %s",
+    callback
+  );
+  callback.call(context);
+}
+
+function resetHasForceUpdateBeforeProcessing() {
+  hasForceUpdate = false;
+}
+
+function checkHasForceUpdateAfterProcessing() {
+  return hasForceUpdate;
+}
+
+function commitUpdateQueue(
+  finishedWork,
+  finishedQueue,
+  instance,
+  renderExpirationTime
+) {
+  // If the finished render included captured updates, and there are still
+  // lower priority updates left over, we need to keep the captured updates
+  // in the queue so that they are rebased and not dropped once we process the
+  // queue again at the lower priority.
+  if (finishedQueue.firstCapturedUpdate !== null) {
+    // Join the captured update list to the end of the normal list.
+    if (finishedQueue.lastUpdate !== null) {
+      finishedQueue.lastUpdate.next = finishedQueue.firstCapturedUpdate;
+      finishedQueue.lastUpdate = finishedQueue.lastCapturedUpdate;
+    }
+    // Clear the list of captured updates.
+    finishedQueue.firstCapturedUpdate = finishedQueue.lastCapturedUpdate = null;
+  }
+
+  // Commit the effects
+  var effect = finishedQueue.firstEffect;
+  finishedQueue.firstEffect = finishedQueue.lastEffect = null;
+  while (effect !== null) {
+    var _callback3 = effect.callback;
+    if (_callback3 !== null) {
+      effect.callback = null;
+      callCallback(_callback3, instance);
+    }
+    effect = effect.nextEffect;
+  }
+
+  effect = finishedQueue.firstCapturedEffect;
+  finishedQueue.firstCapturedEffect = finishedQueue.lastCapturedEffect = null;
+  while (effect !== null) {
+    var _callback4 = effect.callback;
+    if (_callback4 !== null) {
+      effect.callback = null;
+      callCallback(_callback4, instance);
+    }
+    effect = effect.nextEffect;
+  }
+}
+
+function createCapturedValue(value, source) {
+  // If the value is an error, call this function immediately after it is thrown
+  // so the stack is accurate.
+  return {
+    value: value,
+    source: source,
+    stack: getStackAddendumByWorkInProgressFiber(source)
+  };
+}
+
+var providerCursor = createCursor(null);
+var valueCursor = createCursor(null);
+var changedBitsCursor = createCursor(0);
+
+var rendererSigil = void 0;
+{
+  // Use this to detect multiple renderers using the same context
+  rendererSigil = {};
+}
+
+function pushProvider(providerFiber) {
+  var context = providerFiber.type._context;
+
+  if (isPrimaryRenderer) {
+    push(changedBitsCursor, context._changedBits, providerFiber);
+    push(valueCursor, context._currentValue, providerFiber);
+    push(providerCursor, providerFiber, providerFiber);
+
+    context._currentValue = providerFiber.pendingProps.value;
+    context._changedBits = providerFiber.stateNode;
+    {
+      !(
+        context._currentRenderer === undefined ||
+        context._currentRenderer === null ||
+        context._currentRenderer === rendererSigil
+      )
+        ? warning(
+            false,
+            "Detected multiple renderers concurrently rendering the " +
+              "same context provider. This is currently unsupported."
+          )
+        : void 0;
+      context._currentRenderer = rendererSigil;
+    }
+  } else {
+    push(changedBitsCursor, context._changedBits2, providerFiber);
+    push(valueCursor, context._currentValue2, providerFiber);
+    push(providerCursor, providerFiber, providerFiber);
+
+    context._currentValue2 = providerFiber.pendingProps.value;
+    context._changedBits2 = providerFiber.stateNode;
+    {
+      !(
+        context._currentRenderer2 === undefined ||
+        context._currentRenderer2 === null ||
+        context._currentRenderer2 === rendererSigil
+      )
+        ? warning(
+            false,
+            "Detected multiple renderers concurrently rendering the " +
+              "same context provider. This is currently unsupported."
+          )
+        : void 0;
+      context._currentRenderer2 = rendererSigil;
+    }
+  }
+}
+
+function popProvider(providerFiber) {
+  var changedBits = changedBitsCursor.current;
+  var currentValue = valueCursor.current;
+
+  pop(providerCursor, providerFiber);
+  pop(valueCursor, providerFiber);
+  pop(changedBitsCursor, providerFiber);
+
+  var context = providerFiber.type._context;
+  if (isPrimaryRenderer) {
+    context._currentValue = currentValue;
+    context._changedBits = changedBits;
+  } else {
+    context._currentValue2 = currentValue;
+    context._changedBits2 = changedBits;
+  }
+}
+
+function getContextCurrentValue(context) {
+  return isPrimaryRenderer ? context._currentValue : context._currentValue2;
+}
+
+function getContextChangedBits(context) {
+  return isPrimaryRenderer ? context._changedBits : context._changedBits2;
+}
+
+var NO_CONTEXT = {};
+
+var contextStackCursor$1 = createCursor(NO_CONTEXT);
+var contextFiberStackCursor = createCursor(NO_CONTEXT);
+var rootInstanceStackCursor = createCursor(NO_CONTEXT);
+
+function requiredContext(c) {
+  invariant(
+    c !== NO_CONTEXT,
+    "Expected host context to exist. This error is likely caused by a bug " +
+      "in React. Please file an issue."
+  );
+  return c;
+}
+
+function getRootHostContainer() {
+  var rootInstance = requiredContext(rootInstanceStackCursor.current);
+  return rootInstance;
+}
+
+function pushHostContainer(fiber, nextRootInstance) {
+  // Push current root instance onto the stack;
+  // This allows us to reset root when portals are popped.
+  push(rootInstanceStackCursor, nextRootInstance, fiber);
+  // Track the context and the Fiber that provided it.
+  // This enables us to pop only Fibers that provide unique contexts.
+  push(contextFiberStackCursor, fiber, fiber);
+
+  // Finally, we need to push the host context to the stack.
+  // However, we can't just call getRootHostContext() and push it because
+  // we'd have a different number of entries on the stack depending on
+  // whether getRootHostContext() throws somewhere in renderer code or not.
+  // So we push an empty value first. This lets us safely unwind on errors.
+  push(contextStackCursor$1, NO_CONTEXT, fiber);
+  var nextRootContext = getRootHostContext(nextRootInstance);
+  // Now that we know this function doesn't throw, replace it.
+  pop(contextStackCursor$1, fiber);
+  push(contextStackCursor$1, nextRootContext, fiber);
+}
+
+function popHostContainer(fiber) {
+  pop(contextStackCursor$1, fiber);
+  pop(contextFiberStackCursor, fiber);
+  pop(rootInstanceStackCursor, fiber);
+}
+
+function getHostContext() {
+  var context = requiredContext(contextStackCursor$1.current);
+  return context;
+}
+
+function pushHostContext(fiber) {
+  var rootInstance = requiredContext(rootInstanceStackCursor.current);
+  var context = requiredContext(contextStackCursor$1.current);
+  var nextContext = getChildHostContext(context, fiber.type, rootInstance);
+
+  // Don't push this Fiber's context unless it's unique.
+  if (context === nextContext) {
+    return;
+  }
+
+  // Track the context and the Fiber that provided it.
+  // This enables us to pop only Fibers that provide unique contexts.
+  push(contextFiberStackCursor, fiber, fiber);
+  push(contextStackCursor$1, nextContext, fiber);
+}
+
+function popHostContext(fiber) {
+  // Do not pop unless this Fiber provided the current context.
+  // pushHostContext() only pushes Fibers that provide unique contexts.
+  if (contextFiberStackCursor.current !== fiber) {
+    return;
+  }
+
+  pop(contextStackCursor$1, fiber);
+  pop(contextFiberStackCursor, fiber);
+}
+
+var commitTime = 0;
+
+function getCommitTime() {
+  return commitTime;
+}
+
+function recordCommitTime() {
+  if (!enableProfilerTimer) {
+    return;
+  }
+  commitTime = now();
+}
+
+/**
+ * The "actual" render time is total time required to render the descendants of a Profiler component.
+ * This time is stored as a stack, since Profilers can be nested.
+ * This time is started during the "begin" phase and stopped during the "complete" phase.
+ * It is paused (and accumulated) in the event of an interruption or an aborted render.
+ */
+
+var fiberStack$1 = void 0;
+
+{
+  fiberStack$1 = [];
+}
+
+var timerPausedAt = 0;
+var totalElapsedPauseTime = 0;
+
+function checkActualRenderTimeStackEmpty() {
+  if (!enableProfilerTimer) {
+    return;
+  }
+  {
+    !(fiberStack$1.length === 0)
+      ? warning(
+          false,
+          "Expected an empty stack. Something was not reset properly."
+        )
+      : void 0;
+  }
+}
+
+function markActualRenderTimeStarted(fiber) {
+  if (!enableProfilerTimer) {
+    return;
+  }
+  {
+    fiberStack$1.push(fiber);
+  }
+
+  fiber.actualDuration = now() - fiber.actualDuration - totalElapsedPauseTime;
+  fiber.actualStartTime = now();
+}
+
+function pauseActualRenderTimerIfRunning() {
+  if (!enableProfilerTimer) {
+    return;
+  }
+  if (timerPausedAt === 0) {
+    timerPausedAt = now();
+  }
+}
+
+function recordElapsedActualRenderTime(fiber) {
+  if (!enableProfilerTimer) {
+    return;
+  }
+  {
+    !(fiber === fiberStack$1.pop())
+      ? warning(false, "Unexpected Fiber (%s) popped.", getComponentName(fiber))
+      : void 0;
+  }
+
+  fiber.actualDuration = now() - totalElapsedPauseTime - fiber.actualDuration;
+}
+
+function resetActualRenderTimer() {
+  if (!enableProfilerTimer) {
+    return;
+  }
+  totalElapsedPauseTime = 0;
+}
+
+function resumeActualRenderTimerIfPaused() {
+  if (!enableProfilerTimer) {
+    return;
+  }
+  if (timerPausedAt > 0) {
+    totalElapsedPauseTime += now() - timerPausedAt;
+    timerPausedAt = 0;
+  }
+}
+
+/**
+ * The "base" render time is the duration of the “begin” phase of work for a particular fiber.
+ * This time is measured and stored on each fiber.
+ * The time for all sibling fibers are accumulated and stored on their parent during the "complete" phase.
+ * If a fiber bails out (sCU false) then its "base" timer is cancelled and the fiber is not updated.
+ */
+
+var baseStartTime = -1;
+
+function recordElapsedBaseRenderTimeIfRunning(fiber) {
+  if (!enableProfilerTimer) {
+    return;
+  }
+  if (baseStartTime !== -1) {
+    fiber.selfBaseTime = now() - baseStartTime;
+  }
+}
+
+function startBaseRenderTimer() {
+  if (!enableProfilerTimer) {
+    return;
+  }
+  {
+    if (baseStartTime !== -1) {
+      warning(
+        false,
+        "Cannot start base timer that is already running. " +
+          "This error is likely caused by a bug in React. " +
+          "Please file an issue."
+      );
+    }
+  }
+  baseStartTime = now();
+}
+
+function stopBaseRenderTimerIfRunning() {
+  if (!enableProfilerTimer) {
+    return;
+  }
+  baseStartTime = -1;
+}
+
+/*eslint-disable no-self-compare */
+
+var hasOwnProperty = Object.prototype.hasOwnProperty;
 
 /**
  * inlined Object.is polyfill to avoid requiring consumers ship their own
  * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is
  */
 function is(x, y) {
-  return (
-    (x === y && (x !== 0 || 1 / x === 1 / y)) || (x !== x && y !== y) // eslint-disable-line no-self-compare
-  );
+  // SameValue algorithm
+  if (x === y) {
+    // Steps 1-5, 7-10
+    // Steps 6.b-6.e: +0 != -0
+    // Added the nonzero y check to make Flow happy, but it is redundant
+    return x !== 0 || y !== 0 || 1 / x === 1 / y;
+  } else {
+    // Step 6.a: NaN == NaN
+    return x !== x && y !== y;
+  }
 }
-
-var hasOwnProperty = Object.prototype.hasOwnProperty;
 
 /**
  * Performs equality by iterating through keys on an object and returning false
@@ -6425,86 +6826,8 @@ function shallowEqual(objA, objB) {
   return true;
 }
 
-function resolveDefaultProps(Component, baseProps) {
-  if (Component && Component.defaultProps) {
-    // Resolve default props. Taken from ReactElement
-    var props = Object.assign({}, baseProps);
-    var defaultProps = Component.defaultProps;
-    for (var propName in defaultProps) {
-      if (props[propName] === undefined) {
-        props[propName] = defaultProps[propName];
-      }
-    }
-    return props;
-  }
-  return baseProps;
-}
-
-function readLazyComponentType(lazyComponent) {
-  var status = lazyComponent._status;
-  var result = lazyComponent._result;
-  switch (status) {
-    case Resolved: {
-      var Component = result;
-      return Component;
-    }
-    case Rejected: {
-      var error = result;
-      throw error;
-    }
-    case Pending: {
-      var thenable = result;
-      throw thenable;
-    }
-    default: {
-      lazyComponent._status = Pending;
-      var ctor = lazyComponent._ctor;
-      var _thenable = ctor();
-      _thenable.then(
-        function(moduleObject) {
-          if (lazyComponent._status === Pending) {
-            var defaultExport = moduleObject.default;
-            {
-              if (defaultExport === undefined) {
-                warning$1(
-                  false,
-                  "lazy: Expected the result of a dynamic import() call. " +
-                    "Instead received: %s\n\nYour code should look like: \n  " +
-                    "const MyComponent = lazy(() => import('./MyComponent'))",
-                  moduleObject
-                );
-              }
-            }
-            lazyComponent._status = Resolved;
-            lazyComponent._result = defaultExport;
-          }
-        },
-        function(error) {
-          if (lazyComponent._status === Pending) {
-            lazyComponent._status = Rejected;
-            lazyComponent._result = error;
-          }
-        }
-      );
-      // Handle synchronous thenables.
-      switch (lazyComponent._status) {
-        case Resolved:
-          return lazyComponent._result;
-        case Rejected:
-          throw lazyComponent._result;
-      }
-      lazyComponent._result = _thenable;
-      throw _thenable;
-    }
-  }
-}
-
 var fakeInternalInstance = {};
-var isArray$1 = Array.isArray;
-
-// React.Component uses a shared frozen object by default.
-// We'll use it to determine whether we need to initialize legacy refs.
-var emptyRefsObject = new React.Component().refs;
+var isArray = Array.isArray;
 
 var didWarnAboutStateAssignmentForComponent = void 0;
 var didWarnAboutUninitializedState = void 0;
@@ -6513,19 +6836,13 @@ var didWarnAboutLegacyLifecyclesAndDerivedState = void 0;
 var didWarnAboutUndefinedDerivedState = void 0;
 var warnOnUndefinedDerivedState = void 0;
 var warnOnInvalidCallback = void 0;
-var didWarnAboutDirectlyAssigningPropsToState = void 0;
-var didWarnAboutContextTypeAndContextTypes = void 0;
-var didWarnAboutInvalidateContextType = void 0;
 
 {
   didWarnAboutStateAssignmentForComponent = new Set();
   didWarnAboutUninitializedState = new Set();
   didWarnAboutGetSnapshotBeforeUpdateWithoutDidUpdate = new Set();
   didWarnAboutLegacyLifecyclesAndDerivedState = new Set();
-  didWarnAboutDirectlyAssigningPropsToState = new Set();
   didWarnAboutUndefinedDerivedState = new Set();
-  didWarnAboutContextTypeAndContextTypes = new Set();
-  didWarnAboutInvalidateContextType = new Set();
 
   var didWarnOnInvalidCallback = new Set();
 
@@ -6536,7 +6853,7 @@ var didWarnAboutInvalidateContextType = void 0;
     var key = callerName + "_" + callback;
     if (!didWarnOnInvalidCallback.has(key)) {
       didWarnOnInvalidCallback.add(key);
-      warningWithoutStack$1(
+      warning(
         false,
         "%s(...): Expected the last optional `callback` argument to be a " +
           "function. Instead received: %s.",
@@ -6546,12 +6863,12 @@ var didWarnAboutInvalidateContextType = void 0;
     }
   };
 
-  warnOnUndefinedDerivedState = function(type, partialState) {
+  warnOnUndefinedDerivedState = function(workInProgress, partialState) {
     if (partialState === undefined) {
-      var componentName = getComponentName(type) || "Component";
+      var componentName = getComponentName(workInProgress) || "Component";
       if (!didWarnAboutUndefinedDerivedState.has(componentName)) {
         didWarnAboutUndefinedDerivedState.add(componentName);
-        warningWithoutStack$1(
+        warning(
           false,
           "%s.getDerivedStateFromProps(): A valid state object (or null) must be returned. " +
             "You have returned undefined.",
@@ -6585,7 +6902,6 @@ var didWarnAboutInvalidateContextType = void 0;
 
 function applyDerivedStateFromProps(
   workInProgress,
-  ctor,
   getDerivedStateFromProps,
   nextProps
 ) {
@@ -6605,7 +6921,7 @@ function applyDerivedStateFromProps(
   var partialState = getDerivedStateFromProps(nextProps, prevState);
 
   {
-    warnOnUndefinedDerivedState(ctor, partialState);
+    warnOnUndefinedDerivedState(workInProgress, partialState);
   }
   // Merge the partial state and the previous state.
   var memoizedState =
@@ -6617,7 +6933,7 @@ function applyDerivedStateFromProps(
   // Once the update queue is empty, persist the derived state onto the
   // base state.
   var updateQueue = workInProgress.updateQueue;
-  if (updateQueue !== null && workInProgress.expirationTime === NoWork) {
+  if (updateQueue !== null && updateQueue.expirationTime === NoWork) {
     updateQueue.baseState = memoizedState;
   }
 }
@@ -6626,7 +6942,7 @@ var classComponentUpdater = {
   isMounted: isMounted,
   enqueueSetState: function(inst, payload, callback) {
     var fiber = get$1(inst);
-    var currentTime = requestCurrentTime();
+    var currentTime = recalculateCurrentTime();
     var expirationTime = computeExpirationForFiber(currentTime, fiber);
 
     var update = createUpdate(expirationTime);
@@ -6638,13 +6954,12 @@ var classComponentUpdater = {
       update.callback = callback;
     }
 
-    flushPassiveEffects();
-    enqueueUpdate(fiber, update);
+    enqueueUpdate(fiber, update, expirationTime);
     scheduleWork(fiber, expirationTime);
   },
   enqueueReplaceState: function(inst, payload, callback) {
     var fiber = get$1(inst);
-    var currentTime = requestCurrentTime();
+    var currentTime = recalculateCurrentTime();
     var expirationTime = computeExpirationForFiber(currentTime, fiber);
 
     var update = createUpdate(expirationTime);
@@ -6658,13 +6973,12 @@ var classComponentUpdater = {
       update.callback = callback;
     }
 
-    flushPassiveEffects();
-    enqueueUpdate(fiber, update);
+    enqueueUpdate(fiber, update, expirationTime);
     scheduleWork(fiber, expirationTime);
   },
   enqueueForceUpdate: function(inst, callback) {
     var fiber = get$1(inst);
-    var currentTime = requestCurrentTime();
+    var currentTime = recalculateCurrentTime();
     var expirationTime = computeExpirationForFiber(currentTime, fiber);
 
     var update = createUpdate(expirationTime);
@@ -6677,38 +6991,37 @@ var classComponentUpdater = {
       update.callback = callback;
     }
 
-    flushPassiveEffects();
-    enqueueUpdate(fiber, update);
+    enqueueUpdate(fiber, update, expirationTime);
     scheduleWork(fiber, expirationTime);
   }
 };
 
 function checkShouldComponentUpdate(
   workInProgress,
-  ctor,
   oldProps,
   newProps,
   oldState,
   newState,
-  nextContext
+  newContext
 ) {
   var instance = workInProgress.stateNode;
+  var ctor = workInProgress.type;
   if (typeof instance.shouldComponentUpdate === "function") {
     startPhaseTimer(workInProgress, "shouldComponentUpdate");
     var shouldUpdate = instance.shouldComponentUpdate(
       newProps,
       newState,
-      nextContext
+      newContext
     );
     stopPhaseTimer();
 
     {
       !(shouldUpdate !== undefined)
-        ? warningWithoutStack$1(
+        ? warning(
             false,
             "%s.shouldComponentUpdate(): Returned undefined instead of a " +
               "boolean value. Make sure to return true or false.",
-            getComponentName(ctor) || "Component"
+            getComponentName(workInProgress) || "Component"
           )
         : void 0;
     }
@@ -6725,22 +7038,23 @@ function checkShouldComponentUpdate(
   return true;
 }
 
-function checkClassInstance(workInProgress, ctor, newProps) {
+function checkClassInstance(workInProgress) {
   var instance = workInProgress.stateNode;
+  var type = workInProgress.type;
   {
-    var name = getComponentName(ctor) || "Component";
+    var name = getComponentName(workInProgress) || "Component";
     var renderPresent = instance.render;
 
     if (!renderPresent) {
-      if (ctor.prototype && typeof ctor.prototype.render === "function") {
-        warningWithoutStack$1(
+      if (type.prototype && typeof type.prototype.render === "function") {
+        warning(
           false,
           "%s(...): No `render` method found on the returned component " +
             "instance: did you accidentally return an object from the constructor?",
           name
         );
       } else {
-        warningWithoutStack$1(
+        warning(
           false,
           "%s(...): No `render` method found on the returned component " +
             "instance: you may have forgotten to define `render`.",
@@ -6754,7 +7068,7 @@ function checkClassInstance(workInProgress, ctor, newProps) {
       instance.getInitialState.isReactClassApproved ||
       instance.state;
     !noGetInitialStateOnES6
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "getInitialState was defined on %s, a plain JavaScript class. " +
             "This is only supported for classes created using React.createClass. " +
@@ -6766,7 +7080,7 @@ function checkClassInstance(workInProgress, ctor, newProps) {
       !instance.getDefaultProps ||
       instance.getDefaultProps.isReactClassApproved;
     !noGetDefaultPropsOnES6
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "getDefaultProps was defined on %s, a plain JavaScript class. " +
             "This is only supported for classes created using React.createClass. " +
@@ -6776,50 +7090,26 @@ function checkClassInstance(workInProgress, ctor, newProps) {
       : void 0;
     var noInstancePropTypes = !instance.propTypes;
     !noInstancePropTypes
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "propTypes was defined as an instance property on %s. Use a static " +
             "property to define propTypes instead.",
           name
         )
       : void 0;
-    var noInstanceContextType = !instance.contextType;
-    !noInstanceContextType
-      ? warningWithoutStack$1(
-          false,
-          "contextType was defined as an instance property on %s. Use a static " +
-            "property to define contextType instead.",
-          name
-        )
-      : void 0;
     var noInstanceContextTypes = !instance.contextTypes;
     !noInstanceContextTypes
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "contextTypes was defined as an instance property on %s. Use a static " +
             "property to define contextTypes instead.",
           name
         )
       : void 0;
-
-    if (
-      ctor.contextType &&
-      ctor.contextTypes &&
-      !didWarnAboutContextTypeAndContextTypes.has(ctor)
-    ) {
-      didWarnAboutContextTypeAndContextTypes.add(ctor);
-      warningWithoutStack$1(
-        false,
-        "%s declares both contextTypes and contextType static properties. " +
-          "The legacy contextTypes property will be ignored.",
-        name
-      );
-    }
-
     var noComponentShouldUpdate =
       typeof instance.componentShouldUpdate !== "function";
     !noComponentShouldUpdate
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "%s has a method called " +
             "componentShouldUpdate(). Did you mean shouldComponentUpdate()? " +
@@ -6829,22 +7119,22 @@ function checkClassInstance(workInProgress, ctor, newProps) {
         )
       : void 0;
     if (
-      ctor.prototype &&
-      ctor.prototype.isPureReactComponent &&
+      type.prototype &&
+      type.prototype.isPureReactComponent &&
       typeof instance.shouldComponentUpdate !== "undefined"
     ) {
-      warningWithoutStack$1(
+      warning(
         false,
         "%s has a method called shouldComponentUpdate(). " +
           "shouldComponentUpdate should not be used when extending React.PureComponent. " +
           "Please extend React.Component if shouldComponentUpdate is used.",
-        getComponentName(ctor) || "A pure component"
+        getComponentName(workInProgress) || "A pure component"
       );
     }
     var noComponentDidUnmount =
       typeof instance.componentDidUnmount !== "function";
     !noComponentDidUnmount
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "%s has a method called " +
             "componentDidUnmount(). But there is no such lifecycle method. " +
@@ -6855,7 +7145,7 @@ function checkClassInstance(workInProgress, ctor, newProps) {
     var noComponentDidReceiveProps =
       typeof instance.componentDidReceiveProps !== "function";
     !noComponentDidReceiveProps
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "%s has a method called " +
             "componentDidReceiveProps(). But there is no such lifecycle method. " +
@@ -6868,7 +7158,7 @@ function checkClassInstance(workInProgress, ctor, newProps) {
     var noComponentWillRecieveProps =
       typeof instance.componentWillRecieveProps !== "function";
     !noComponentWillRecieveProps
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "%s has a method called " +
             "componentWillRecieveProps(). Did you mean componentWillReceiveProps()?",
@@ -6878,16 +7168,16 @@ function checkClassInstance(workInProgress, ctor, newProps) {
     var noUnsafeComponentWillRecieveProps =
       typeof instance.UNSAFE_componentWillRecieveProps !== "function";
     !noUnsafeComponentWillRecieveProps
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "%s has a method called " +
             "UNSAFE_componentWillRecieveProps(). Did you mean UNSAFE_componentWillReceiveProps()?",
           name
         )
       : void 0;
-    var hasMutatedProps = instance.props !== newProps;
+    var hasMutatedProps = instance.props !== workInProgress.pendingProps;
     !(instance.props === undefined || !hasMutatedProps)
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "%s(...): When calling super() in `%s`, make sure to pass " +
             "up the same props that your component's constructor was passed.",
@@ -6897,7 +7187,7 @@ function checkClassInstance(workInProgress, ctor, newProps) {
       : void 0;
     var noInstanceDefaultProps = !instance.defaultProps;
     !noInstanceDefaultProps
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "Setting defaultProps as an instance property on %s is not supported and will be ignored." +
             " Instead, define defaultProps as a static property on %s.",
@@ -6909,21 +7199,21 @@ function checkClassInstance(workInProgress, ctor, newProps) {
     if (
       typeof instance.getSnapshotBeforeUpdate === "function" &&
       typeof instance.componentDidUpdate !== "function" &&
-      !didWarnAboutGetSnapshotBeforeUpdateWithoutDidUpdate.has(ctor)
+      !didWarnAboutGetSnapshotBeforeUpdateWithoutDidUpdate.has(type)
     ) {
-      didWarnAboutGetSnapshotBeforeUpdateWithoutDidUpdate.add(ctor);
-      warningWithoutStack$1(
+      didWarnAboutGetSnapshotBeforeUpdateWithoutDidUpdate.add(type);
+      warning(
         false,
         "%s: getSnapshotBeforeUpdate() should be used with componentDidUpdate(). " +
           "This component defines getSnapshotBeforeUpdate() only.",
-        getComponentName(ctor)
+        getComponentName(workInProgress)
       );
     }
 
     var noInstanceGetDerivedStateFromProps =
       typeof instance.getDerivedStateFromProps !== "function";
     !noInstanceGetDerivedStateFromProps
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "%s: getDerivedStateFromProps() is defined as an instance method " +
             "and will be ignored. Instead, declare it as a static method.",
@@ -6931,19 +7221,19 @@ function checkClassInstance(workInProgress, ctor, newProps) {
         )
       : void 0;
     var noInstanceGetDerivedStateFromCatch =
-      typeof instance.getDerivedStateFromError !== "function";
+      typeof instance.getDerivedStateFromCatch !== "function";
     !noInstanceGetDerivedStateFromCatch
-      ? warningWithoutStack$1(
+      ? warning(
           false,
-          "%s: getDerivedStateFromError() is defined as an instance method " +
+          "%s: getDerivedStateFromCatch() is defined as an instance method " +
             "and will be ignored. Instead, declare it as a static method.",
           name
         )
       : void 0;
     var noStaticGetSnapshotBeforeUpdate =
-      typeof ctor.getSnapshotBeforeUpdate !== "function";
+      typeof type.getSnapshotBeforeUpdate !== "function";
     !noStaticGetSnapshotBeforeUpdate
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "%s: getSnapshotBeforeUpdate() is defined as a static method " +
             "and will be ignored. Instead, declare it as an instance method.",
@@ -6951,16 +7241,12 @@ function checkClassInstance(workInProgress, ctor, newProps) {
         )
       : void 0;
     var _state = instance.state;
-    if (_state && (typeof _state !== "object" || isArray$1(_state))) {
-      warningWithoutStack$1(
-        false,
-        "%s.state: must be set to an object or null",
-        name
-      );
+    if (_state && (typeof _state !== "object" || isArray(_state))) {
+      warning(false, "%s.state: must be set to an object or null", name);
     }
     if (typeof instance.getChildContext === "function") {
-      !(typeof ctor.childContextTypes === "object")
-        ? warningWithoutStack$1(
+      !(typeof type.childContextTypes === "object")
+        ? warning(
             false,
             "%s.getChildContext(): childContextTypes must be defined in order to " +
               "use getChildContext().",
@@ -6981,43 +7267,13 @@ function adoptClassInstance(workInProgress, instance) {
   }
 }
 
-function constructClassInstance(
-  workInProgress,
-  ctor,
-  props,
-  renderExpirationTime
-) {
-  var isLegacyContextConsumer = false;
-  var unmaskedContext = emptyContextObject;
-  var context = null;
-  var contextType = ctor.contextType;
-  if (typeof contextType === "object" && contextType !== null) {
-    {
-      if (
-        contextType.$$typeof !== REACT_CONTEXT_TYPE &&
-        !didWarnAboutInvalidateContextType.has(ctor)
-      ) {
-        didWarnAboutInvalidateContextType.add(ctor);
-        warningWithoutStack$1(
-          false,
-          "%s defines an invalid contextType. " +
-            "contextType should point to the Context object returned by React.createContext(). " +
-            "Did you accidentally pass the Context.Provider instead?",
-          getComponentName(ctor) || "Component"
-        );
-      }
-    }
-
-    context = readContext(contextType);
-  } else {
-    unmaskedContext = getUnmaskedContext(workInProgress, ctor, true);
-    var contextTypes = ctor.contextTypes;
-    isLegacyContextConsumer =
-      contextTypes !== null && contextTypes !== undefined;
-    context = isLegacyContextConsumer
-      ? getMaskedContext(workInProgress, unmaskedContext)
-      : emptyContextObject;
-  }
+function constructClassInstance(workInProgress, props, renderExpirationTime) {
+  var ctor = workInProgress.type;
+  var unmaskedContext = getUnmaskedContext(workInProgress);
+  var needsContext = isContextConsumer(workInProgress);
+  var context = needsContext
+    ? getMaskedContext(workInProgress, unmaskedContext)
+    : emptyObject;
 
   // Instantiate twice to help detect side-effects.
   {
@@ -7039,18 +7295,15 @@ function constructClassInstance(
 
   {
     if (typeof ctor.getDerivedStateFromProps === "function" && state === null) {
-      var componentName = getComponentName(ctor) || "Component";
+      var componentName = getComponentName(workInProgress) || "Component";
       if (!didWarnAboutUninitializedState.has(componentName)) {
         didWarnAboutUninitializedState.add(componentName);
-        warningWithoutStack$1(
+        warning(
           false,
-          "`%s` uses `getDerivedStateFromProps` but its initial state is " +
-            "%s. This is not recommended. Instead, define the initial state by " +
-            "assigning an object to `this.state` in the constructor of `%s`. " +
-            "This ensures that `getDerivedStateFromProps` arguments have a consistent shape.",
+          "%s: Did not properly initialize state during construction. " +
+            "Expected state to be an object, but it was %s.",
           componentName,
-          instance.state === null ? "null" : "undefined",
-          componentName
+          instance.state === null ? "null" : "undefined"
         );
       }
     }
@@ -7096,14 +7349,14 @@ function constructClassInstance(
         foundWillReceivePropsName !== null ||
         foundWillUpdateName !== null
       ) {
-        var _componentName = getComponentName(ctor) || "Component";
+        var _componentName = getComponentName(workInProgress) || "Component";
         var newApiName =
           typeof ctor.getDerivedStateFromProps === "function"
             ? "getDerivedStateFromProps()"
             : "getSnapshotBeforeUpdate()";
         if (!didWarnAboutLegacyLifecyclesAndDerivedState.has(_componentName)) {
           didWarnAboutLegacyLifecyclesAndDerivedState.add(_componentName);
-          warningWithoutStack$1(
+          warning(
             false,
             "Unsafe legacy lifecycles will not be called for components using new component APIs.\n\n" +
               "%s uses %s but also contains the following legacy lifecycles:%s%s%s\n\n" +
@@ -7124,7 +7377,7 @@ function constructClassInstance(
 
   // Cache unmasked context so we can avoid recreating masked context unless necessary.
   // ReactFiberContext usually updates this cache but can't for newly-created instances.
-  if (isLegacyContextConsumer) {
+  if (needsContext) {
     cacheContext(workInProgress, unmaskedContext, context);
   }
 
@@ -7146,12 +7399,12 @@ function callComponentWillMount(workInProgress, instance) {
 
   if (oldState !== instance.state) {
     {
-      warningWithoutStack$1(
+      warning(
         false,
         "%s.componentWillMount(): Assigning directly to this.state is " +
           "deprecated (except inside a component's " +
           "constructor). Use setState instead.",
-        getComponentName(workInProgress.type) || "Component"
+        getComponentName(workInProgress) || "Component"
       );
     }
     classComponentUpdater.enqueueReplaceState(instance, instance.state, null);
@@ -7162,24 +7415,24 @@ function callComponentWillReceiveProps(
   workInProgress,
   instance,
   newProps,
-  nextContext
+  newContext
 ) {
   var oldState = instance.state;
   startPhaseTimer(workInProgress, "componentWillReceiveProps");
   if (typeof instance.componentWillReceiveProps === "function") {
-    instance.componentWillReceiveProps(newProps, nextContext);
+    instance.componentWillReceiveProps(newProps, newContext);
   }
   if (typeof instance.UNSAFE_componentWillReceiveProps === "function") {
-    instance.UNSAFE_componentWillReceiveProps(newProps, nextContext);
+    instance.UNSAFE_componentWillReceiveProps(newProps, newContext);
   }
   stopPhaseTimer();
 
   if (instance.state !== oldState) {
     {
-      var componentName = getComponentName(workInProgress.type) || "Component";
+      var componentName = getComponentName(workInProgress) || "Component";
       if (!didWarnAboutStateAssignmentForComponent.has(componentName)) {
         didWarnAboutStateAssignmentForComponent.add(componentName);
-        warningWithoutStack$1(
+        warning(
           false,
           "%s.componentWillReceiveProps(): Assigning directly to " +
             "this.state is deprecated (except inside a component's " +
@@ -7193,44 +7446,23 @@ function callComponentWillReceiveProps(
 }
 
 // Invokes the mount life-cycles on a previously never rendered instance.
-function mountClassInstance(
-  workInProgress,
-  ctor,
-  newProps,
-  renderExpirationTime
-) {
+function mountClassInstance(workInProgress, renderExpirationTime) {
+  var ctor = workInProgress.type;
+
   {
-    checkClassInstance(workInProgress, ctor, newProps);
+    checkClassInstance(workInProgress);
   }
 
   var instance = workInProgress.stateNode;
-  instance.props = newProps;
-  instance.state = workInProgress.memoizedState;
-  instance.refs = emptyRefsObject;
+  var props = workInProgress.pendingProps;
+  var unmaskedContext = getUnmaskedContext(workInProgress);
 
-  var contextType = ctor.contextType;
-  if (typeof contextType === "object" && contextType !== null) {
-    instance.context = readContext(contextType);
-  } else {
-    var unmaskedContext = getUnmaskedContext(workInProgress, ctor, true);
-    instance.context = getMaskedContext(workInProgress, unmaskedContext);
-  }
+  instance.props = props;
+  instance.state = workInProgress.memoizedState;
+  instance.refs = emptyObject;
+  instance.context = getMaskedContext(workInProgress, unmaskedContext);
 
   {
-    if (instance.state === newProps) {
-      var componentName = getComponentName(ctor) || "Component";
-      if (!didWarnAboutDirectlyAssigningPropsToState.has(componentName)) {
-        didWarnAboutDirectlyAssigningPropsToState.add(componentName);
-        warningWithoutStack$1(
-          false,
-          "%s: It is not recommended to assign props directly to state " +
-            "because updates to props won't be reflected in state. " +
-            "In most cases, it is better to use props directly.",
-          componentName
-        );
-      }
-    }
-
     if (workInProgress.mode & StrictMode) {
       ReactStrictModeWarnings.recordUnsafeLifecycleWarnings(
         workInProgress,
@@ -7256,21 +7488,16 @@ function mountClassInstance(
     processUpdateQueue(
       workInProgress,
       updateQueue,
-      newProps,
+      props,
       instance,
       renderExpirationTime
     );
     instance.state = workInProgress.memoizedState;
   }
 
-  var getDerivedStateFromProps = ctor.getDerivedStateFromProps;
+  var getDerivedStateFromProps = workInProgress.type.getDerivedStateFromProps;
   if (typeof getDerivedStateFromProps === "function") {
-    applyDerivedStateFromProps(
-      workInProgress,
-      ctor,
-      getDerivedStateFromProps,
-      newProps
-    );
+    applyDerivedStateFromProps(workInProgress, getDerivedStateFromProps, props);
     instance.state = workInProgress.memoizedState;
   }
 
@@ -7290,7 +7517,7 @@ function mountClassInstance(
       processUpdateQueue(
         workInProgress,
         updateQueue,
-        newProps,
+        props,
         instance,
         renderExpirationTime
       );
@@ -7303,30 +7530,17 @@ function mountClassInstance(
   }
 }
 
-function resumeMountClassInstance(
-  workInProgress,
-  ctor,
-  newProps,
-  renderExpirationTime
-) {
+function resumeMountClassInstance(workInProgress, renderExpirationTime) {
+  var ctor = workInProgress.type;
   var instance = workInProgress.stateNode;
 
   var oldProps = workInProgress.memoizedProps;
+  var newProps = workInProgress.pendingProps;
   instance.props = oldProps;
 
   var oldContext = instance.context;
-  var contextType = ctor.contextType;
-  var nextContext = void 0;
-  if (typeof contextType === "object" && contextType !== null) {
-    nextContext = readContext(contextType);
-  } else {
-    var nextLegacyUnmaskedContext = getUnmaskedContext(
-      workInProgress,
-      ctor,
-      true
-    );
-    nextContext = getMaskedContext(workInProgress, nextLegacyUnmaskedContext);
-  }
+  var newUnmaskedContext = getUnmaskedContext(workInProgress);
+  var newContext = getMaskedContext(workInProgress, newUnmaskedContext);
 
   var getDerivedStateFromProps = ctor.getDerivedStateFromProps;
   var hasNewLifecycles =
@@ -7344,12 +7558,12 @@ function resumeMountClassInstance(
     (typeof instance.UNSAFE_componentWillReceiveProps === "function" ||
       typeof instance.componentWillReceiveProps === "function")
   ) {
-    if (oldProps !== newProps || oldContext !== nextContext) {
+    if (oldProps !== newProps || oldContext !== newContext) {
       callComponentWillReceiveProps(
         workInProgress,
         instance,
         newProps,
-        nextContext
+        newContext
       );
     }
   }
@@ -7386,7 +7600,6 @@ function resumeMountClassInstance(
   if (typeof getDerivedStateFromProps === "function") {
     applyDerivedStateFromProps(
       workInProgress,
-      ctor,
       getDerivedStateFromProps,
       newProps
     );
@@ -7397,12 +7610,11 @@ function resumeMountClassInstance(
     checkHasForceUpdateAfterProcessing() ||
     checkShouldComponentUpdate(
       workInProgress,
-      ctor,
       oldProps,
       newProps,
       oldState,
       newState,
-      nextContext
+      newContext
     );
 
   if (shouldUpdate) {
@@ -7442,36 +7654,23 @@ function resumeMountClassInstance(
   // if shouldComponentUpdate returns false.
   instance.props = newProps;
   instance.state = newState;
-  instance.context = nextContext;
+  instance.context = newContext;
 
   return shouldUpdate;
 }
 
 // Invokes the update life-cycles and returns false if it shouldn't rerender.
-function updateClassInstance(
-  current,
-  workInProgress,
-  ctor,
-  newProps,
-  renderExpirationTime
-) {
+function updateClassInstance(current, workInProgress, renderExpirationTime) {
+  var ctor = workInProgress.type;
   var instance = workInProgress.stateNode;
 
   var oldProps = workInProgress.memoizedProps;
-  instance.props =
-    workInProgress.type === workInProgress.elementType
-      ? oldProps
-      : resolveDefaultProps(workInProgress.type, oldProps);
+  var newProps = workInProgress.pendingProps;
+  instance.props = oldProps;
 
   var oldContext = instance.context;
-  var contextType = ctor.contextType;
-  var nextContext = void 0;
-  if (typeof contextType === "object" && contextType !== null) {
-    nextContext = readContext(contextType);
-  } else {
-    var nextUnmaskedContext = getUnmaskedContext(workInProgress, ctor, true);
-    nextContext = getMaskedContext(workInProgress, nextUnmaskedContext);
-  }
+  var newUnmaskedContext = getUnmaskedContext(workInProgress);
+  var newContext = getMaskedContext(workInProgress, newUnmaskedContext);
 
   var getDerivedStateFromProps = ctor.getDerivedStateFromProps;
   var hasNewLifecycles =
@@ -7489,12 +7688,12 @@ function updateClassInstance(
     (typeof instance.UNSAFE_componentWillReceiveProps === "function" ||
       typeof instance.componentWillReceiveProps === "function")
   ) {
-    if (oldProps !== newProps || oldContext !== nextContext) {
+    if (oldProps !== newProps || oldContext !== newContext) {
       callComponentWillReceiveProps(
         workInProgress,
         instance,
         newProps,
-        nextContext
+        newContext
       );
     }
   }
@@ -7545,7 +7744,6 @@ function updateClassInstance(
   if (typeof getDerivedStateFromProps === "function") {
     applyDerivedStateFromProps(
       workInProgress,
-      ctor,
       getDerivedStateFromProps,
       newProps
     );
@@ -7556,12 +7754,11 @@ function updateClassInstance(
     checkHasForceUpdateAfterProcessing() ||
     checkShouldComponentUpdate(
       workInProgress,
-      ctor,
       oldProps,
       newProps,
       oldState,
       newState,
-      nextContext
+      newContext
     );
 
   if (shouldUpdate) {
@@ -7574,10 +7771,10 @@ function updateClassInstance(
     ) {
       startPhaseTimer(workInProgress, "componentWillUpdate");
       if (typeof instance.componentWillUpdate === "function") {
-        instance.componentWillUpdate(newProps, newState, nextContext);
+        instance.componentWillUpdate(newProps, newState, newContext);
       }
       if (typeof instance.UNSAFE_componentWillUpdate === "function") {
-        instance.UNSAFE_componentWillUpdate(newProps, newState, nextContext);
+        instance.UNSAFE_componentWillUpdate(newProps, newState, newContext);
       }
       stopPhaseTimer();
     }
@@ -7617,13 +7814,15 @@ function updateClassInstance(
   // if shouldComponentUpdate returns false.
   instance.props = newProps;
   instance.state = newState;
-  instance.context = nextContext;
+  instance.context = newContext;
 
   return shouldUpdate;
 }
 
+var getCurrentFiberStackAddendum$2 =
+  ReactDebugCurrentFiber.getCurrentFiberStackAddendum;
+
 var didWarnAboutMaps = void 0;
-var didWarnAboutGenerators = void 0;
 var didWarnAboutStringRefInStrictMode = void 0;
 var ownerHasKeyUseWarning = void 0;
 var ownerHasFunctionTypeWarning = void 0;
@@ -7631,7 +7830,6 @@ var warnForMissingKey = function(child) {};
 
 {
   didWarnAboutMaps = false;
-  didWarnAboutGenerators = false;
   didWarnAboutStringRefInStrictMode = {};
 
   /**
@@ -7657,27 +7855,28 @@ var warnForMissingKey = function(child) {};
     child._store.validated = true;
 
     var currentComponentErrorInfo =
-      "Each child in a list should have a unique " +
+      "Each child in an array or iterator should have a unique " +
       '"key" prop. See https://fb.me/react-warning-keys for ' +
       "more information." +
-      getCurrentFiberStackInDev();
+      (getCurrentFiberStackAddendum$2() || "");
     if (ownerHasKeyUseWarning[currentComponentErrorInfo]) {
       return;
     }
     ownerHasKeyUseWarning[currentComponentErrorInfo] = true;
 
-    warning$1(
+    warning(
       false,
-      "Each child in a list should have a unique " +
+      "Each child in an array or iterator should have a unique " +
         '"key" prop. See https://fb.me/react-warning-keys for ' +
-        "more information."
+        "more information.%s",
+      getCurrentFiberStackAddendum$2()
     );
   };
 }
 
-var isArray = Array.isArray;
+var isArray$1 = Array.isArray;
 
-function coerceRef(returnFiber, current$$1, element) {
+function coerceRef(returnFiber, current, element) {
   var mixedRef = element.ref;
   if (
     mixedRef !== null &&
@@ -7686,18 +7885,18 @@ function coerceRef(returnFiber, current$$1, element) {
   ) {
     {
       if (returnFiber.mode & StrictMode) {
-        var componentName = getComponentName(returnFiber.type) || "Component";
+        var componentName = getComponentName(returnFiber) || "Component";
         if (!didWarnAboutStringRefInStrictMode[componentName]) {
-          warningWithoutStack$1(
+          warning(
             false,
-            'A string ref, "%s", has been found within a strict mode tree. ' +
+            'A string ref, "%s", has been found within a strict mode tree. ' +
               "String refs are a source of potential bugs and should be avoided. " +
               "We recommend using createRef() instead." +
               "\n%s" +
               "\n\nLearn more about using refs safely here:" +
               "\nhttps://fb.me/react-strict-mode-string-ref",
             mixedRef,
-            getStackByFiberInDevAndProd(returnFiber)
+            getStackAddendumByWorkInProgressFiber(returnFiber)
           );
           didWarnAboutStringRefInStrictMode[componentName] = true;
         }
@@ -7711,8 +7910,7 @@ function coerceRef(returnFiber, current$$1, element) {
         var ownerFiber = owner;
         invariant(
           ownerFiber.tag === ClassComponent,
-          "Function components cannot have refs. " +
-            "Did you mean to use React.forwardRef()?"
+          "Stateless function components cannot have refs."
         );
         inst = ownerFiber.stateNode;
       }
@@ -7725,19 +7923,15 @@ function coerceRef(returnFiber, current$$1, element) {
       var stringRef = "" + mixedRef;
       // Check if previous string ref matches new string ref
       if (
-        current$$1 !== null &&
-        current$$1.ref !== null &&
-        typeof current$$1.ref === "function" &&
-        current$$1.ref._stringRef === stringRef
+        current !== null &&
+        current.ref !== null &&
+        typeof current.ref === "function" &&
+        current.ref._stringRef === stringRef
       ) {
-        return current$$1.ref;
+        return current.ref;
       }
       var ref = function(value) {
-        var refs = inst.refs;
-        if (refs === emptyRefsObject) {
-          // This is a lazy pooled frozen object, so we need to initialize.
-          refs = inst.refs = {};
-        }
+        var refs = inst.refs === emptyObject ? (inst.refs = {}) : inst.refs;
         if (value === null) {
           delete refs[stringRef];
         } else {
@@ -7749,13 +7943,13 @@ function coerceRef(returnFiber, current$$1, element) {
     } else {
       invariant(
         typeof mixedRef === "string",
-        "Expected ref to be a function, a string, an object returned by React.createRef(), or null."
+        "Expected ref to be a function or a string."
       );
       invariant(
         element._owner,
         "Element ref was specified as a string (%s) but no owner was set. This could happen for one of" +
           " the following reasons:\n" +
-          "1. You may be adding a ref to a function component\n" +
+          "1. You may be adding a ref to a functional component\n" +
           "2. You may be adding a ref to a component that was not created inside a component's render method\n" +
           "3. You have multiple copies of React loaded\n" +
           "See https://fb.me/react-refs-must-have-owner for more information.",
@@ -7773,7 +7967,7 @@ function throwOnInvalidObjectType(returnFiber, newChild) {
       addendum =
         " If you meant to render a collection of children, use an array " +
         "instead." +
-        getCurrentFiberStackInDev();
+        (getCurrentFiberStackAddendum$2() || "");
     }
     invariant(
       false,
@@ -7791,18 +7985,19 @@ function warnOnFunctionType() {
     "Functions are not valid as a React child. This may happen if " +
     "you return a Component instead of <Component /> from render. " +
     "Or maybe you meant to call this function rather than return it." +
-    getCurrentFiberStackInDev();
+    (getCurrentFiberStackAddendum$2() || "");
 
   if (ownerHasFunctionTypeWarning[currentComponentErrorInfo]) {
     return;
   }
   ownerHasFunctionTypeWarning[currentComponentErrorInfo] = true;
 
-  warning$1(
+  warning(
     false,
     "Functions are not valid as a React child. This may happen if " +
       "you return a Component instead of <Component /> from render. " +
-      "Or maybe you meant to call this function rather than return it."
+      "Or maybe you meant to call this function rather than return it.%s",
+    getCurrentFiberStackAddendum$2() || ""
   );
 }
 
@@ -7880,9 +8075,9 @@ function ChildReconciler(shouldTrackSideEffects) {
       // Noop.
       return lastPlacedIndex;
     }
-    var current$$1 = newFiber.alternate;
-    if (current$$1 !== null) {
-      var oldIndex = current$$1.index;
+    var current = newFiber.alternate;
+    if (current !== null) {
+      var oldIndex = current.index;
       if (oldIndex < lastPlacedIndex) {
         // This is a move.
         newFiber.effectTag = Placement;
@@ -7907,13 +8102,8 @@ function ChildReconciler(shouldTrackSideEffects) {
     return newFiber;
   }
 
-  function updateTextNode(
-    returnFiber,
-    current$$1,
-    textContent,
-    expirationTime
-  ) {
-    if (current$$1 === null || current$$1.tag !== HostText) {
+  function updateTextNode(returnFiber, current, textContent, expirationTime) {
+    if (current === null || current.tag !== HostText) {
       // Insert
       var created = createFiberFromText(
         textContent,
@@ -7924,17 +8114,17 @@ function ChildReconciler(shouldTrackSideEffects) {
       return created;
     } else {
       // Update
-      var existing = useFiber(current$$1, textContent, expirationTime);
+      var existing = useFiber(current, textContent, expirationTime);
       existing.return = returnFiber;
       return existing;
     }
   }
 
-  function updateElement(returnFiber, current$$1, element, expirationTime) {
-    if (current$$1 !== null && current$$1.elementType === element.type) {
+  function updateElement(returnFiber, current, element, expirationTime) {
+    if (current !== null && current.type === element.type) {
       // Move based on index
-      var existing = useFiber(current$$1, element.props, expirationTime);
-      existing.ref = coerceRef(returnFiber, current$$1, element);
+      var existing = useFiber(current, element.props, expirationTime);
+      existing.ref = coerceRef(returnFiber, current, element);
       existing.return = returnFiber;
       {
         existing._debugSource = element._source;
@@ -7948,18 +8138,18 @@ function ChildReconciler(shouldTrackSideEffects) {
         returnFiber.mode,
         expirationTime
       );
-      created.ref = coerceRef(returnFiber, current$$1, element);
+      created.ref = coerceRef(returnFiber, current, element);
       created.return = returnFiber;
       return created;
     }
   }
 
-  function updatePortal(returnFiber, current$$1, portal, expirationTime) {
+  function updatePortal(returnFiber, current, portal, expirationTime) {
     if (
-      current$$1 === null ||
-      current$$1.tag !== HostPortal ||
-      current$$1.stateNode.containerInfo !== portal.containerInfo ||
-      current$$1.stateNode.implementation !== portal.implementation
+      current === null ||
+      current.tag !== HostPortal ||
+      current.stateNode.containerInfo !== portal.containerInfo ||
+      current.stateNode.implementation !== portal.implementation
     ) {
       // Insert
       var created = createFiberFromPortal(
@@ -7971,24 +8161,14 @@ function ChildReconciler(shouldTrackSideEffects) {
       return created;
     } else {
       // Update
-      var existing = useFiber(
-        current$$1,
-        portal.children || [],
-        expirationTime
-      );
+      var existing = useFiber(current, portal.children || [], expirationTime);
       existing.return = returnFiber;
       return existing;
     }
   }
 
-  function updateFragment(
-    returnFiber,
-    current$$1,
-    fragment,
-    expirationTime,
-    key
-  ) {
-    if (current$$1 === null || current$$1.tag !== Fragment) {
+  function updateFragment(returnFiber, current, fragment, expirationTime, key) {
+    if (current === null || current.tag !== Fragment) {
       // Insert
       var created = createFiberFromFragment(
         fragment,
@@ -8000,7 +8180,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       return created;
     } else {
       // Update
-      var existing = useFiber(current$$1, fragment, expirationTime);
+      var existing = useFiber(current, fragment, expirationTime);
       existing.return = returnFiber;
       return existing;
     }
@@ -8043,7 +8223,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         }
       }
 
-      if (isArray(newChild) || getIteratorFn(newChild)) {
+      if (isArray$1(newChild) || getIteratorFn(newChild)) {
         var _created3 = createFiberFromFragment(
           newChild,
           returnFiber.mode,
@@ -8123,7 +8303,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         }
       }
 
-      if (isArray(newChild) || getIteratorFn(newChild)) {
+      if (isArray$1(newChild) || getIteratorFn(newChild)) {
         if (key !== null) {
           return null;
         }
@@ -8205,7 +8385,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         }
       }
 
-      if (isArray(newChild) || getIteratorFn(newChild)) {
+      if (isArray$1(newChild) || getIteratorFn(newChild)) {
         var _matchedFiber3 = existingChildren.get(newIdx) || null;
         return updateFragment(
           returnFiber,
@@ -8253,14 +8433,15 @@ function ChildReconciler(shouldTrackSideEffects) {
             knownKeys.add(key);
             break;
           }
-          warning$1(
+          warning(
             false,
             "Encountered two children with the same key, `%s`. " +
               "Keys should be unique so that components maintain their identity " +
               "across updates. Non-unique keys may cause children to be " +
               "duplicated and/or omitted — the behavior is unsupported and " +
-              "could change in a future version.",
-            key
+              "could change in a future version.%s",
+            key,
+            getCurrentFiberStackAddendum$2()
           );
           break;
         default:
@@ -8276,7 +8457,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     newChildren,
     expirationTime
   ) {
-    // This algorithm can't optimize by searching from both ends since we
+    // This algorithm can't optimize by searching from boths ends since we
     // don't have backpointers on fibers. I'm trying to see how far we can get
     // with that model. If it ends up not being worth the tradeoffs, we can
     // add it later.
@@ -8448,34 +8629,15 @@ function ChildReconciler(shouldTrackSideEffects) {
     );
 
     {
-      // We don't support rendering Generators because it's a mutation.
-      // See https://github.com/facebook/react/issues/12995
-      if (
-        typeof Symbol === "function" &&
-        // $FlowFixMe Flow doesn't know about toStringTag
-        newChildrenIterable[Symbol.toStringTag] === "Generator"
-      ) {
-        !didWarnAboutGenerators
-          ? warning$1(
-              false,
-              "Using Generators as children is unsupported and will likely yield " +
-                "unexpected results because enumerating a generator mutates it. " +
-                "You may convert it to an array with `Array.from()` or the " +
-                "`[...spread]` operator before rendering. Keep in mind " +
-                "you might need to polyfill these features for older browsers."
-            )
-          : void 0;
-        didWarnAboutGenerators = true;
-      }
-
       // Warn about using Maps as children
       if (newChildrenIterable.entries === iteratorFn) {
         !didWarnAboutMaps
-          ? warning$1(
+          ? warning(
               false,
               "Using Maps as children is unsupported and will likely yield " +
                 "unexpected results. Convert it to a sequence/iterable of keyed " +
-                "ReactElements instead."
+                "ReactElements instead.%s",
+              getCurrentFiberStackAddendum$2()
             )
           : void 0;
         didWarnAboutMaps = true;
@@ -8669,7 +8831,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         if (
           child.tag === Fragment
             ? element.type === REACT_FRAGMENT_TYPE
-            : child.elementType === element.type
+            : child.type === element.type
         ) {
           deleteRemainingChildren(returnFiber, child.sibling);
           var existing = useFiber(
@@ -8820,7 +8982,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       );
     }
 
-    if (isArray(newChild)) {
+    if (isArray$1(newChild)) {
       return reconcileChildrenArray(
         returnFiber,
         currentFirstChild,
@@ -8864,7 +9026,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         // Intentionally fall through to the next case, which handles both
         // functions and classes
         // eslint-disable-next-lined no-fallthrough
-        case FunctionComponent: {
+        case FunctionalComponent: {
           var Component = returnFiber.type;
           invariant(
             false,
@@ -8887,9 +9049,9 @@ function ChildReconciler(shouldTrackSideEffects) {
 var reconcileChildFibers = ChildReconciler(true);
 var mountChildFibers = ChildReconciler(false);
 
-function cloneChildFibers(current$$1, workInProgress) {
+function cloneChildFibers(current, workInProgress) {
   invariant(
-    current$$1 === null || workInProgress.child === current$$1.child,
+    current === null || workInProgress.child === current.child,
     "Resuming work not yet implemented."
   );
 
@@ -8918,1387 +9080,6 @@ function cloneChildFibers(current$$1, workInProgress) {
   newChild.sibling = null;
 }
 
-var NO_CONTEXT = {};
-
-var contextStackCursor$1 = createCursor(NO_CONTEXT);
-var contextFiberStackCursor = createCursor(NO_CONTEXT);
-var rootInstanceStackCursor = createCursor(NO_CONTEXT);
-
-function requiredContext(c) {
-  invariant(
-    c !== NO_CONTEXT,
-    "Expected host context to exist. This error is likely caused by a bug " +
-      "in React. Please file an issue."
-  );
-  return c;
-}
-
-function getRootHostContainer() {
-  var rootInstance = requiredContext(rootInstanceStackCursor.current);
-  return rootInstance;
-}
-
-function pushHostContainer(fiber, nextRootInstance) {
-  // Push current root instance onto the stack;
-  // This allows us to reset root when portals are popped.
-  push(rootInstanceStackCursor, nextRootInstance, fiber);
-  // Track the context and the Fiber that provided it.
-  // This enables us to pop only Fibers that provide unique contexts.
-  push(contextFiberStackCursor, fiber, fiber);
-
-  // Finally, we need to push the host context to the stack.
-  // However, we can't just call getRootHostContext() and push it because
-  // we'd have a different number of entries on the stack depending on
-  // whether getRootHostContext() throws somewhere in renderer code or not.
-  // So we push an empty value first. This lets us safely unwind on errors.
-  push(contextStackCursor$1, NO_CONTEXT, fiber);
-  var nextRootContext = getRootHostContext(nextRootInstance);
-  // Now that we know this function doesn't throw, replace it.
-  pop(contextStackCursor$1, fiber);
-  push(contextStackCursor$1, nextRootContext, fiber);
-}
-
-function popHostContainer(fiber) {
-  pop(contextStackCursor$1, fiber);
-  pop(contextFiberStackCursor, fiber);
-  pop(rootInstanceStackCursor, fiber);
-}
-
-function getHostContext() {
-  var context = requiredContext(contextStackCursor$1.current);
-  return context;
-}
-
-function pushHostContext(fiber) {
-  var rootInstance = requiredContext(rootInstanceStackCursor.current);
-  var context = requiredContext(contextStackCursor$1.current);
-  var nextContext = getChildHostContext(context, fiber.type, rootInstance);
-
-  // Don't push this Fiber's context unless it's unique.
-  if (context === nextContext) {
-    return;
-  }
-
-  // Track the context and the Fiber that provided it.
-  // This enables us to pop only Fibers that provide unique contexts.
-  push(contextFiberStackCursor, fiber, fiber);
-  push(contextStackCursor$1, nextContext, fiber);
-}
-
-function popHostContext(fiber) {
-  // Do not pop unless this Fiber provided the current context.
-  // pushHostContext() only pushes Fibers that provide unique contexts.
-  if (contextFiberStackCursor.current !== fiber) {
-    return;
-  }
-
-  pop(contextStackCursor$1, fiber);
-  pop(contextFiberStackCursor, fiber);
-}
-
-var NoEffect$1 = /*             */ 0;
-var UnmountSnapshot = /*      */ 2;
-var UnmountMutation = /*      */ 4;
-var MountMutation = /*        */ 8;
-var UnmountLayout = /*        */ 16;
-var MountLayout = /*          */ 32;
-var MountPassive = /*         */ 64;
-var UnmountPassive = /*       */ 128;
-
-var ReactCurrentDispatcher$1 = ReactSharedInternals.ReactCurrentDispatcher;
-
-var didWarnAboutMismatchedHooksForComponent = void 0;
-{
-  didWarnAboutMismatchedHooksForComponent = new Set();
-}
-
-// These are set right before calling the component.
-var renderExpirationTime = NoWork;
-// The work-in-progress fiber. I've named it differently to distinguish it from
-// the work-in-progress hook.
-var currentlyRenderingFiber$1 = null;
-
-// Hooks are stored as a linked list on the fiber's memoizedState field. The
-// current hook list is the list that belongs to the current fiber. The
-// work-in-progress hook list is a new list that will be added to the
-// work-in-progress fiber.
-var firstCurrentHook = null;
-var currentHook = null;
-var nextCurrentHook = null;
-var firstWorkInProgressHook = null;
-var workInProgressHook = null;
-var nextWorkInProgressHook = null;
-
-var remainingExpirationTime = NoWork;
-var componentUpdateQueue = null;
-var sideEffectTag = 0;
-
-// Updates scheduled during render will trigger an immediate re-render at the
-// end of the current pass. We can't store these updates on the normal queue,
-// because if the work is aborted, they should be discarded. Because this is
-// a relatively rare case, we also don't want to add an additional field to
-// either the hook or queue object types. So we store them in a lazily create
-// map of queue -> render-phase updates, which are discarded once the component
-// completes without re-rendering.
-
-// Whether an update was scheduled during the currently executing render pass.
-var didScheduleRenderPhaseUpdate = false;
-// Lazily created map of render-phase updates
-var renderPhaseUpdates = null;
-// Counter to prevent infinite loops.
-var numberOfReRenders = 0;
-var RE_RENDER_LIMIT = 25;
-
-// In DEV, this is the name of the currently executing primitive hook
-var currentHookNameInDev = null;
-
-function warnOnHookMismatchInDev() {
-  {
-    var componentName = getComponentName(currentlyRenderingFiber$1.type);
-    if (!didWarnAboutMismatchedHooksForComponent.has(componentName)) {
-      didWarnAboutMismatchedHooksForComponent.add(componentName);
-
-      var secondColumnStart = 22;
-
-      var table = "";
-      var prevHook = firstCurrentHook;
-      var nextHook = firstWorkInProgressHook;
-      var n = 1;
-      while (prevHook !== null && nextHook !== null) {
-        var oldHookName = prevHook._debugType;
-        var newHookName = nextHook._debugType;
-
-        var row = n + ". " + oldHookName;
-
-        // Extra space so second column lines up
-        // lol @ IE not supporting String#repeat
-        while (row.length < secondColumnStart) {
-          row += " ";
-        }
-
-        row += newHookName + "\n";
-
-        table += row;
-        prevHook = prevHook.next;
-        nextHook = nextHook.next;
-        n++;
-      }
-
-      warning$1(
-        false,
-        "React has detected a change in the order of Hooks called by %s. " +
-          "This will lead to bugs and errors if not fixed. " +
-          "For more information, read the Rules of Hooks: https://fb.me/rules-of-hooks\n\n" +
-          "   Previous render    Next render\n" +
-          "   -------------------------------\n" +
-          "%s" +
-          "   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n",
-        componentName,
-        table
-      );
-    }
-  }
-}
-
-function throwInvalidHookError() {
-  invariant(
-    false,
-    "Hooks can only be called inside the body of a function component. " +
-      "(https://fb.me/react-invalid-hook-call)"
-  );
-}
-
-function areHookInputsEqual(nextDeps, prevDeps) {
-  if (prevDeps === null) {
-    {
-      warning$1(
-        false,
-        "%s received a final argument during this render, but not during " +
-          "the previous render. Even though the final argument is optional, " +
-          "its type cannot change between renders.",
-        currentHookNameInDev
-      );
-    }
-    return false;
-  }
-
-  {
-    // Don't bother comparing lengths in prod because these arrays should be
-    // passed inline.
-    if (nextDeps.length !== prevDeps.length) {
-      warning$1(
-        false,
-        "The final argument passed to %s changed size between renders. The " +
-          "order and size of this array must remain constant.\n\n" +
-          "Previous: %s\n" +
-          "Incoming: %s",
-        currentHookNameInDev,
-        "[" + nextDeps.join(", ") + "]",
-        "[" + prevDeps.join(", ") + "]"
-      );
-    }
-  }
-  for (var i = 0; i < prevDeps.length && i < nextDeps.length; i++) {
-    if (is(nextDeps[i], prevDeps[i])) {
-      continue;
-    }
-    return false;
-  }
-  return true;
-}
-
-function renderWithHooks(
-  current,
-  workInProgress,
-  Component,
-  props,
-  refOrContext,
-  nextRenderExpirationTime
-) {
-  renderExpirationTime = nextRenderExpirationTime;
-  currentlyRenderingFiber$1 = workInProgress;
-  firstCurrentHook = nextCurrentHook =
-    current !== null ? current.memoizedState : null;
-
-  // The following should have already been reset
-  // currentHook = null;
-  // workInProgressHook = null;
-
-  // remainingExpirationTime = NoWork;
-  // componentUpdateQueue = null;
-
-  // didScheduleRenderPhaseUpdate = false;
-  // renderPhaseUpdates = null;
-  // numberOfReRenders = 0;
-  // sideEffectTag = 0;
-
-  {
-    ReactCurrentDispatcher$1.current =
-      nextCurrentHook === null
-        ? HooksDispatcherOnMountInDEV
-        : HooksDispatcherOnUpdateInDEV;
-  }
-
-  var children = Component(props, refOrContext);
-
-  if (didScheduleRenderPhaseUpdate) {
-    do {
-      didScheduleRenderPhaseUpdate = false;
-      numberOfReRenders += 1;
-
-      // Start over from the beginning of the list
-      firstCurrentHook = nextCurrentHook =
-        current !== null ? current.memoizedState : null;
-      nextWorkInProgressHook = firstWorkInProgressHook;
-
-      currentHook = null;
-      workInProgressHook = null;
-      componentUpdateQueue = null;
-
-      ReactCurrentDispatcher$1.current = HooksDispatcherOnUpdateInDEV;
-
-      children = Component(props, refOrContext);
-    } while (didScheduleRenderPhaseUpdate);
-
-    renderPhaseUpdates = null;
-    numberOfReRenders = 0;
-  }
-
-  {
-    currentHookNameInDev = null;
-  }
-
-  // We can assume the previous dispatcher is always this one, since we set it
-  // at the beginning of the render phase and there's no re-entrancy.
-  ReactCurrentDispatcher$1.current = ContextOnlyDispatcher;
-
-  var renderedWork = currentlyRenderingFiber$1;
-
-  renderedWork.memoizedState = firstWorkInProgressHook;
-  renderedWork.expirationTime = remainingExpirationTime;
-  renderedWork.updateQueue = componentUpdateQueue;
-  renderedWork.effectTag |= sideEffectTag;
-
-  var didRenderTooFewHooks = currentHook !== null && currentHook.next !== null;
-
-  renderExpirationTime = NoWork;
-  currentlyRenderingFiber$1 = null;
-
-  firstCurrentHook = null;
-  currentHook = null;
-  nextCurrentHook = null;
-  firstWorkInProgressHook = null;
-  workInProgressHook = null;
-  nextWorkInProgressHook = null;
-
-  remainingExpirationTime = NoWork;
-  componentUpdateQueue = null;
-  sideEffectTag = 0;
-
-  // These were reset above
-  // didScheduleRenderPhaseUpdate = false;
-  // renderPhaseUpdates = null;
-  // numberOfReRenders = 0;
-
-  invariant(
-    !didRenderTooFewHooks,
-    "Rendered fewer hooks than expected. This may be caused by an accidental " +
-      "early return statement."
-  );
-
-  return children;
-}
-
-function bailoutHooks(current, workInProgress, expirationTime) {
-  workInProgress.updateQueue = current.updateQueue;
-  workInProgress.effectTag &= ~(Passive | Update);
-  if (current.expirationTime <= expirationTime) {
-    current.expirationTime = NoWork;
-  }
-}
-
-function resetHooks() {
-  // We can assume the previous dispatcher is always this one, since we set it
-  // at the beginning of the render phase and there's no re-entrancy.
-  ReactCurrentDispatcher$1.current = ContextOnlyDispatcher;
-
-  // This is used to reset the state of this module when a component throws.
-  // It's also called inside mountIndeterminateComponent if we determine the
-  // component is a module-style component.
-  renderExpirationTime = NoWork;
-  currentlyRenderingFiber$1 = null;
-
-  firstCurrentHook = null;
-  currentHook = null;
-  nextCurrentHook = null;
-  firstWorkInProgressHook = null;
-  workInProgressHook = null;
-  nextWorkInProgressHook = null;
-
-  remainingExpirationTime = NoWork;
-  componentUpdateQueue = null;
-  sideEffectTag = 0;
-
-  {
-    currentHookNameInDev = null;
-  }
-
-  didScheduleRenderPhaseUpdate = false;
-  renderPhaseUpdates = null;
-  numberOfReRenders = 0;
-}
-
-function mountWorkInProgressHook() {
-  var hook = {
-    memoizedState: null,
-
-    baseState: null,
-    queue: null,
-    baseUpdate: null,
-
-    next: null
-  };
-
-  {
-    hook._debugType = currentHookNameInDev;
-  }
-  if (workInProgressHook === null) {
-    // This is the first hook in the list
-    firstWorkInProgressHook = workInProgressHook = hook;
-  } else {
-    // Append to the end of the list
-    workInProgressHook = workInProgressHook.next = hook;
-  }
-  return workInProgressHook;
-}
-
-function updateWorkInProgressHook() {
-  // This function is used both for updates and for re-renders triggered by a
-  // render phase update. It assumes there is either a current hook we can
-  // clone, or a work-in-progress hook from a previous render pass that we can
-  // use as a base. When we reach the end of the base list, we must switch to
-  // the dispatcher used for mounts.
-  if (nextWorkInProgressHook !== null) {
-    // There's already a work-in-progress. Reuse it.
-    workInProgressHook = nextWorkInProgressHook;
-    nextWorkInProgressHook = workInProgressHook.next;
-
-    currentHook = nextCurrentHook;
-    nextCurrentHook = currentHook !== null ? currentHook.next : null;
-  } else {
-    // Clone from the current hook.
-    invariant(
-      nextCurrentHook !== null,
-      "Rendered more hooks than during the previous render."
-    );
-    currentHook = nextCurrentHook;
-
-    var newHook = {
-      memoizedState: currentHook.memoizedState,
-
-      baseState: currentHook.baseState,
-      queue: currentHook.queue,
-      baseUpdate: currentHook.baseUpdate,
-
-      next: null
-    };
-
-    if (workInProgressHook === null) {
-      // This is the first hook in the list.
-      workInProgressHook = firstWorkInProgressHook = newHook;
-    } else {
-      // Append to the end of the list.
-      workInProgressHook = workInProgressHook.next = newHook;
-    }
-    nextCurrentHook = currentHook.next;
-
-    {
-      newHook._debugType = currentHookNameInDev;
-      if (currentHookNameInDev !== currentHook._debugType) {
-        warnOnHookMismatchInDev();
-      }
-    }
-  }
-  return workInProgressHook;
-}
-
-function createFunctionComponentUpdateQueue() {
-  return {
-    lastEffect: null
-  };
-}
-
-function basicStateReducer(state, action) {
-  return typeof action === "function" ? action(state) : action;
-}
-
-function mountContext(context, observedBits) {
-  {
-    mountWorkInProgressHook();
-  }
-  return readContext(context, observedBits);
-}
-
-function updateContext(context, observedBits) {
-  {
-    updateWorkInProgressHook();
-  }
-  return readContext(context, observedBits);
-}
-
-function mountReducer(reducer, initialArg, init) {
-  var hook = mountWorkInProgressHook();
-  var initialState = void 0;
-  if (init !== undefined) {
-    initialState = init(initialArg);
-  } else {
-    initialState = initialArg;
-  }
-  hook.memoizedState = hook.baseState = initialState;
-  var queue = (hook.queue = {
-    last: null,
-    dispatch: null,
-    eagerReducer: reducer,
-    eagerState: initialState
-  });
-  var dispatch = (queue.dispatch = dispatchAction.bind(
-    null,
-    // Flow doesn't know this is non-null, but we do.
-    currentlyRenderingFiber$1,
-    queue
-  ));
-  return [hook.memoizedState, dispatch];
-}
-
-function updateReducer(reducer, initialArg, init) {
-  var hook = updateWorkInProgressHook();
-  var queue = hook.queue;
-  invariant(
-    queue !== null,
-    "Should have a queue. This is likely a bug in React. Please file an issue."
-  );
-
-  if (numberOfReRenders > 0) {
-    // This is a re-render. Apply the new render phase updates to the previous
-    var _dispatch = queue.dispatch;
-    if (renderPhaseUpdates !== null) {
-      // Render phase updates are stored in a map of queue -> linked list
-      var firstRenderPhaseUpdate = renderPhaseUpdates.get(queue);
-      if (firstRenderPhaseUpdate !== undefined) {
-        renderPhaseUpdates.delete(queue);
-        var newState = hook.memoizedState;
-        var update = firstRenderPhaseUpdate;
-        do {
-          // Process this render phase update. We don't have to check the
-          // priority because it will always be the same as the current
-          // render's.
-          var _action = update.action;
-          newState = reducer(newState, _action);
-          update = update.next;
-        } while (update !== null);
-
-        // Mark that the fiber performed work, but only if the new state is
-        // different from the current state.
-        if (!is(newState, hook.memoizedState)) {
-          markWorkInProgressReceivedUpdate();
-        }
-
-        hook.memoizedState = newState;
-        // Don't persist the state accumlated from the render phase updates to
-        // the base state unless the queue is empty.
-        // TODO: Not sure if this is the desired semantics, but it's what we
-        // do for gDSFP. I can't remember why.
-        if (hook.baseUpdate === queue.last) {
-          hook.baseState = newState;
-        }
-
-        queue.eagerReducer = reducer;
-        queue.eagerState = newState;
-
-        return [newState, _dispatch];
-      }
-    }
-    return [hook.memoizedState, _dispatch];
-  }
-
-  // The last update in the entire queue
-  var last = queue.last;
-  // The last update that is part of the base state.
-  var baseUpdate = hook.baseUpdate;
-  var baseState = hook.baseState;
-
-  // Find the first unprocessed update.
-  var first = void 0;
-  if (baseUpdate !== null) {
-    if (last !== null) {
-      // For the first update, the queue is a circular linked list where
-      // `queue.last.next = queue.first`. Once the first update commits, and
-      // the `baseUpdate` is no longer empty, we can unravel the list.
-      last.next = null;
-    }
-    first = baseUpdate.next;
-  } else {
-    first = last !== null ? last.next : null;
-  }
-  if (first !== null) {
-    var _newState = baseState;
-    var newBaseState = null;
-    var newBaseUpdate = null;
-    var prevUpdate = baseUpdate;
-    var _update = first;
-    var didSkip = false;
-    do {
-      var updateExpirationTime = _update.expirationTime;
-      if (updateExpirationTime < renderExpirationTime) {
-        // Priority is insufficient. Skip this update. If this is the first
-        // skipped update, the previous update/state is the new base
-        // update/state.
-        if (!didSkip) {
-          didSkip = true;
-          newBaseUpdate = prevUpdate;
-          newBaseState = _newState;
-        }
-        // Update the remaining priority in the queue.
-        if (updateExpirationTime > remainingExpirationTime) {
-          remainingExpirationTime = updateExpirationTime;
-        }
-      } else {
-        // Process this update.
-        if (_update.eagerReducer === reducer) {
-          // If this update was processed eagerly, and its reducer matches the
-          // current reducer, we can use the eagerly computed state.
-          _newState = _update.eagerState;
-        } else {
-          var _action2 = _update.action;
-          _newState = reducer(_newState, _action2);
-        }
-      }
-      prevUpdate = _update;
-      _update = _update.next;
-    } while (_update !== null && _update !== first);
-
-    if (!didSkip) {
-      newBaseUpdate = prevUpdate;
-      newBaseState = _newState;
-    }
-
-    // Mark that the fiber performed work, but only if the new state is
-    // different from the current state.
-    if (!is(_newState, hook.memoizedState)) {
-      markWorkInProgressReceivedUpdate();
-    }
-
-    hook.memoizedState = _newState;
-    hook.baseUpdate = newBaseUpdate;
-    hook.baseState = newBaseState;
-
-    queue.eagerReducer = reducer;
-    queue.eagerState = _newState;
-  }
-
-  var dispatch = queue.dispatch;
-  return [hook.memoizedState, dispatch];
-}
-
-function mountState(initialState) {
-  var hook = mountWorkInProgressHook();
-  if (typeof initialState === "function") {
-    initialState = initialState();
-  }
-  hook.memoizedState = hook.baseState = initialState;
-  var queue = (hook.queue = {
-    last: null,
-    dispatch: null,
-    eagerReducer: basicStateReducer,
-    eagerState: initialState
-  });
-  var dispatch = (queue.dispatch = dispatchAction.bind(
-    null,
-    // Flow doesn't know this is non-null, but we do.
-    currentlyRenderingFiber$1,
-    queue
-  ));
-  return [hook.memoizedState, dispatch];
-}
-
-function updateState(initialState) {
-  return updateReducer(basicStateReducer, initialState);
-}
-
-function pushEffect(tag, create, destroy, deps) {
-  var effect = {
-    tag: tag,
-    create: create,
-    destroy: destroy,
-    deps: deps,
-    // Circular
-    next: null
-  };
-  if (componentUpdateQueue === null) {
-    componentUpdateQueue = createFunctionComponentUpdateQueue();
-    componentUpdateQueue.lastEffect = effect.next = effect;
-  } else {
-    var _lastEffect = componentUpdateQueue.lastEffect;
-    if (_lastEffect === null) {
-      componentUpdateQueue.lastEffect = effect.next = effect;
-    } else {
-      var firstEffect = _lastEffect.next;
-      _lastEffect.next = effect;
-      effect.next = firstEffect;
-      componentUpdateQueue.lastEffect = effect;
-    }
-  }
-  return effect;
-}
-
-function mountRef(initialValue) {
-  var hook = mountWorkInProgressHook();
-  var ref = { current: initialValue };
-  {
-    Object.seal(ref);
-  }
-  hook.memoizedState = ref;
-  return ref;
-}
-
-function updateRef(initialValue) {
-  var hook = updateWorkInProgressHook();
-  return hook.memoizedState;
-}
-
-function mountEffectImpl(fiberEffectTag, hookEffectTag, create, deps) {
-  var hook = mountWorkInProgressHook();
-  var nextDeps = deps === undefined ? null : deps;
-  sideEffectTag |= fiberEffectTag;
-  hook.memoizedState = pushEffect(hookEffectTag, create, undefined, nextDeps);
-}
-
-function updateEffectImpl(fiberEffectTag, hookEffectTag, create, deps) {
-  var hook = updateWorkInProgressHook();
-  var nextDeps = deps === undefined ? null : deps;
-  var destroy = undefined;
-
-  if (currentHook !== null) {
-    var prevEffect = currentHook.memoizedState;
-    destroy = prevEffect.destroy;
-    if (nextDeps !== null) {
-      var prevDeps = prevEffect.deps;
-      if (areHookInputsEqual(nextDeps, prevDeps)) {
-        pushEffect(NoEffect$1, create, destroy, nextDeps);
-        return;
-      }
-    }
-  }
-
-  sideEffectTag |= fiberEffectTag;
-  hook.memoizedState = pushEffect(hookEffectTag, create, destroy, nextDeps);
-}
-
-function mountEffect(create, deps) {
-  return mountEffectImpl(
-    Update | Passive,
-    UnmountPassive | MountPassive,
-    create,
-    deps
-  );
-}
-
-function updateEffect(create, deps) {
-  return updateEffectImpl(
-    Update | Passive,
-    UnmountPassive | MountPassive,
-    create,
-    deps
-  );
-}
-
-function mountLayoutEffect(create, deps) {
-  return mountEffectImpl(Update, UnmountMutation | MountLayout, create, deps);
-}
-
-function updateLayoutEffect(create, deps) {
-  return updateEffectImpl(Update, UnmountMutation | MountLayout, create, deps);
-}
-
-function imperativeHandleEffect(create, ref) {
-  if (typeof ref === "function") {
-    var refCallback = ref;
-    var _inst = create();
-    refCallback(_inst);
-    return function() {
-      refCallback(null);
-    };
-  } else if (ref !== null && ref !== undefined) {
-    var refObject = ref;
-    {
-      !refObject.hasOwnProperty("current")
-        ? warning$1(
-            false,
-            "Expected useImperativeHandle() first argument to either be a " +
-              "ref callback or React.createRef() object. Instead received: %s.",
-            "an object with keys {" + Object.keys(refObject).join(", ") + "}"
-          )
-        : void 0;
-    }
-    var _inst2 = create();
-    refObject.current = _inst2;
-    return function() {
-      refObject.current = null;
-    };
-  }
-}
-
-function mountImperativeHandle(ref, create, deps) {
-  {
-    !(typeof create === "function")
-      ? warning$1(
-          false,
-          "Expected useImperativeHandle() second argument to be a function " +
-            "that creates a handle. Instead received: %s.",
-          create !== null ? typeof create : "null"
-        )
-      : void 0;
-  }
-
-  // TODO: If deps are provided, should we skip comparing the ref itself?
-  var effectDeps =
-    deps !== null && deps !== undefined ? deps.concat([ref]) : null;
-
-  return mountEffectImpl(
-    Update,
-    UnmountMutation | MountLayout,
-    imperativeHandleEffect.bind(null, create, ref),
-    effectDeps
-  );
-}
-
-function updateImperativeHandle(ref, create, deps) {
-  {
-    !(typeof create === "function")
-      ? warning$1(
-          false,
-          "Expected useImperativeHandle() second argument to be a function " +
-            "that creates a handle. Instead received: %s.",
-          create !== null ? typeof create : "null"
-        )
-      : void 0;
-  }
-
-  // TODO: If deps are provided, should we skip comparing the ref itself?
-  var effectDeps =
-    deps !== null && deps !== undefined ? deps.concat([ref]) : null;
-
-  return updateEffectImpl(
-    Update,
-    UnmountMutation | MountLayout,
-    imperativeHandleEffect.bind(null, create, ref),
-    effectDeps
-  );
-}
-
-function mountDebugValue(value, formatterFn) {
-  // This hook is normally a no-op.
-  // The react-debug-hooks package injects its own implementation
-  // so that e.g. DevTools can display custom hook values.
-}
-
-var updateDebugValue = mountDebugValue;
-
-function mountCallback(callback, deps) {
-  var hook = mountWorkInProgressHook();
-  var nextDeps = deps === undefined ? null : deps;
-  hook.memoizedState = [callback, nextDeps];
-  return callback;
-}
-
-function updateCallback(callback, deps) {
-  var hook = updateWorkInProgressHook();
-  var nextDeps = deps === undefined ? null : deps;
-  var prevState = hook.memoizedState;
-  if (prevState !== null) {
-    if (nextDeps !== null) {
-      var prevDeps = prevState[1];
-      if (areHookInputsEqual(nextDeps, prevDeps)) {
-        return prevState[0];
-      }
-    }
-  }
-  hook.memoizedState = [callback, nextDeps];
-  return callback;
-}
-
-function mountMemo(nextCreate, deps) {
-  var hook = mountWorkInProgressHook();
-  var nextDeps = deps === undefined ? null : deps;
-  var nextValue = nextCreate();
-  hook.memoizedState = [nextValue, nextDeps];
-  return nextValue;
-}
-
-function updateMemo(nextCreate, deps) {
-  var hook = updateWorkInProgressHook();
-  var nextDeps = deps === undefined ? null : deps;
-  var prevState = hook.memoizedState;
-  if (prevState !== null) {
-    // Assume these are defined. If they're not, areHookInputsEqual will warn.
-    if (nextDeps !== null) {
-      var prevDeps = prevState[1];
-      if (areHookInputsEqual(nextDeps, prevDeps)) {
-        return prevState[0];
-      }
-    }
-  }
-  var nextValue = nextCreate();
-  hook.memoizedState = [nextValue, nextDeps];
-  return nextValue;
-}
-
-// in a test-like environment, we want to warn if dispatchAction()
-// is called outside of a batchedUpdates/TestUtils.act(...) call.
-var shouldWarnForUnbatchedSetState = false;
-
-{
-  // jest isn't a 'global', it's just exposed to tests via a wrapped function
-  // further, this isn't a test file, so flow doesn't recognize the symbol. So...
-  // $FlowExpectedError - because requirements don't give a damn about your type sigs.
-  if ("undefined" !== typeof jest) {
-    shouldWarnForUnbatchedSetState = true;
-  }
-}
-
-function dispatchAction(fiber, queue, action) {
-  invariant(
-    numberOfReRenders < RE_RENDER_LIMIT,
-    "Too many re-renders. React limits the number of renders to prevent " +
-      "an infinite loop."
-  );
-
-  {
-    !(arguments.length <= 3)
-      ? warning$1(
-          false,
-          "State updates from the useState() and useReducer() Hooks don't support the " +
-            "second callback argument. To execute a side effect after " +
-            "rendering, declare it in the component body with useEffect()."
-        )
-      : void 0;
-  }
-
-  var alternate = fiber.alternate;
-  if (
-    fiber === currentlyRenderingFiber$1 ||
-    (alternate !== null && alternate === currentlyRenderingFiber$1)
-  ) {
-    // This is a render phase update. Stash it in a lazily-created map of
-    // queue -> linked list of updates. After this render pass, we'll restart
-    // and apply the stashed updates on top of the work-in-progress hook.
-    didScheduleRenderPhaseUpdate = true;
-    var update = {
-      expirationTime: renderExpirationTime,
-      action: action,
-      eagerReducer: null,
-      eagerState: null,
-      next: null
-    };
-    if (renderPhaseUpdates === null) {
-      renderPhaseUpdates = new Map();
-    }
-    var firstRenderPhaseUpdate = renderPhaseUpdates.get(queue);
-    if (firstRenderPhaseUpdate === undefined) {
-      renderPhaseUpdates.set(queue, update);
-    } else {
-      // Append the update to the end of the list.
-      var lastRenderPhaseUpdate = firstRenderPhaseUpdate;
-      while (lastRenderPhaseUpdate.next !== null) {
-        lastRenderPhaseUpdate = lastRenderPhaseUpdate.next;
-      }
-      lastRenderPhaseUpdate.next = update;
-    }
-  } else {
-    flushPassiveEffects();
-
-    var currentTime = requestCurrentTime();
-    var _expirationTime = computeExpirationForFiber(currentTime, fiber);
-
-    var _update2 = {
-      expirationTime: _expirationTime,
-      action: action,
-      eagerReducer: null,
-      eagerState: null,
-      next: null
-    };
-
-    // Append the update to the end of the list.
-    var _last = queue.last;
-    if (_last === null) {
-      // This is the first update. Create a circular list.
-      _update2.next = _update2;
-    } else {
-      var first = _last.next;
-      if (first !== null) {
-        // Still circular.
-        _update2.next = first;
-      }
-      _last.next = _update2;
-    }
-    queue.last = _update2;
-
-    if (
-      fiber.expirationTime === NoWork &&
-      (alternate === null || alternate.expirationTime === NoWork)
-    ) {
-      // The queue is currently empty, which means we can eagerly compute the
-      // next state before entering the render phase. If the new state is the
-      // same as the current state, we may be able to bail out entirely.
-      var _eagerReducer = queue.eagerReducer;
-      if (_eagerReducer !== null) {
-        var prevDispatcher = void 0;
-        {
-          prevDispatcher = ReactCurrentDispatcher$1.current;
-          ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
-        }
-        try {
-          var currentState = queue.eagerState;
-          var _eagerState = _eagerReducer(currentState, action);
-          // Stash the eagerly computed state, and the reducer used to compute
-          // it, on the update object. If the reducer hasn't changed by the
-          // time we enter the render phase, then the eager state can be used
-          // without calling the reducer again.
-          _update2.eagerReducer = _eagerReducer;
-          _update2.eagerState = _eagerState;
-          if (is(_eagerState, currentState)) {
-            // Fast path. We can bail out without scheduling React to re-render.
-            // It's still possible that we'll need to rebase this update later,
-            // if the component re-renders for a different reason and by that
-            // time the reducer has changed.
-            return;
-          }
-        } catch (error) {
-          // Suppress the error. It will throw again in the render phase.
-        } finally {
-          {
-            ReactCurrentDispatcher$1.current = prevDispatcher;
-          }
-        }
-      }
-    }
-    {
-      if (shouldWarnForUnbatchedSetState === true) {
-        warnIfNotCurrentlyBatchingInDev(fiber);
-      }
-    }
-    scheduleWork(fiber, _expirationTime);
-  }
-}
-
-var ContextOnlyDispatcher = {
-  readContext: readContext,
-
-  useCallback: throwInvalidHookError,
-  useContext: throwInvalidHookError,
-  useEffect: throwInvalidHookError,
-  useImperativeHandle: throwInvalidHookError,
-  useLayoutEffect: throwInvalidHookError,
-  useMemo: throwInvalidHookError,
-  useReducer: throwInvalidHookError,
-  useRef: throwInvalidHookError,
-  useState: throwInvalidHookError,
-  useDebugValue: throwInvalidHookError
-};
-
-var HooksDispatcherOnMountInDEV = null;
-var HooksDispatcherOnUpdateInDEV = null;
-var InvalidNestedHooksDispatcherOnMountInDEV = null;
-var InvalidNestedHooksDispatcherOnUpdateInDEV = null;
-
-{
-  var warnInvalidContextAccess = function() {
-    warning$1(
-      false,
-      "Context can only be read while React is rendering. " +
-        "In classes, you can read it in the render method or getDerivedStateFromProps. " +
-        "In function components, you can read it directly in the function body, but not " +
-        "inside Hooks like useReducer() or useMemo()."
-    );
-  };
-
-  var warnInvalidHookAccess = function() {
-    warning$1(
-      false,
-      "Do not call Hooks inside useEffect(...), useMemo(...), or other built-in Hooks. " +
-        "You can only call Hooks at the top level of your React function. " +
-        "For more information, see " +
-        "https://fb.me/rules-of-hooks"
-    );
-  };
-
-  HooksDispatcherOnMountInDEV = {
-    readContext: function(context, observedBits) {
-      return readContext(context, observedBits);
-    },
-    useCallback: function(callback, deps) {
-      currentHookNameInDev = "useCallback";
-      return mountCallback(callback, deps);
-    },
-    useContext: function(context, observedBits) {
-      currentHookNameInDev = "useContext";
-      return mountContext(context, observedBits);
-    },
-    useEffect: function(create, deps) {
-      currentHookNameInDev = "useEffect";
-      return mountEffect(create, deps);
-    },
-    useImperativeHandle: function(ref, create, deps) {
-      currentHookNameInDev = "useImperativeHandle";
-      return mountImperativeHandle(ref, create, deps);
-    },
-    useLayoutEffect: function(create, deps) {
-      currentHookNameInDev = "useLayoutEffect";
-      return mountLayoutEffect(create, deps);
-    },
-    useMemo: function(create, deps) {
-      currentHookNameInDev = "useMemo";
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
-      try {
-        return mountMemo(create, deps);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useReducer: function(reducer, initialArg, init) {
-      currentHookNameInDev = "useReducer";
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
-      try {
-        return mountReducer(reducer, initialArg, init);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useRef: function(initialValue) {
-      currentHookNameInDev = "useRef";
-      return mountRef(initialValue);
-    },
-    useState: function(initialState) {
-      currentHookNameInDev = "useState";
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
-      try {
-        return mountState(initialState);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useDebugValue: function(value, formatterFn) {
-      currentHookNameInDev = "useDebugValue";
-      return mountDebugValue(value, formatterFn);
-    }
-  };
-
-  HooksDispatcherOnUpdateInDEV = {
-    readContext: function(context, observedBits) {
-      return readContext(context, observedBits);
-    },
-    useCallback: function(callback, deps) {
-      currentHookNameInDev = "useCallback";
-      return updateCallback(callback, deps);
-    },
-    useContext: function(context, observedBits) {
-      currentHookNameInDev = "useContext";
-      return updateContext(context, observedBits);
-    },
-    useEffect: function(create, deps) {
-      currentHookNameInDev = "useEffect";
-      return updateEffect(create, deps);
-    },
-    useImperativeHandle: function(ref, create, deps) {
-      currentHookNameInDev = "useImperativeHandle";
-      return updateImperativeHandle(ref, create, deps);
-    },
-    useLayoutEffect: function(create, deps) {
-      currentHookNameInDev = "useLayoutEffect";
-      return updateLayoutEffect(create, deps);
-    },
-    useMemo: function(create, deps) {
-      currentHookNameInDev = "useMemo";
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
-      try {
-        return updateMemo(create, deps);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useReducer: function(reducer, initialArg, init) {
-      currentHookNameInDev = "useReducer";
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
-      try {
-        return updateReducer(reducer, initialArg, init);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useRef: function(initialValue) {
-      currentHookNameInDev = "useRef";
-      return updateRef(initialValue);
-    },
-    useState: function(initialState) {
-      currentHookNameInDev = "useState";
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
-      try {
-        return updateState(initialState);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useDebugValue: function(value, formatterFn) {
-      currentHookNameInDev = "useDebugValue";
-      return updateDebugValue(value, formatterFn);
-    }
-  };
-
-  InvalidNestedHooksDispatcherOnMountInDEV = {
-    readContext: function(context, observedBits) {
-      warnInvalidContextAccess();
-      return readContext(context, observedBits);
-    },
-    useCallback: function(callback, deps) {
-      currentHookNameInDev = "useCallback";
-      warnInvalidHookAccess();
-      return mountCallback(callback, deps);
-    },
-    useContext: function(context, observedBits) {
-      currentHookNameInDev = "useContext";
-      warnInvalidHookAccess();
-      return mountContext(context, observedBits);
-    },
-    useEffect: function(create, deps) {
-      currentHookNameInDev = "useEffect";
-      warnInvalidHookAccess();
-      return mountEffect(create, deps);
-    },
-    useImperativeHandle: function(ref, create, deps) {
-      currentHookNameInDev = "useImperativeHandle";
-      warnInvalidHookAccess();
-      return mountImperativeHandle(ref, create, deps);
-    },
-    useLayoutEffect: function(create, deps) {
-      currentHookNameInDev = "useLayoutEffect";
-      warnInvalidHookAccess();
-      return mountLayoutEffect(create, deps);
-    },
-    useMemo: function(create, deps) {
-      currentHookNameInDev = "useMemo";
-      warnInvalidHookAccess();
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
-      try {
-        return mountMemo(create, deps);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useReducer: function(reducer, initialArg, init) {
-      currentHookNameInDev = "useReducer";
-      warnInvalidHookAccess();
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
-      try {
-        return mountReducer(reducer, initialArg, init);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useRef: function(initialValue) {
-      currentHookNameInDev = "useRef";
-      warnInvalidHookAccess();
-      return mountRef(initialValue);
-    },
-    useState: function(initialState) {
-      currentHookNameInDev = "useState";
-      warnInvalidHookAccess();
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
-      try {
-        return mountState(initialState);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useDebugValue: function(value, formatterFn) {
-      currentHookNameInDev = "useDebugValue";
-      warnInvalidHookAccess();
-      return mountDebugValue(value, formatterFn);
-    }
-  };
-
-  InvalidNestedHooksDispatcherOnUpdateInDEV = {
-    readContext: function(context, observedBits) {
-      warnInvalidContextAccess();
-      return readContext(context, observedBits);
-    },
-    useCallback: function(callback, deps) {
-      currentHookNameInDev = "useCallback";
-      warnInvalidHookAccess();
-      return updateCallback(callback, deps);
-    },
-    useContext: function(context, observedBits) {
-      currentHookNameInDev = "useContext";
-      warnInvalidHookAccess();
-      return updateContext(context, observedBits);
-    },
-    useEffect: function(create, deps) {
-      currentHookNameInDev = "useEffect";
-      warnInvalidHookAccess();
-      return updateEffect(create, deps);
-    },
-    useImperativeHandle: function(ref, create, deps) {
-      currentHookNameInDev = "useImperativeHandle";
-      warnInvalidHookAccess();
-      return updateImperativeHandle(ref, create, deps);
-    },
-    useLayoutEffect: function(create, deps) {
-      currentHookNameInDev = "useLayoutEffect";
-      warnInvalidHookAccess();
-      return updateLayoutEffect(create, deps);
-    },
-    useMemo: function(create, deps) {
-      currentHookNameInDev = "useMemo";
-      warnInvalidHookAccess();
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
-      try {
-        return updateMemo(create, deps);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useReducer: function(reducer, initialArg, init) {
-      currentHookNameInDev = "useReducer";
-      warnInvalidHookAccess();
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
-      try {
-        return updateReducer(reducer, initialArg, init);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useRef: function(initialValue) {
-      currentHookNameInDev = "useRef";
-      warnInvalidHookAccess();
-      return updateRef(initialValue);
-    },
-    useState: function(initialState) {
-      currentHookNameInDev = "useState";
-      warnInvalidHookAccess();
-      var prevDispatcher = ReactCurrentDispatcher$1.current;
-      ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
-      try {
-        return updateState(initialState);
-      } finally {
-        ReactCurrentDispatcher$1.current = prevDispatcher;
-      }
-    },
-    useDebugValue: function(value, formatterFn) {
-      currentHookNameInDev = "useDebugValue";
-      warnInvalidHookAccess();
-      return updateDebugValue(value, formatterFn);
-    }
-  };
-}
-
-var commitTime = 0;
-var profilerStartTime = -1;
-
-function getCommitTime() {
-  return commitTime;
-}
-
-function recordCommitTime() {
-  if (!enableProfilerTimer) {
-    return;
-  }
-  commitTime = now$$1();
-}
-
-function startProfilerTimer(fiber) {
-  if (!enableProfilerTimer) {
-    return;
-  }
-
-  profilerStartTime = now$$1();
-
-  if (fiber.actualStartTime < 0) {
-    fiber.actualStartTime = now$$1();
-  }
-}
-
-function stopProfilerTimerIfRunning(fiber) {
-  if (!enableProfilerTimer) {
-    return;
-  }
-  profilerStartTime = -1;
-}
-
-function stopProfilerTimerIfRunningAndRecordDelta(fiber, overrideBaseTime) {
-  if (!enableProfilerTimer) {
-    return;
-  }
-
-  if (profilerStartTime >= 0) {
-    var elapsedTime = now$$1() - profilerStartTime;
-    fiber.actualDuration += elapsedTime;
-    if (overrideBaseTime) {
-      fiber.selfBaseDuration = elapsedTime;
-    }
-    profilerStartTime = -1;
-  }
-}
-
 // The deepest Fiber on the stack involved in a hydration context.
 // This may have been an insertion or a hydration.
 var hydrationParentFiber = null;
@@ -10313,18 +9094,6 @@ function enterHydrationState(fiber) {
   var parentInstance = fiber.stateNode.containerInfo;
   nextHydratableInstance = getFirstHydratableChild(parentInstance);
   hydrationParentFiber = fiber;
-  isHydrating = true;
-  return true;
-}
-
-function reenterHydrationStateFromDehydratedSuspenseInstance(fiber) {
-  if (!supportsHydration) {
-    return false;
-  }
-
-  var suspenseInstance = fiber.stateNode;
-  nextHydratableInstance = getNextHydratableSibling(suspenseInstance);
-  popToNextHostParent(fiber);
   isHydrating = true;
   return true;
 }
@@ -10383,9 +9152,6 @@ function insertNonHydratedInstance(returnFiber, fiber) {
             var text = fiber.pendingProps;
             didNotFindHydratableContainerTextInstance(parentContainer, text);
             break;
-          case SuspenseComponent:
-            didNotFindHydratableContainerSuspenseInstance(parentContainer);
-            break;
         }
         break;
       }
@@ -10412,13 +9178,6 @@ function insertNonHydratedInstance(returnFiber, fiber) {
               parentProps,
               parentInstance,
               _text
-            );
-            break;
-          case SuspenseComponent:
-            didNotFindHydratableSuspenseInstance(
-              parentType,
-              parentProps,
-              parentInstance
             );
             break;
         }
@@ -10448,18 +9207,6 @@ function tryHydrate(fiber, nextInstance) {
       if (textInstance !== null) {
         fiber.stateNode = textInstance;
         return true;
-      }
-      return false;
-    }
-    case SuspenseComponent: {
-      if (enableSuspenseServerRenderer) {
-        var suspenseInstance = canHydrateSuspenseInstance(nextInstance);
-        if (suspenseInstance !== null) {
-          // Downgrade the tag to a dehydrated component until we've hydrated it.
-          fiber.tag = DehydratedSuspenseComponent;
-          fiber.stateNode = suspenseInstance;
-          return true;
-        }
       }
       return false;
     }
@@ -10583,32 +9330,12 @@ function prepareToHydrateHostTextInstance(fiber) {
   return shouldUpdate;
 }
 
-function skipPastDehydratedSuspenseInstance(fiber) {
-  if (!supportsHydration) {
-    invariant(
-      false,
-      "Expected skipPastDehydratedSuspenseInstance() to never be called. " +
-        "This error is likely caused by a bug in React. Please file an issue."
-    );
-  }
-  var suspenseInstance = fiber.stateNode;
-  invariant(
-    suspenseInstance,
-    "Expected to have a hydrated suspense instance. " +
-      "This error is likely caused by a bug in React. Please file an issue."
-  );
-  nextHydratableInstance = getNextHydratableInstanceAfterSuspenseInstance(
-    suspenseInstance
-  );
-}
-
 function popToNextHostParent(fiber) {
   var parent = fiber.return;
   while (
     parent !== null &&
     parent.tag !== HostComponent &&
-    parent.tag !== HostRoot &&
-    parent.tag !== DehydratedSuspenseComponent
+    parent.tag !== HostRoot
   ) {
     parent = parent.return;
   }
@@ -10670,31 +9397,36 @@ function resetHydrationState() {
   isHydrating = false;
 }
 
-var ReactCurrentOwner$3 = ReactSharedInternals.ReactCurrentOwner;
-
-var didReceiveUpdate = false;
+var getCurrentFiberStackAddendum$1 =
+  ReactDebugCurrentFiber.getCurrentFiberStackAddendum;
 
 var didWarnAboutBadClass = void 0;
-var didWarnAboutContextTypeOnFunctionComponent = void 0;
-var didWarnAboutGetDerivedStateOnFunctionComponent = void 0;
-var didWarnAboutFunctionRefs = void 0;
-var didWarnAboutReassigningProps = void 0;
+var didWarnAboutGetDerivedStateOnFunctionalComponent = void 0;
+var didWarnAboutStatelessRefs = void 0;
 
 {
   didWarnAboutBadClass = {};
-  didWarnAboutContextTypeOnFunctionComponent = {};
-  didWarnAboutGetDerivedStateOnFunctionComponent = {};
-  didWarnAboutFunctionRefs = {};
-  didWarnAboutReassigningProps = false;
+  didWarnAboutGetDerivedStateOnFunctionalComponent = {};
+  didWarnAboutStatelessRefs = {};
 }
 
-function reconcileChildren(
-  current$$1,
+// TODO: Remove this and use reconcileChildrenAtExpirationTime directly.
+function reconcileChildren(current, workInProgress, nextChildren) {
+  reconcileChildrenAtExpirationTime(
+    current,
+    workInProgress,
+    nextChildren,
+    workInProgress.expirationTime
+  );
+}
+
+function reconcileChildrenAtExpirationTime(
+  current,
   workInProgress,
   nextChildren,
   renderExpirationTime
 ) {
-  if (current$$1 === null) {
+  if (current === null) {
     // If this is a fresh new component that hasn't been rendered yet, we
     // won't update its child set by applying minimal side-effects. Instead,
     // we will add them all to the child before it gets rendered. That means
@@ -10714,565 +9446,198 @@ function reconcileChildren(
     // let's throw it out.
     workInProgress.child = reconcileChildFibers(
       workInProgress,
-      current$$1.child,
+      current.child,
       nextChildren,
       renderExpirationTime
     );
   }
 }
 
-function forceUnmountCurrentAndReconcile(
-  current$$1,
-  workInProgress,
-  nextChildren,
-  renderExpirationTime
-) {
-  // This function is fork of reconcileChildren. It's used in cases where we
-  // want to reconcile without matching against the existing set. This has the
-  // effect of all current children being unmounted; even if the type and key
-  // are the same, the old child is unmounted and a new child is created.
-  //
-  // To do this, we're going to go through the reconcile algorithm twice. In
-  // the first pass, we schedule a deletion for all the current children by
-  // passing null.
-  workInProgress.child = reconcileChildFibers(
-    workInProgress,
-    current$$1.child,
-    null,
-    renderExpirationTime
-  );
-  // In the second pass, we mount the new children. The trick here is that we
-  // pass null in place of where we usually pass the current child set. This has
-  // the effect of remounting all children regardless of whether their their
-  // identity matches.
-  workInProgress.child = reconcileChildFibers(
-    workInProgress,
-    null,
-    nextChildren,
-    renderExpirationTime
-  );
-}
-
-function updateForwardRef(
-  current$$1,
-  workInProgress,
-  Component,
-  nextProps,
-  renderExpirationTime
-) {
-  // TODO: current can be non-null here even if the component
-  // hasn't yet mounted. This happens after the first render suspends.
-  // We'll need to figure out if this is fine or can cause issues.
-
-  {
-    if (workInProgress.type !== workInProgress.elementType) {
-      // Lazy component props can't be validated in createElement
-      // because they're only guaranteed to be resolved here.
-      var innerPropTypes = Component.propTypes;
-      if (innerPropTypes) {
-        checkPropTypes(
-          innerPropTypes,
-          nextProps, // Resolved props
-          "prop",
-          getComponentName(Component),
-          getCurrentFiberStackInDev
-        );
-      }
-    }
-  }
-
-  var render = Component.render;
+function updateForwardRef(current, workInProgress) {
+  var render = workInProgress.type.render;
+  var nextProps = workInProgress.pendingProps;
   var ref = workInProgress.ref;
+  if (hasContextChanged()) {
+    // Normally we can bail out on props equality but if context has changed
+    // we don't do the bailout and we have to reuse existing props instead.
+  } else if (workInProgress.memoizedProps === nextProps) {
+    var currentRef = current !== null ? current.ref : null;
+    if (ref === currentRef) {
+      return bailoutOnAlreadyFinishedWork(current, workInProgress);
+    }
+  }
 
-  // The rest is a fork of updateFunctionComponent
   var nextChildren = void 0;
-  prepareToReadContext(workInProgress, renderExpirationTime);
   {
-    ReactCurrentOwner$3.current = workInProgress;
-    setCurrentPhase("render");
-    nextChildren = renderWithHooks(
-      current$$1,
-      workInProgress,
-      render,
-      nextProps,
-      ref,
-      renderExpirationTime
-    );
-    if (
-      debugRenderPhaseSideEffects ||
-      (debugRenderPhaseSideEffectsForStrictMode &&
-        workInProgress.mode & StrictMode)
-    ) {
-      // Only double-render components with Hooks
-      if (workInProgress.memoizedState !== null) {
-        nextChildren = renderWithHooks(
-          current$$1,
-          workInProgress,
-          render,
-          nextProps,
-          ref,
-          renderExpirationTime
-        );
-      }
-    }
-    setCurrentPhase(null);
+    ReactCurrentOwner.current = workInProgress;
+    ReactDebugCurrentFiber.setCurrentPhase("render");
+    nextChildren = render(nextProps, ref);
+    ReactDebugCurrentFiber.setCurrentPhase(null);
   }
 
-  if (current$$1 !== null && !didReceiveUpdate) {
-    bailoutHooks(current$$1, workInProgress, renderExpirationTime);
-    return bailoutOnAlreadyFinishedWork(
-      current$$1,
-      workInProgress,
-      renderExpirationTime
-    );
-  }
-
-  // React DevTools reads this flag.
-  workInProgress.effectTag |= PerformedWork;
-  reconcileChildren(
-    current$$1,
-    workInProgress,
-    nextChildren,
-    renderExpirationTime
-  );
+  reconcileChildren(current, workInProgress, nextChildren);
+  memoizeProps(workInProgress, nextProps);
   return workInProgress.child;
 }
 
-function updateMemoComponent(
-  current$$1,
-  workInProgress,
-  Component,
-  nextProps,
-  updateExpirationTime,
-  renderExpirationTime
-) {
-  if (current$$1 === null) {
-    var type = Component.type;
-    if (
-      isSimpleFunctionComponent(type) &&
-      Component.compare === null &&
-      // SimpleMemoComponent codepath doesn't resolve outer props either.
-      Component.defaultProps === undefined
-    ) {
-      // If this is a plain function component without default props,
-      // and with only the default shallow comparison, we upgrade it
-      // to a SimpleMemoComponent to allow fast path updates.
-      workInProgress.tag = SimpleMemoComponent;
-      workInProgress.type = type;
-      {
-        validateFunctionComponentInDev(workInProgress, type);
-      }
-      return updateSimpleMemoComponent(
-        current$$1,
-        workInProgress,
-        type,
-        nextProps,
-        updateExpirationTime,
-        renderExpirationTime
-      );
-    }
-    {
-      var innerPropTypes = type.propTypes;
-      if (innerPropTypes) {
-        // Inner memo component props aren't currently validated in createElement.
-        // We could move it there, but we'd still need this for lazy code path.
-        checkPropTypes(
-          innerPropTypes,
-          nextProps, // Resolved props
-          "prop",
-          getComponentName(type),
-          getCurrentFiberStackInDev
-        );
-      }
-    }
-    var child = createFiberFromTypeAndProps(
-      Component.type,
-      null,
-      nextProps,
-      null,
-      workInProgress.mode,
-      renderExpirationTime
-    );
-    child.ref = workInProgress.ref;
-    child.return = workInProgress;
-    workInProgress.child = child;
-    return child;
-  }
-  {
-    var _type = Component.type;
-    var _innerPropTypes = _type.propTypes;
-    if (_innerPropTypes) {
-      // Inner memo component props aren't currently validated in createElement.
-      // We could move it there, but we'd still need this for lazy code path.
-      checkPropTypes(
-        _innerPropTypes,
-        nextProps, // Resolved props
-        "prop",
-        getComponentName(_type),
-        getCurrentFiberStackInDev
-      );
-    }
-  }
-  var currentChild = current$$1.child; // This is always exactly one child
-  if (updateExpirationTime < renderExpirationTime) {
-    // This will be the props with resolved defaultProps,
-    // unlike current.memoizedProps which will be the unresolved ones.
-    var prevProps = currentChild.memoizedProps;
-    // Default to shallow comparison
-    var compare = Component.compare;
-    compare = compare !== null ? compare : shallowEqual;
-    if (
-      compare(prevProps, nextProps) &&
-      current$$1.ref === workInProgress.ref
-    ) {
-      return bailoutOnAlreadyFinishedWork(
-        current$$1,
-        workInProgress,
-        renderExpirationTime
-      );
-    }
-  }
-  // React DevTools reads this flag.
-  workInProgress.effectTag |= PerformedWork;
-  var newChild = createWorkInProgress(
-    currentChild,
-    nextProps,
-    renderExpirationTime
-  );
-  newChild.ref = workInProgress.ref;
-  newChild.return = workInProgress;
-  workInProgress.child = newChild;
-  return newChild;
-}
-
-function updateSimpleMemoComponent(
-  current$$1,
-  workInProgress,
-  Component,
-  nextProps,
-  updateExpirationTime,
-  renderExpirationTime
-) {
-  // TODO: current can be non-null here even if the component
-  // hasn't yet mounted. This happens when the inner render suspends.
-  // We'll need to figure out if this is fine or can cause issues.
-
-  {
-    if (workInProgress.type !== workInProgress.elementType) {
-      // Lazy component props can't be validated in createElement
-      // because they're only guaranteed to be resolved here.
-      var outerMemoType = workInProgress.elementType;
-      if (outerMemoType.$$typeof === REACT_LAZY_TYPE) {
-        // We warn when you define propTypes on lazy()
-        // so let's just skip over it to find memo() outer wrapper.
-        // Inner props for memo are validated later.
-        outerMemoType = refineResolvedLazyComponent(outerMemoType);
-      }
-      var outerPropTypes = outerMemoType && outerMemoType.propTypes;
-      if (outerPropTypes) {
-        checkPropTypes(
-          outerPropTypes,
-          nextProps, // Resolved (SimpleMemoComponent has no defaultProps)
-          "prop",
-          getComponentName(outerMemoType),
-          getCurrentFiberStackInDev
-        );
-      }
-      // Inner propTypes will be validated in the function component path.
-    }
-  }
-  if (current$$1 !== null) {
-    var prevProps = current$$1.memoizedProps;
-    if (
-      shallowEqual(prevProps, nextProps) &&
-      current$$1.ref === workInProgress.ref
-    ) {
-      didReceiveUpdate = false;
-      if (updateExpirationTime < renderExpirationTime) {
-        return bailoutOnAlreadyFinishedWork(
-          current$$1,
-          workInProgress,
-          renderExpirationTime
-        );
-      }
-    }
-  }
-  return updateFunctionComponent(
-    current$$1,
-    workInProgress,
-    Component,
-    nextProps,
-    renderExpirationTime
-  );
-}
-
-function updateFragment(current$$1, workInProgress, renderExpirationTime) {
+function updateFragment(current, workInProgress) {
   var nextChildren = workInProgress.pendingProps;
-  reconcileChildren(
-    current$$1,
-    workInProgress,
-    nextChildren,
-    renderExpirationTime
-  );
+  if (hasContextChanged()) {
+    // Normally we can bail out on props equality but if context has changed
+    // we don't do the bailout and we have to reuse existing props instead.
+  } else if (workInProgress.memoizedProps === nextChildren) {
+    return bailoutOnAlreadyFinishedWork(current, workInProgress);
+  }
+  reconcileChildren(current, workInProgress, nextChildren);
+  memoizeProps(workInProgress, nextChildren);
   return workInProgress.child;
 }
 
-function updateMode(current$$1, workInProgress, renderExpirationTime) {
+function updateMode(current, workInProgress) {
   var nextChildren = workInProgress.pendingProps.children;
-  reconcileChildren(
-    current$$1,
-    workInProgress,
-    nextChildren,
-    renderExpirationTime
-  );
+  if (hasContextChanged()) {
+    // Normally we can bail out on props equality but if context has changed
+    // we don't do the bailout and we have to reuse existing props instead.
+  } else if (
+    nextChildren === null ||
+    workInProgress.memoizedProps === nextChildren
+  ) {
+    return bailoutOnAlreadyFinishedWork(current, workInProgress);
+  }
+  reconcileChildren(current, workInProgress, nextChildren);
+  memoizeProps(workInProgress, nextChildren);
   return workInProgress.child;
 }
 
-function updateProfiler(current$$1, workInProgress, renderExpirationTime) {
+function updateProfiler(current, workInProgress) {
+  var nextProps = workInProgress.pendingProps;
   if (enableProfilerTimer) {
     workInProgress.effectTag |= Update;
   }
-  var nextProps = workInProgress.pendingProps;
+  if (workInProgress.memoizedProps === nextProps) {
+    return bailoutOnAlreadyFinishedWork(current, workInProgress);
+  }
   var nextChildren = nextProps.children;
-  reconcileChildren(
-    current$$1,
-    workInProgress,
-    nextChildren,
-    renderExpirationTime
-  );
+  reconcileChildren(current, workInProgress, nextChildren);
+  memoizeProps(workInProgress, nextProps);
   return workInProgress.child;
 }
 
-function markRef(current$$1, workInProgress) {
+function markRef(current, workInProgress) {
   var ref = workInProgress.ref;
   if (
-    (current$$1 === null && ref !== null) ||
-    (current$$1 !== null && current$$1.ref !== ref)
+    (current === null && ref !== null) ||
+    (current !== null && current.ref !== ref)
   ) {
     // Schedule a Ref effect
     workInProgress.effectTag |= Ref;
   }
 }
 
-function updateFunctionComponent(
-  current$$1,
-  workInProgress,
-  Component,
-  nextProps,
-  renderExpirationTime
-) {
-  {
-    if (workInProgress.type !== workInProgress.elementType) {
-      // Lazy component props can't be validated in createElement
-      // because they're only guaranteed to be resolved here.
-      var innerPropTypes = Component.propTypes;
-      if (innerPropTypes) {
-        checkPropTypes(
-          innerPropTypes,
-          nextProps, // Resolved props
-          "prop",
-          getComponentName(Component),
-          getCurrentFiberStackInDev
-        );
-      }
+function updateFunctionalComponent(current, workInProgress) {
+  var fn = workInProgress.type;
+  var nextProps = workInProgress.pendingProps;
+
+  if (hasContextChanged()) {
+    // Normally we can bail out on props equality but if context has changed
+    // we don't do the bailout and we have to reuse existing props instead.
+  } else {
+    if (workInProgress.memoizedProps === nextProps) {
+      return bailoutOnAlreadyFinishedWork(current, workInProgress);
     }
+    // TODO: consider bringing fn.shouldComponentUpdate() back.
+    // It used to be here.
   }
 
-  var unmaskedContext = getUnmaskedContext(workInProgress, Component, true);
+  var unmaskedContext = getUnmaskedContext(workInProgress);
   var context = getMaskedContext(workInProgress, unmaskedContext);
 
   var nextChildren = void 0;
-  prepareToReadContext(workInProgress, renderExpirationTime);
+
   {
-    ReactCurrentOwner$3.current = workInProgress;
-    setCurrentPhase("render");
-    nextChildren = renderWithHooks(
-      current$$1,
-      workInProgress,
-      Component,
-      nextProps,
-      context,
-      renderExpirationTime
-    );
-    if (
-      debugRenderPhaseSideEffects ||
-      (debugRenderPhaseSideEffectsForStrictMode &&
-        workInProgress.mode & StrictMode)
-    ) {
-      // Only double-render components with Hooks
-      if (workInProgress.memoizedState !== null) {
-        nextChildren = renderWithHooks(
-          current$$1,
-          workInProgress,
-          Component,
-          nextProps,
-          context,
-          renderExpirationTime
-        );
-      }
-    }
-    setCurrentPhase(null);
+    ReactCurrentOwner.current = workInProgress;
+    ReactDebugCurrentFiber.setCurrentPhase("render");
+    nextChildren = fn(nextProps, context);
+    ReactDebugCurrentFiber.setCurrentPhase(null);
   }
-
-  if (current$$1 !== null && !didReceiveUpdate) {
-    bailoutHooks(current$$1, workInProgress, renderExpirationTime);
-    return bailoutOnAlreadyFinishedWork(
-      current$$1,
-      workInProgress,
-      renderExpirationTime
-    );
-  }
-
   // React DevTools reads this flag.
   workInProgress.effectTag |= PerformedWork;
-  reconcileChildren(
-    current$$1,
-    workInProgress,
-    nextChildren,
-    renderExpirationTime
-  );
+  reconcileChildren(current, workInProgress, nextChildren);
+  memoizeProps(workInProgress, nextProps);
   return workInProgress.child;
 }
 
-function updateClassComponent(
-  current$$1,
-  workInProgress,
-  Component,
-  nextProps,
-  renderExpirationTime
-) {
-  {
-    if (workInProgress.type !== workInProgress.elementType) {
-      // Lazy component props can't be validated in createElement
-      // because they're only guaranteed to be resolved here.
-      var innerPropTypes = Component.propTypes;
-      if (innerPropTypes) {
-        checkPropTypes(
-          innerPropTypes,
-          nextProps, // Resolved props
-          "prop",
-          getComponentName(Component),
-          getCurrentFiberStackInDev
-        );
-      }
-    }
-  }
-
+function updateClassComponent(current, workInProgress, renderExpirationTime) {
   // Push context providers early to prevent context stack mismatches.
   // During mounting we don't know the child context yet as the instance doesn't exist.
   // We will invalidate the child context in finishClassComponent() right after rendering.
-  var hasContext = void 0;
-  if (isContextProvider(Component)) {
-    hasContext = true;
-    pushContextProvider(workInProgress);
-  } else {
-    hasContext = false;
-  }
-  prepareToReadContext(workInProgress, renderExpirationTime);
-
-  var instance = workInProgress.stateNode;
+  var hasContext = pushContextProvider(workInProgress);
   var shouldUpdate = void 0;
-  if (instance === null) {
-    if (current$$1 !== null) {
-      // An class component without an instance only mounts if it suspended
-      // inside a non- concurrent tree, in an inconsistent state. We want to
-      // tree it like a new mount, even though an empty version of it already
-      // committed. Disconnect the alternate pointers.
-      current$$1.alternate = null;
-      workInProgress.alternate = null;
-      // Since this is conceptually a new fiber, schedule a Placement effect
-      workInProgress.effectTag |= Placement;
+  if (current === null) {
+    if (workInProgress.stateNode === null) {
+      // In the initial pass we might need to construct the instance.
+      constructClassInstance(
+        workInProgress,
+        workInProgress.pendingProps,
+        renderExpirationTime
+      );
+      mountClassInstance(workInProgress, renderExpirationTime);
+
+      shouldUpdate = true;
+    } else {
+      // In a resume, we'll already have an instance we can reuse.
+      shouldUpdate = resumeMountClassInstance(
+        workInProgress,
+        renderExpirationTime
+      );
     }
-    // In the initial pass we might need to construct the instance.
-    constructClassInstance(
-      workInProgress,
-      Component,
-      nextProps,
-      renderExpirationTime
-    );
-    mountClassInstance(
-      workInProgress,
-      Component,
-      nextProps,
-      renderExpirationTime
-    );
-    shouldUpdate = true;
-  } else if (current$$1 === null) {
-    // In a resume, we'll already have an instance we can reuse.
-    shouldUpdate = resumeMountClassInstance(
-      workInProgress,
-      Component,
-      nextProps,
-      renderExpirationTime
-    );
   } else {
     shouldUpdate = updateClassInstance(
-      current$$1,
+      current,
       workInProgress,
-      Component,
-      nextProps,
       renderExpirationTime
     );
   }
-  var nextUnitOfWork = finishClassComponent(
-    current$$1,
+  return finishClassComponent(
+    current,
     workInProgress,
-    Component,
     shouldUpdate,
     hasContext,
     renderExpirationTime
   );
-  {
-    var inst = workInProgress.stateNode;
-    if (inst.props !== nextProps) {
-      !didWarnAboutReassigningProps
-        ? warning$1(
-            false,
-            "It looks like %s is reassigning its own `this.props` while rendering. " +
-              "This is not supported and can lead to confusing bugs.",
-            getComponentName(workInProgress.type) || "a component"
-          )
-        : void 0;
-      didWarnAboutReassigningProps = true;
-    }
-  }
-  return nextUnitOfWork;
 }
 
 function finishClassComponent(
-  current$$1,
+  current,
   workInProgress,
-  Component,
   shouldUpdate,
   hasContext,
   renderExpirationTime
 ) {
   // Refs should update even if shouldComponentUpdate returns false
-  markRef(current$$1, workInProgress);
+  markRef(current, workInProgress);
 
   var didCaptureError = (workInProgress.effectTag & DidCapture) !== NoEffect;
 
   if (!shouldUpdate && !didCaptureError) {
     // Context providers should defer to sCU for rendering
     if (hasContext) {
-      invalidateContextProvider(workInProgress, Component, false);
+      invalidateContextProvider(workInProgress, false);
     }
 
-    return bailoutOnAlreadyFinishedWork(
-      current$$1,
-      workInProgress,
-      renderExpirationTime
-    );
+    return bailoutOnAlreadyFinishedWork(current, workInProgress);
   }
 
+  var ctor = workInProgress.type;
   var instance = workInProgress.stateNode;
 
   // Rerender
-  ReactCurrentOwner$3.current = workInProgress;
+  ReactCurrentOwner.current = workInProgress;
   var nextChildren = void 0;
   if (
     didCaptureError &&
-    typeof Component.getDerivedStateFromError !== "function"
+    (!enableGetDerivedStateFromCatch ||
+      typeof ctor.getDerivedStateFromCatch !== "function")
   ) {
     // If we captured an error, but getDerivedStateFrom catch is not defined,
     // unmount all the children. componentDidCatch will schedule an update to
@@ -11282,11 +9647,11 @@ function finishClassComponent(
     nextChildren = null;
 
     if (enableProfilerTimer) {
-      stopProfilerTimerIfRunning(workInProgress);
+      stopBaseRenderTimerIfRunning();
     }
   } else {
     {
-      setCurrentPhase("render");
+      ReactDebugCurrentFiber.setCurrentPhase("render");
       nextChildren = instance.render();
       if (
         debugRenderPhaseSideEffects ||
@@ -11295,39 +9660,40 @@ function finishClassComponent(
       ) {
         instance.render();
       }
-      setCurrentPhase(null);
+      ReactDebugCurrentFiber.setCurrentPhase(null);
     }
   }
 
   // React DevTools reads this flag.
   workInProgress.effectTag |= PerformedWork;
-  if (current$$1 !== null && didCaptureError) {
-    // If we're recovering from an error, reconcile without reusing any of
-    // the existing children. Conceptually, the normal children and the children
-    // that are shown on error are two different sets, so we shouldn't reuse
-    // normal children even if their identities match.
-    forceUnmountCurrentAndReconcile(
-      current$$1,
+  if (didCaptureError) {
+    // If we're recovering from an error, reconcile twice: first to delete
+    // all the existing children.
+    reconcileChildrenAtExpirationTime(
+      current,
       workInProgress,
-      nextChildren,
+      null,
       renderExpirationTime
     );
-  } else {
-    reconcileChildren(
-      current$$1,
-      workInProgress,
-      nextChildren,
-      renderExpirationTime
-    );
+    workInProgress.child = null;
+    // Now we can continue reconciling like normal. This has the effect of
+    // remounting all children regardless of whether their their
+    // identity matches.
   }
-
-  // Memoize state using the values we just used to render.
+  reconcileChildrenAtExpirationTime(
+    current,
+    workInProgress,
+    nextChildren,
+    renderExpirationTime
+  );
+  // Memoize props and state using the values we just used to render.
   // TODO: Restructure so we never read values from the instance.
-  workInProgress.memoizedState = instance.state;
+  memoizeState(workInProgress, instance.state);
+  memoizeProps(workInProgress, instance.props);
 
   // The context might have changed so we need to recalculate it.
   if (hasContext) {
-    invalidateContextProvider(workInProgress, Component, true);
+    invalidateContextProvider(workInProgress, true);
   }
 
   return workInProgress.child;
@@ -11348,89 +9714,99 @@ function pushHostRootContext(workInProgress) {
   pushHostContainer(workInProgress, root.containerInfo);
 }
 
-function updateHostRoot(current$$1, workInProgress, renderExpirationTime) {
+function updateHostRoot(current, workInProgress, renderExpirationTime) {
   pushHostRootContext(workInProgress);
   var updateQueue = workInProgress.updateQueue;
-  invariant(
-    updateQueue !== null,
-    "If the root does not have an updateQueue, we should have already " +
-      "bailed out. This error is likely caused by a bug in React. Please " +
-      "file an issue."
-  );
-  var nextProps = workInProgress.pendingProps;
-  var prevState = workInProgress.memoizedState;
-  var prevChildren = prevState !== null ? prevState.element : null;
-  processUpdateQueue(
-    workInProgress,
-    updateQueue,
-    nextProps,
-    null,
-    renderExpirationTime
-  );
-  var nextState = workInProgress.memoizedState;
-  // Caution: React DevTools currently depends on this property
-  // being called "element".
-  var nextChildren = nextState.element;
-  if (nextChildren === prevChildren) {
-    // If the state is the same as before, that's a bailout because we had
-    // no work that expires at this time.
-    resetHydrationState();
-    return bailoutOnAlreadyFinishedWork(
-      current$$1,
+  if (updateQueue !== null) {
+    var nextProps = workInProgress.pendingProps;
+    var prevState = workInProgress.memoizedState;
+    var prevChildren = prevState !== null ? prevState.element : null;
+    processUpdateQueue(
       workInProgress,
-      renderExpirationTime
-    );
-  }
-  var root = workInProgress.stateNode;
-  if (
-    (current$$1 === null || current$$1.child === null) &&
-    root.hydrate &&
-    enterHydrationState(workInProgress)
-  ) {
-    // If we don't have any current children this might be the first pass.
-    // We always try to hydrate. If this isn't a hydration pass there won't
-    // be any children to hydrate which is effectively the same thing as
-    // not hydrating.
-
-    // This is a bit of a hack. We track the host root as a placement to
-    // know that we're currently in a mounting state. That way isMounted
-    // works as expected. We must reset this before committing.
-    // TODO: Delete this when we delete isMounted and findDOMNode.
-    workInProgress.effectTag |= Placement;
-
-    // Ensure that children mount into this root without tracking
-    // side-effects. This ensures that we don't store Placement effects on
-    // nodes that will be hydrated.
-    workInProgress.child = mountChildFibers(
-      workInProgress,
+      updateQueue,
+      nextProps,
       null,
-      nextChildren,
       renderExpirationTime
     );
-  } else {
-    // Otherwise reset hydration state in case we aborted and resumed another
-    // root.
-    reconcileChildren(
-      current$$1,
-      workInProgress,
-      nextChildren,
-      renderExpirationTime
-    );
-    resetHydrationState();
+    var nextState = workInProgress.memoizedState;
+    // Caution: React DevTools currently depends on this property
+    // being called "element".
+    var nextChildren = nextState.element;
+
+    if (nextChildren === prevChildren) {
+      // If the state is the same as before, that's a bailout because we had
+      // no work that expires at this time.
+      resetHydrationState();
+      return bailoutOnAlreadyFinishedWork(current, workInProgress);
+    }
+    var root = workInProgress.stateNode;
+    if (
+      (current === null || current.child === null) &&
+      root.hydrate &&
+      enterHydrationState(workInProgress)
+    ) {
+      // If we don't have any current children this might be the first pass.
+      // We always try to hydrate. If this isn't a hydration pass there won't
+      // be any children to hydrate which is effectively the same thing as
+      // not hydrating.
+
+      // This is a bit of a hack. We track the host root as a placement to
+      // know that we're currently in a mounting state. That way isMounted
+      // works as expected. We must reset this before committing.
+      // TODO: Delete this when we delete isMounted and findDOMNode.
+      workInProgress.effectTag |= Placement;
+
+      // Ensure that children mount into this root without tracking
+      // side-effects. This ensures that we don't store Placement effects on
+      // nodes that will be hydrated.
+      workInProgress.child = mountChildFibers(
+        workInProgress,
+        null,
+        nextChildren,
+        renderExpirationTime
+      );
+    } else {
+      // Otherwise reset hydration state in case we aborted and resumed another
+      // root.
+      resetHydrationState();
+      reconcileChildren(current, workInProgress, nextChildren);
+    }
+    return workInProgress.child;
   }
-  return workInProgress.child;
+  resetHydrationState();
+  // If there is no update queue, that's a bailout because the root has no props.
+  return bailoutOnAlreadyFinishedWork(current, workInProgress);
 }
 
-function updateHostComponent(current$$1, workInProgress, renderExpirationTime) {
+function updateHostComponent(current, workInProgress, renderExpirationTime) {
   pushHostContext(workInProgress);
 
-  if (current$$1 === null) {
+  if (current === null) {
     tryToClaimNextHydratableInstance(workInProgress);
   }
 
   var type = workInProgress.type;
+  var memoizedProps = workInProgress.memoizedProps;
   var nextProps = workInProgress.pendingProps;
-  var prevProps = current$$1 !== null ? current$$1.memoizedProps : null;
+  var prevProps = current !== null ? current.memoizedProps : null;
+
+  if (hasContextChanged()) {
+    // Normally we can bail out on props equality but if context has changed
+    // we don't do the bailout and we have to reuse existing props instead.
+  } else if (memoizedProps === nextProps) {
+    var isHidden =
+      workInProgress.mode & AsyncMode &&
+      shouldDeprioritizeSubtree(type, nextProps);
+    if (isHidden) {
+      // Before bailing out, make sure we've deprioritized a hidden component.
+      workInProgress.expirationTime = Never;
+    }
+    if (!isHidden || renderExpirationTime !== Never) {
+      return bailoutOnAlreadyFinishedWork(current, workInProgress);
+    }
+    // If we're rendering a hidden node at hidden priority, don't bailout. The
+    // parent is complete, but the children may not be.
+  }
 
   var nextChildren = nextProps.children;
   var isDirectTextChild = shouldSetTextContent(type, nextProps);
@@ -11441,249 +9817,66 @@ function updateHostComponent(current$$1, workInProgress, renderExpirationTime) {
     // this in the host environment that also have access to this prop. That
     // avoids allocating another HostText fiber and traversing it.
     nextChildren = null;
-  } else if (prevProps !== null && shouldSetTextContent(type, prevProps)) {
+  } else if (prevProps && shouldSetTextContent(type, prevProps)) {
     // If we're switching from a direct text child to a normal child, or to
     // empty, we need to schedule the text content to be reset.
     workInProgress.effectTag |= ContentReset;
   }
 
-  markRef(current$$1, workInProgress);
+  markRef(current, workInProgress);
 
   // Check the host config to see if the children are offscreen/hidden.
   if (
     renderExpirationTime !== Never &&
-    workInProgress.mode & ConcurrentMode &&
+    workInProgress.mode & AsyncMode &&
     shouldDeprioritizeSubtree(type, nextProps)
   ) {
-    // Schedule this fiber to re-render at offscreen priority. Then bailout.
-    workInProgress.expirationTime = workInProgress.childExpirationTime = Never;
+    // Down-prioritize the children.
+    workInProgress.expirationTime = Never;
+    // Bailout and come back to this fiber later.
+    workInProgress.memoizedProps = nextProps;
     return null;
   }
 
-  reconcileChildren(
-    current$$1,
-    workInProgress,
-    nextChildren,
-    renderExpirationTime
-  );
+  reconcileChildren(current, workInProgress, nextChildren);
+  memoizeProps(workInProgress, nextProps);
   return workInProgress.child;
 }
 
-function updateHostText(current$$1, workInProgress) {
-  if (current$$1 === null) {
+function updateHostText(current, workInProgress) {
+  if (current === null) {
     tryToClaimNextHydratableInstance(workInProgress);
   }
+  var nextProps = workInProgress.pendingProps;
+  memoizeProps(workInProgress, nextProps);
   // Nothing to do here. This is terminal. We'll do the completion step
   // immediately after.
   return null;
 }
 
-function mountLazyComponent(
-  _current,
-  workInProgress,
-  elementType,
-  updateExpirationTime,
-  renderExpirationTime
-) {
-  if (_current !== null) {
-    // An lazy component only mounts if it suspended inside a non-
-    // concurrent tree, in an inconsistent state. We want to treat it like
-    // a new mount, even though an empty version of it already committed.
-    // Disconnect the alternate pointers.
-    _current.alternate = null;
-    workInProgress.alternate = null;
-    // Since this is conceptually a new fiber, schedule a Placement effect
-    workInProgress.effectTag |= Placement;
-  }
-
-  var props = workInProgress.pendingProps;
-  // We can't start a User Timing measurement with correct label yet.
-  // Cancel and resume right after we know the tag.
-  cancelWorkTimer(workInProgress);
-  var Component = readLazyComponentType(elementType);
-  // Store the unwrapped component in the type.
-  workInProgress.type = Component;
-  var resolvedTag = (workInProgress.tag = resolveLazyComponentTag(Component));
-  startWorkTimer(workInProgress);
-  var resolvedProps = resolveDefaultProps(Component, props);
-  var child = void 0;
-  switch (resolvedTag) {
-    case FunctionComponent: {
-      {
-        validateFunctionComponentInDev(workInProgress, Component);
-      }
-      child = updateFunctionComponent(
-        null,
-        workInProgress,
-        Component,
-        resolvedProps,
-        renderExpirationTime
-      );
-      break;
-    }
-    case ClassComponent: {
-      child = updateClassComponent(
-        null,
-        workInProgress,
-        Component,
-        resolvedProps,
-        renderExpirationTime
-      );
-      break;
-    }
-    case ForwardRef: {
-      child = updateForwardRef(
-        null,
-        workInProgress,
-        Component,
-        resolvedProps,
-        renderExpirationTime
-      );
-      break;
-    }
-    case MemoComponent: {
-      {
-        if (workInProgress.type !== workInProgress.elementType) {
-          var outerPropTypes = Component.propTypes;
-          if (outerPropTypes) {
-            checkPropTypes(
-              outerPropTypes,
-              resolvedProps, // Resolved for outer only
-              "prop",
-              getComponentName(Component),
-              getCurrentFiberStackInDev
-            );
-          }
-        }
-      }
-      child = updateMemoComponent(
-        null,
-        workInProgress,
-        Component,
-        resolveDefaultProps(Component.type, resolvedProps), // The inner type can have defaults too
-        updateExpirationTime,
-        renderExpirationTime
-      );
-      break;
-    }
-    default: {
-      var hint = "";
-      {
-        if (
-          Component !== null &&
-          typeof Component === "object" &&
-          Component.$$typeof === REACT_LAZY_TYPE
-        ) {
-          hint = " Did you wrap a component in React.lazy() more than once?";
-        }
-      }
-      // This message intentionally doesn't mention ForwardRef or MemoComponent
-      // because the fact that it's a separate type of work is an
-      // implementation detail.
-      invariant(
-        false,
-        "Element type is invalid. Received a promise that resolves to: %s. " +
-          "Lazy element type must resolve to a class or function.%s",
-        Component,
-        hint
-      );
-    }
-  }
-  return child;
-}
-
-function mountIncompleteClassComponent(
-  _current,
-  workInProgress,
-  Component,
-  nextProps,
-  renderExpirationTime
-) {
-  if (_current !== null) {
-    // An incomplete component only mounts if it suspended inside a non-
-    // concurrent tree, in an inconsistent state. We want to treat it like
-    // a new mount, even though an empty version of it already committed.
-    // Disconnect the alternate pointers.
-    _current.alternate = null;
-    workInProgress.alternate = null;
-    // Since this is conceptually a new fiber, schedule a Placement effect
-    workInProgress.effectTag |= Placement;
-  }
-
-  // Promote the fiber to a class and try rendering again.
-  workInProgress.tag = ClassComponent;
-
-  // The rest of this function is a fork of `updateClassComponent`
-
-  // Push context providers early to prevent context stack mismatches.
-  // During mounting we don't know the child context yet as the instance doesn't exist.
-  // We will invalidate the child context in finishClassComponent() right after rendering.
-  var hasContext = void 0;
-  if (isContextProvider(Component)) {
-    hasContext = true;
-    pushContextProvider(workInProgress);
-  } else {
-    hasContext = false;
-  }
-  prepareToReadContext(workInProgress, renderExpirationTime);
-
-  constructClassInstance(
-    workInProgress,
-    Component,
-    nextProps,
-    renderExpirationTime
-  );
-  mountClassInstance(
-    workInProgress,
-    Component,
-    nextProps,
-    renderExpirationTime
-  );
-
-  return finishClassComponent(
-    null,
-    workInProgress,
-    Component,
-    true,
-    hasContext,
-    renderExpirationTime
-  );
-}
-
 function mountIndeterminateComponent(
-  _current,
+  current,
   workInProgress,
-  Component,
   renderExpirationTime
 ) {
-  if (_current !== null) {
-    // An indeterminate component only mounts if it suspended inside a non-
-    // concurrent tree, in an inconsistent state. We want to treat it like
-    // a new mount, even though an empty version of it already committed.
-    // Disconnect the alternate pointers.
-    _current.alternate = null;
-    workInProgress.alternate = null;
-    // Since this is conceptually a new fiber, schedule a Placement effect
-    workInProgress.effectTag |= Placement;
-  }
-
+  invariant(
+    current === null,
+    "An indeterminate component should never have mounted. This error is " +
+      "likely caused by a bug in React. Please file an issue."
+  );
+  var fn = workInProgress.type;
   var props = workInProgress.pendingProps;
-  var unmaskedContext = getUnmaskedContext(workInProgress, Component, false);
+  var unmaskedContext = getUnmaskedContext(workInProgress);
   var context = getMaskedContext(workInProgress, unmaskedContext);
-
-  prepareToReadContext(workInProgress, renderExpirationTime);
 
   var value = void 0;
 
   {
-    if (
-      Component.prototype &&
-      typeof Component.prototype.render === "function"
-    ) {
-      var componentName = getComponentName(Component) || "Unknown";
+    if (fn.prototype && typeof fn.prototype.render === "function") {
+      var componentName = getComponentName(workInProgress) || "Unknown";
 
       if (!didWarnAboutBadClass[componentName]) {
-        warningWithoutStack$1(
+        warning(
           false,
           "The <%s /> component appears to have a render method, but doesn't extend React.Component. " +
             "This is likely to cause errors. Change %s to extend React.Component instead.",
@@ -11698,15 +9891,8 @@ function mountIndeterminateComponent(
       ReactStrictModeWarnings.recordLegacyContextWarning(workInProgress, null);
     }
 
-    ReactCurrentOwner$3.current = workInProgress;
-    value = renderWithHooks(
-      null,
-      workInProgress,
-      Component,
-      props,
-      context,
-      renderExpirationTime
-    );
+    ReactCurrentOwner.current = workInProgress;
+    value = fn(props, context);
   }
   // React DevTools reads this flag.
   workInProgress.effectTag |= PerformedWork;
@@ -11717,22 +9903,10 @@ function mountIndeterminateComponent(
     typeof value.render === "function" &&
     value.$$typeof === undefined
   ) {
+    var Component = workInProgress.type;
+
     // Proceed under the assumption that this is a class instance
     workInProgress.tag = ClassComponent;
-
-    // Throw out any hooks that were used.
-    resetHooks();
-
-    // Push context providers early to prevent context stack mismatches.
-    // During mounting we don't know the child context yet as the instance doesn't exist.
-    // We will invalidate the child context in finishClassComponent() right after rendering.
-    var hasContext = false;
-    if (isContextProvider(Component)) {
-      hasContext = true;
-      pushContextProvider(workInProgress);
-    } else {
-      hasContext = false;
-    }
 
     workInProgress.memoizedState =
       value.state !== null && value.state !== undefined ? value.state : null;
@@ -11741,502 +9915,125 @@ function mountIndeterminateComponent(
     if (typeof getDerivedStateFromProps === "function") {
       applyDerivedStateFromProps(
         workInProgress,
-        Component,
         getDerivedStateFromProps,
         props
       );
     }
 
+    // Push context providers early to prevent context stack mismatches.
+    // During mounting we don't know the child context yet as the instance doesn't exist.
+    // We will invalidate the child context in finishClassComponent() right after rendering.
+    var hasContext = pushContextProvider(workInProgress);
     adoptClassInstance(workInProgress, value);
-    mountClassInstance(workInProgress, Component, props, renderExpirationTime);
+    mountClassInstance(workInProgress, renderExpirationTime);
     return finishClassComponent(
-      null,
+      current,
       workInProgress,
-      Component,
       true,
       hasContext,
       renderExpirationTime
     );
   } else {
-    // Proceed under the assumption that this is a function component
-    workInProgress.tag = FunctionComponent;
+    // Proceed under the assumption that this is a functional component
+    workInProgress.tag = FunctionalComponent;
     {
-      if (
-        debugRenderPhaseSideEffects ||
-        (debugRenderPhaseSideEffectsForStrictMode &&
-          workInProgress.mode & StrictMode)
-      ) {
-        // Only double-render components with Hooks
-        if (workInProgress.memoizedState !== null) {
-          value = renderWithHooks(
-            null,
-            workInProgress,
-            Component,
-            props,
-            context,
-            renderExpirationTime
+      var _Component = workInProgress.type;
+
+      if (_Component) {
+        !!_Component.childContextTypes
+          ? warning(
+              false,
+              "%s(...): childContextTypes cannot be defined on a functional component.",
+              _Component.displayName || _Component.name || "Component"
+            )
+          : void 0;
+      }
+      if (workInProgress.ref !== null) {
+        var info = "";
+        var ownerName = ReactDebugCurrentFiber.getCurrentFiberOwnerName();
+        if (ownerName) {
+          info += "\n\nCheck the render method of `" + ownerName + "`.";
+        }
+
+        var warningKey = ownerName || workInProgress._debugID || "";
+        var debugSource = workInProgress._debugSource;
+        if (debugSource) {
+          warningKey = debugSource.fileName + ":" + debugSource.lineNumber;
+        }
+        if (!didWarnAboutStatelessRefs[warningKey]) {
+          didWarnAboutStatelessRefs[warningKey] = true;
+          warning(
+            false,
+            "Stateless function components cannot be given refs. " +
+              "Attempts to access this ref will fail.%s%s",
+            info,
+            ReactDebugCurrentFiber.getCurrentFiberStackAddendum()
           );
         }
       }
+
+      if (typeof fn.getDerivedStateFromProps === "function") {
+        var _componentName = getComponentName(workInProgress) || "Unknown";
+
+        if (!didWarnAboutGetDerivedStateOnFunctionalComponent[_componentName]) {
+          warning(
+            false,
+            "%s: Stateless functional components do not support getDerivedStateFromProps.",
+            _componentName
+          );
+          didWarnAboutGetDerivedStateOnFunctionalComponent[
+            _componentName
+          ] = true;
+        }
+      }
     }
-    reconcileChildren(null, workInProgress, value, renderExpirationTime);
-    {
-      validateFunctionComponentInDev(workInProgress, Component);
-    }
+    reconcileChildren(current, workInProgress, value);
+    memoizeProps(workInProgress, props);
     return workInProgress.child;
   }
 }
 
-function validateFunctionComponentInDev(workInProgress, Component) {
-  if (Component) {
-    !!Component.childContextTypes
-      ? warningWithoutStack$1(
-          false,
-          "%s(...): childContextTypes cannot be defined on a function component.",
-          Component.displayName || Component.name || "Component"
-        )
-      : void 0;
-  }
-  if (workInProgress.ref !== null) {
-    var info = "";
-    var ownerName = getCurrentFiberOwnerNameInDevOrNull();
-    if (ownerName) {
-      info += "\n\nCheck the render method of `" + ownerName + "`.";
-    }
-
-    var warningKey = ownerName || workInProgress._debugID || "";
-    var debugSource = workInProgress._debugSource;
-    if (debugSource) {
-      warningKey = debugSource.fileName + ":" + debugSource.lineNumber;
-    }
-    if (!didWarnAboutFunctionRefs[warningKey]) {
-      didWarnAboutFunctionRefs[warningKey] = true;
-      warning$1(
-        false,
-        "Function components cannot be given refs. " +
-          "Attempts to access this ref will fail. " +
-          "Did you mean to use React.forwardRef()?%s",
-        info
-      );
-    }
-  }
-
-  if (typeof Component.getDerivedStateFromProps === "function") {
-    var componentName = getComponentName(Component) || "Unknown";
-
-    if (!didWarnAboutGetDerivedStateOnFunctionComponent[componentName]) {
-      warningWithoutStack$1(
-        false,
-        "%s: Function components do not support getDerivedStateFromProps.",
-        componentName
-      );
-      didWarnAboutGetDerivedStateOnFunctionComponent[componentName] = true;
-    }
-  }
-
-  if (
-    typeof Component.contextType === "object" &&
-    Component.contextType !== null
-  ) {
-    var _componentName = getComponentName(Component) || "Unknown";
-
-    if (!didWarnAboutContextTypeOnFunctionComponent[_componentName]) {
-      warningWithoutStack$1(
-        false,
-        "%s: Function components do not support contextType.",
-        _componentName
-      );
-      didWarnAboutContextTypeOnFunctionComponent[_componentName] = true;
-    }
-  }
-}
-
-function updateSuspenseComponent(
-  current$$1,
-  workInProgress,
-  renderExpirationTime
-) {
-  var mode = workInProgress.mode;
-  var nextProps = workInProgress.pendingProps;
-
-  // We should attempt to render the primary children unless this boundary
-  // already suspended during this render (`alreadyCaptured` is true).
-  var nextState = workInProgress.memoizedState;
-
-  var nextDidTimeout = void 0;
-  if ((workInProgress.effectTag & DidCapture) === NoEffect) {
-    // This is the first attempt.
-    nextState = null;
-    nextDidTimeout = false;
-  } else {
-    // Something in this boundary's subtree already suspended. Switch to
-    // rendering the fallback children.
-    nextState = {
-      timedOutAt: nextState !== null ? nextState.timedOutAt : NoWork
-    };
-    nextDidTimeout = true;
-    workInProgress.effectTag &= ~DidCapture;
-  }
-
-  // This next part is a bit confusing. If the children timeout, we switch to
-  // showing the fallback children in place of the "primary" children.
-  // However, we don't want to delete the primary children because then their
-  // state will be lost (both the React state and the host state, e.g.
-  // uncontrolled form inputs). Instead we keep them mounted and hide them.
-  // Both the fallback children AND the primary children are rendered at the
-  // same time. Once the primary children are un-suspended, we can delete
-  // the fallback children — don't need to preserve their state.
-  //
-  // The two sets of children are siblings in the host environment, but
-  // semantically, for purposes of reconciliation, they are two separate sets.
-  // So we store them using two fragment fibers.
-  //
-  // However, we want to avoid allocating extra fibers for every placeholder.
-  // They're only necessary when the children time out, because that's the
-  // only time when both sets are mounted.
-  //
-  // So, the extra fragment fibers are only used if the children time out.
-  // Otherwise, we render the primary children directly. This requires some
-  // custom reconciliation logic to preserve the state of the primary
-  // children. It's essentially a very basic form of re-parenting.
-
-  // `child` points to the child fiber. In the normal case, this is the first
-  // fiber of the primary children set. In the timed-out case, it's a
-  // a fragment fiber containing the primary children.
-  var child = void 0;
-  // `next` points to the next fiber React should render. In the normal case,
-  // it's the same as `child`: the first fiber of the primary children set.
-  // In the timed-out case, it's a fragment fiber containing the *fallback*
-  // children -- we skip over the primary children entirely.
-  var next = void 0;
-  if (current$$1 === null) {
-    if (enableSuspenseServerRenderer) {
-      // If we're currently hydrating, try to hydrate this boundary.
-      // But only if this has a fallback.
-      if (nextProps.fallback !== undefined) {
-        tryToClaimNextHydratableInstance(workInProgress);
-        // This could've changed the tag if this was a dehydrated suspense component.
-        if (workInProgress.tag === DehydratedSuspenseComponent) {
-          return updateDehydratedSuspenseComponent(
-            null,
-            workInProgress,
-            renderExpirationTime
-          );
-        }
-      }
-    }
-
-    // This is the initial mount. This branch is pretty simple because there's
-    // no previous state that needs to be preserved.
-    if (nextDidTimeout) {
-      // Mount separate fragments for primary and fallback children.
-      var nextFallbackChildren = nextProps.fallback;
-      var primaryChildFragment = createFiberFromFragment(
-        null,
-        mode,
-        NoWork,
-        null
-      );
-
-      if ((workInProgress.mode & ConcurrentMode) === NoContext) {
-        // Outside of concurrent mode, we commit the effects from the
-        var progressedState = workInProgress.memoizedState;
-        var progressedPrimaryChild =
-          progressedState !== null
-            ? workInProgress.child.child
-            : workInProgress.child;
-        primaryChildFragment.child = progressedPrimaryChild;
-      }
-
-      var fallbackChildFragment = createFiberFromFragment(
-        nextFallbackChildren,
-        mode,
-        renderExpirationTime,
-        null
-      );
-      primaryChildFragment.sibling = fallbackChildFragment;
-      child = primaryChildFragment;
-      // Skip the primary children, and continue working on the
-      // fallback children.
-      next = fallbackChildFragment;
-      child.return = next.return = workInProgress;
-    } else {
-      // Mount the primary children without an intermediate fragment fiber.
-      var nextPrimaryChildren = nextProps.children;
-      child = next = mountChildFibers(
-        workInProgress,
-        null,
-        nextPrimaryChildren,
-        renderExpirationTime
-      );
-    }
-  } else {
-    // This is an update. This branch is more complicated because we need to
-    // ensure the state of the primary children is preserved.
-    var prevState = current$$1.memoizedState;
-    var prevDidTimeout = prevState !== null;
-    if (prevDidTimeout) {
-      // The current tree already timed out. That means each child set is
-      var currentPrimaryChildFragment = current$$1.child;
-      var currentFallbackChildFragment = currentPrimaryChildFragment.sibling;
-      if (nextDidTimeout) {
-        // Still timed out. Reuse the current primary children by cloning
-        // its fragment. We're going to skip over these entirely.
-        var _nextFallbackChildren = nextProps.fallback;
-        var _primaryChildFragment = createWorkInProgress(
-          currentPrimaryChildFragment,
-          currentPrimaryChildFragment.pendingProps,
-          NoWork
-        );
-
-        if ((workInProgress.mode & ConcurrentMode) === NoContext) {
-          // Outside of concurrent mode, we commit the effects from the
-          var _progressedState = workInProgress.memoizedState;
-          var _progressedPrimaryChild =
-            _progressedState !== null
-              ? workInProgress.child.child
-              : workInProgress.child;
-          if (_progressedPrimaryChild !== currentPrimaryChildFragment.child) {
-            _primaryChildFragment.child = _progressedPrimaryChild;
-          }
-        }
-
-        // Because primaryChildFragment is a new fiber that we're inserting as the
-        // parent of a new tree, we need to set its treeBaseDuration.
-        if (enableProfilerTimer && workInProgress.mode & ProfileMode) {
-          // treeBaseDuration is the sum of all the child tree base durations.
-          var treeBaseDuration = 0;
-          var hiddenChild = _primaryChildFragment.child;
-          while (hiddenChild !== null) {
-            treeBaseDuration += hiddenChild.treeBaseDuration;
-            hiddenChild = hiddenChild.sibling;
-          }
-          _primaryChildFragment.treeBaseDuration = treeBaseDuration;
-        }
-
-        // Clone the fallback child fragment, too. These we'll continue
-        // working on.
-        var _fallbackChildFragment = (_primaryChildFragment.sibling = createWorkInProgress(
-          currentFallbackChildFragment,
-          _nextFallbackChildren,
-          currentFallbackChildFragment.expirationTime
-        ));
-        child = _primaryChildFragment;
-        _primaryChildFragment.childExpirationTime = NoWork;
-        // Skip the primary children, and continue working on the
-        // fallback children.
-        next = _fallbackChildFragment;
-        child.return = next.return = workInProgress;
-      } else {
-        // No longer suspended. Switch back to showing the primary children,
-        // and remove the intermediate fragment fiber.
-        var _nextPrimaryChildren = nextProps.children;
-        var currentPrimaryChild = currentPrimaryChildFragment.child;
-        var primaryChild = reconcileChildFibers(
-          workInProgress,
-          currentPrimaryChild,
-          _nextPrimaryChildren,
-          renderExpirationTime
-        );
-
-        // If this render doesn't suspend, we need to delete the fallback
-        // children. Wait until the complete phase, after we've confirmed the
-        // fallback is no longer needed.
-        // TODO: Would it be better to store the fallback fragment on
-        // the stateNode?
-
-        // Continue rendering the children, like we normally do.
-        child = next = primaryChild;
-      }
-    } else {
-      // The current tree has not already timed out. That means the primary
-      // children are not wrapped in a fragment fiber.
-      var _currentPrimaryChild = current$$1.child;
-      if (nextDidTimeout) {
-        // Timed out. Wrap the children in a fragment fiber to keep them
-        // separate from the fallback children.
-        var _nextFallbackChildren2 = nextProps.fallback;
-        var _primaryChildFragment2 = createFiberFromFragment(
-          // It shouldn't matter what the pending props are because we aren't
-          // going to render this fragment.
-          null,
-          mode,
-          NoWork,
-          null
-        );
-        _primaryChildFragment2.child = _currentPrimaryChild;
-
-        // Even though we're creating a new fiber, there are no new children,
-        // because we're reusing an already mounted tree. So we don't need to
-        // schedule a placement.
-        // primaryChildFragment.effectTag |= Placement;
-
-        if ((workInProgress.mode & ConcurrentMode) === NoContext) {
-          // Outside of concurrent mode, we commit the effects from the
-          var _progressedState2 = workInProgress.memoizedState;
-          var _progressedPrimaryChild2 =
-            _progressedState2 !== null
-              ? workInProgress.child.child
-              : workInProgress.child;
-          _primaryChildFragment2.child = _progressedPrimaryChild2;
-        }
-
-        // Because primaryChildFragment is a new fiber that we're inserting as the
-        // parent of a new tree, we need to set its treeBaseDuration.
-        if (enableProfilerTimer && workInProgress.mode & ProfileMode) {
-          // treeBaseDuration is the sum of all the child tree base durations.
-          var _treeBaseDuration = 0;
-          var _hiddenChild = _primaryChildFragment2.child;
-          while (_hiddenChild !== null) {
-            _treeBaseDuration += _hiddenChild.treeBaseDuration;
-            _hiddenChild = _hiddenChild.sibling;
-          }
-          _primaryChildFragment2.treeBaseDuration = _treeBaseDuration;
-        }
-
-        // Create a fragment from the fallback children, too.
-        var _fallbackChildFragment2 = (_primaryChildFragment2.sibling = createFiberFromFragment(
-          _nextFallbackChildren2,
-          mode,
-          renderExpirationTime,
-          null
-        ));
-        _fallbackChildFragment2.effectTag |= Placement;
-        child = _primaryChildFragment2;
-        _primaryChildFragment2.childExpirationTime = NoWork;
-        // Skip the primary children, and continue working on the
-        // fallback children.
-        next = _fallbackChildFragment2;
-        child.return = next.return = workInProgress;
-      } else {
-        // Still haven't timed out.  Continue rendering the children, like we
-        // normally do.
-        var _nextPrimaryChildren2 = nextProps.children;
-        next = child = reconcileChildFibers(
-          workInProgress,
-          _currentPrimaryChild,
-          _nextPrimaryChildren2,
-          renderExpirationTime
-        );
-      }
-    }
-    workInProgress.stateNode = current$$1.stateNode;
-  }
-
-  workInProgress.memoizedState = nextState;
-  workInProgress.child = child;
-  return next;
-}
-
-function updateDehydratedSuspenseComponent(
-  current$$1,
-  workInProgress,
-  renderExpirationTime
-) {
-  if (current$$1 === null) {
-    // During the first pass, we'll bail out and not drill into the children.
-    // Instead, we'll leave the content in place and try to hydrate it later.
-    workInProgress.expirationTime = Never;
-    return null;
-  }
-  if ((workInProgress.effectTag & DidCapture) !== NoEffect) {
-    // Something suspended. Leave the existing children in place.
-    // TODO: In non-concurrent mode, should we commit the nodes we have hydrated so far?
-    workInProgress.child = null;
-    return null;
-  }
-  // We use childExpirationTime to indicate that a child might depend on context, so if
-  // any context has changed, we need to treat is as if the input might have changed.
-  var hasContextChanged$$1 =
-    current$$1.childExpirationTime >= renderExpirationTime;
-  var suspenseInstance = current$$1.stateNode;
-  if (
-    didReceiveUpdate ||
-    hasContextChanged$$1 ||
-    isSuspenseInstanceFallback(suspenseInstance)
-  ) {
-    // This boundary has changed since the first render. This means that we are now unable to
-    // hydrate it. We might still be able to hydrate it using an earlier expiration time but
-    // during this render we can't. Instead, we're going to delete the whole subtree and
-    // instead inject a new real Suspense boundary to take its place, which may render content
-    // or fallback. The real Suspense boundary will suspend for a while so we have some time
-    // to ensure it can produce real content, but all state and pending events will be lost.
-
-    // Alternatively, this boundary is in a permanent fallback state. In this case, we'll never
-    // get an update and we'll never be able to hydrate the final content. Let's just try the
-    // client side render instead.
-
-    // Detach from the current dehydrated boundary.
-    current$$1.alternate = null;
-    workInProgress.alternate = null;
-
-    // Insert a deletion in the effect list.
-    var returnFiber = workInProgress.return;
-    invariant(
-      returnFiber !== null,
-      "Suspense boundaries are never on the root. " +
-        "This is probably a bug in React."
-    );
-    var last = returnFiber.lastEffect;
-    if (last !== null) {
-      last.nextEffect = current$$1;
-      returnFiber.lastEffect = current$$1;
-    } else {
-      returnFiber.firstEffect = returnFiber.lastEffect = current$$1;
-    }
-    current$$1.nextEffect = null;
-    current$$1.effectTag = Deletion;
-
-    // Upgrade this work in progress to a real Suspense component.
-    workInProgress.tag = SuspenseComponent;
-    workInProgress.stateNode = null;
-    workInProgress.memoizedState = null;
-    // This is now an insertion.
-    workInProgress.effectTag |= Placement;
-    // Retry as a real Suspense component.
-    return updateSuspenseComponent(null, workInProgress, renderExpirationTime);
-  } else if (isSuspenseInstancePending(suspenseInstance)) {
-    // This component is still pending more data from the server, so we can't hydrate its
-    // content. We treat it as if this component suspended itself. It might seem as if
-    // we could just try to render it client-side instead. However, this will perform a
-    // lot of unnecessary work and is unlikely to complete since it often will suspend
-    // on missing data anyway. Additionally, the server might be able to render more
-    // than we can on the client yet. In that case we'd end up with more fallback states
-    // on the client than if we just leave it alone. If the server times out or errors
-    // these should update this boundary to the permanent Fallback state instead.
-    // Mark it as having captured (i.e. suspended).
-    workInProgress.effectTag |= DidCapture;
-    // Leave the children in place. I.e. empty.
-    workInProgress.child = null;
-    // Register a callback to retry this boundary once the server has sent the result.
-    registerSuspenseInstanceRetry(
-      suspenseInstance,
-      retryTimedOutBoundary.bind(null, current$$1)
-    );
-    return null;
-  } else {
-    // This is the first attempt.
-    reenterHydrationStateFromDehydratedSuspenseInstance(workInProgress);
+function updateTimeoutComponent(current, workInProgress, renderExpirationTime) {
+  if (enableSuspense) {
     var nextProps = workInProgress.pendingProps;
-    var nextChildren = nextProps.children;
-    workInProgress.child = mountChildFibers(
-      workInProgress,
-      null,
-      nextChildren,
-      renderExpirationTime
-    );
+    var prevProps = workInProgress.memoizedProps;
+
+    var prevDidTimeout = workInProgress.memoizedState;
+
+    // Check if we already attempted to render the normal state. If we did,
+    // and we timed out, render the placeholder state.
+    var alreadyCaptured = (workInProgress.effectTag & DidCapture) === NoEffect;
+    var nextDidTimeout = !alreadyCaptured;
+
+    if (hasContextChanged()) {
+      // Normally we can bail out on props equality but if context has changed
+      // we don't do the bailout and we have to reuse existing props instead.
+    } else if (nextProps === prevProps && nextDidTimeout === prevDidTimeout) {
+      return bailoutOnAlreadyFinishedWork(current, workInProgress);
+    }
+
+    var render = nextProps.children;
+    var nextChildren = render(nextDidTimeout);
+    workInProgress.memoizedProps = nextProps;
+    workInProgress.memoizedState = nextDidTimeout;
+    reconcileChildren(current, workInProgress, nextChildren);
     return workInProgress.child;
+  } else {
+    return null;
   }
 }
 
-function updatePortalComponent(
-  current$$1,
-  workInProgress,
-  renderExpirationTime
-) {
+function updatePortalComponent(current, workInProgress, renderExpirationTime) {
   pushHostContainer(workInProgress, workInProgress.stateNode.containerInfo);
   var nextChildren = workInProgress.pendingProps;
-  if (current$$1 === null) {
+  if (hasContextChanged()) {
+    // Normally we can bail out on props equality but if context has changed
+    // we don't do the bailout and we have to reuse existing props instead.
+  } else if (workInProgress.memoizedProps === nextChildren) {
+    return bailoutOnAlreadyFinishedWork(current, workInProgress);
+  }
+
+  if (current === null) {
     // Portals are special because we don't append the children during mount
     // but at commit. Therefore we need to track insertions which the normal
     // flow doesn't do during mount. This doesn't happen at the root because
@@ -12248,615 +10045,12 @@ function updatePortalComponent(
       nextChildren,
       renderExpirationTime
     );
+    memoizeProps(workInProgress, nextChildren);
   } else {
-    reconcileChildren(
-      current$$1,
-      workInProgress,
-      nextChildren,
-      renderExpirationTime
-    );
+    reconcileChildren(current, workInProgress, nextChildren);
+    memoizeProps(workInProgress, nextChildren);
   }
   return workInProgress.child;
-}
-
-function updateContextProvider(
-  current$$1,
-  workInProgress,
-  renderExpirationTime
-) {
-  var providerType = workInProgress.type;
-  var context = providerType._context;
-
-  var newProps = workInProgress.pendingProps;
-  var oldProps = workInProgress.memoizedProps;
-
-  var newValue = newProps.value;
-
-  {
-    var providerPropTypes = workInProgress.type.propTypes;
-
-    if (providerPropTypes) {
-      checkPropTypes(
-        providerPropTypes,
-        newProps,
-        "prop",
-        "Context.Provider",
-        getCurrentFiberStackInDev
-      );
-    }
-  }
-
-  pushProvider(workInProgress, newValue);
-
-  if (oldProps !== null) {
-    var oldValue = oldProps.value;
-    var changedBits = calculateChangedBits(context, newValue, oldValue);
-    if (changedBits === 0) {
-      // No change. Bailout early if children are the same.
-      if (oldProps.children === newProps.children && !hasContextChanged()) {
-        return bailoutOnAlreadyFinishedWork(
-          current$$1,
-          workInProgress,
-          renderExpirationTime
-        );
-      }
-    } else {
-      // The context value changed. Search for matching consumers and schedule
-      // them to update.
-      propagateContextChange(
-        workInProgress,
-        context,
-        changedBits,
-        renderExpirationTime
-      );
-    }
-  }
-
-  var newChildren = newProps.children;
-  reconcileChildren(
-    current$$1,
-    workInProgress,
-    newChildren,
-    renderExpirationTime
-  );
-  return workInProgress.child;
-}
-
-var hasWarnedAboutUsingContextAsConsumer = false;
-
-function updateContextConsumer(
-  current$$1,
-  workInProgress,
-  renderExpirationTime
-) {
-  var context = workInProgress.type;
-  // The logic below for Context differs depending on PROD or DEV mode. In
-  // DEV mode, we create a separate object for Context.Consumer that acts
-  // like a proxy to Context. This proxy object adds unnecessary code in PROD
-  // so we use the old behaviour (Context.Consumer references Context) to
-  // reduce size and overhead. The separate object references context via
-  // a property called "_context", which also gives us the ability to check
-  // in DEV mode if this property exists or not and warn if it does not.
-  {
-    if (context._context === undefined) {
-      // This may be because it's a Context (rather than a Consumer).
-      // Or it may be because it's older React where they're the same thing.
-      // We only want to warn if we're sure it's a new React.
-      if (context !== context.Consumer) {
-        if (!hasWarnedAboutUsingContextAsConsumer) {
-          hasWarnedAboutUsingContextAsConsumer = true;
-          warning$1(
-            false,
-            "Rendering <Context> directly is not supported and will be removed in " +
-              "a future major release. Did you mean to render <Context.Consumer> instead?"
-          );
-        }
-      }
-    } else {
-      context = context._context;
-    }
-  }
-  var newProps = workInProgress.pendingProps;
-  var render = newProps.children;
-
-  {
-    !(typeof render === "function")
-      ? warningWithoutStack$1(
-          false,
-          "A context consumer was rendered with multiple children, or a child " +
-            "that isn't a function. A context consumer expects a single child " +
-            "that is a function. If you did pass a function, make sure there " +
-            "is no trailing or leading whitespace around it."
-        )
-      : void 0;
-  }
-
-  prepareToReadContext(workInProgress, renderExpirationTime);
-  var newValue = readContext(context, newProps.unstable_observedBits);
-  var newChildren = void 0;
-  {
-    ReactCurrentOwner$3.current = workInProgress;
-    setCurrentPhase("render");
-    newChildren = render(newValue);
-    setCurrentPhase(null);
-  }
-
-  // React DevTools reads this flag.
-  workInProgress.effectTag |= PerformedWork;
-  reconcileChildren(
-    current$$1,
-    workInProgress,
-    newChildren,
-    renderExpirationTime
-  );
-  return workInProgress.child;
-}
-
-function markWorkInProgressReceivedUpdate() {
-  didReceiveUpdate = true;
-}
-
-function bailoutOnAlreadyFinishedWork(
-  current$$1,
-  workInProgress,
-  renderExpirationTime
-) {
-  cancelWorkTimer(workInProgress);
-
-  if (current$$1 !== null) {
-    // Reuse previous context list
-    workInProgress.contextDependencies = current$$1.contextDependencies;
-  }
-
-  if (enableProfilerTimer) {
-    // Don't update "base" render times for bailouts.
-    stopProfilerTimerIfRunning(workInProgress);
-  }
-
-  // Check if the children have any pending work.
-  var childExpirationTime = workInProgress.childExpirationTime;
-  if (childExpirationTime < renderExpirationTime) {
-    // The children don't have any work either. We can skip them.
-    // TODO: Once we add back resuming, we should check if the children are
-    // a work-in-progress set. If so, we need to transfer their effects.
-    return null;
-  } else {
-    // This fiber doesn't have work, but its subtree does. Clone the child
-    // fibers and continue.
-    cloneChildFibers(current$$1, workInProgress);
-    return workInProgress.child;
-  }
-}
-
-function beginWork(current$$1, workInProgress, renderExpirationTime) {
-  var updateExpirationTime = workInProgress.expirationTime;
-
-  if (current$$1 !== null) {
-    var oldProps = current$$1.memoizedProps;
-    var newProps = workInProgress.pendingProps;
-
-    if (oldProps !== newProps || hasContextChanged()) {
-      // If props or context changed, mark the fiber as having performed work.
-      // This may be unset if the props are determined to be equal later (memo).
-      didReceiveUpdate = true;
-    } else if (updateExpirationTime < renderExpirationTime) {
-      didReceiveUpdate = false;
-      // This fiber does not have any pending work. Bailout without entering
-      // the begin phase. There's still some bookkeeping we that needs to be done
-      // in this optimized path, mostly pushing stuff onto the stack.
-      switch (workInProgress.tag) {
-        case HostRoot:
-          pushHostRootContext(workInProgress);
-          resetHydrationState();
-          break;
-        case HostComponent:
-          pushHostContext(workInProgress);
-          break;
-        case ClassComponent: {
-          var Component = workInProgress.type;
-          if (isContextProvider(Component)) {
-            pushContextProvider(workInProgress);
-          }
-          break;
-        }
-        case HostPortal:
-          pushHostContainer(
-            workInProgress,
-            workInProgress.stateNode.containerInfo
-          );
-          break;
-        case ContextProvider: {
-          var newValue = workInProgress.memoizedProps.value;
-          pushProvider(workInProgress, newValue);
-          break;
-        }
-        case Profiler:
-          if (enableProfilerTimer) {
-            workInProgress.effectTag |= Update;
-          }
-          break;
-        case SuspenseComponent: {
-          var state = workInProgress.memoizedState;
-          var didTimeout = state !== null;
-          if (didTimeout) {
-            // If this boundary is currently timed out, we need to decide
-            // whether to retry the primary children, or to skip over it and
-            // go straight to the fallback. Check the priority of the primary
-            var primaryChildFragment = workInProgress.child;
-            var primaryChildExpirationTime =
-              primaryChildFragment.childExpirationTime;
-            if (
-              primaryChildExpirationTime !== NoWork &&
-              primaryChildExpirationTime >= renderExpirationTime
-            ) {
-              // The primary children have pending work. Use the normal path
-              // to attempt to render the primary children again.
-              return updateSuspenseComponent(
-                current$$1,
-                workInProgress,
-                renderExpirationTime
-              );
-            } else {
-              // The primary children do not have pending work with sufficient
-              // priority. Bailout.
-              var child = bailoutOnAlreadyFinishedWork(
-                current$$1,
-                workInProgress,
-                renderExpirationTime
-              );
-              if (child !== null) {
-                // The fallback children have pending work. Skip over the
-                // primary children and work on the fallback.
-                return child.sibling;
-              } else {
-                return null;
-              }
-            }
-          }
-          break;
-        }
-        case DehydratedSuspenseComponent: {
-          if (enableSuspenseServerRenderer) {
-            // We know that this component will suspend again because if it has
-            // been unsuspended it has committed as a regular Suspense component.
-            // If it needs to be retried, it should have work scheduled on it.
-            workInProgress.effectTag |= DidCapture;
-            break;
-          }
-        }
-      }
-      return bailoutOnAlreadyFinishedWork(
-        current$$1,
-        workInProgress,
-        renderExpirationTime
-      );
-    }
-  } else {
-    didReceiveUpdate = false;
-  }
-
-  // Before entering the begin phase, clear the expiration time.
-  workInProgress.expirationTime = NoWork;
-
-  switch (workInProgress.tag) {
-    case IndeterminateComponent: {
-      var elementType = workInProgress.elementType;
-      return mountIndeterminateComponent(
-        current$$1,
-        workInProgress,
-        elementType,
-        renderExpirationTime
-      );
-    }
-    case LazyComponent: {
-      var _elementType = workInProgress.elementType;
-      return mountLazyComponent(
-        current$$1,
-        workInProgress,
-        _elementType,
-        updateExpirationTime,
-        renderExpirationTime
-      );
-    }
-    case FunctionComponent: {
-      var _Component = workInProgress.type;
-      var unresolvedProps = workInProgress.pendingProps;
-      var resolvedProps =
-        workInProgress.elementType === _Component
-          ? unresolvedProps
-          : resolveDefaultProps(_Component, unresolvedProps);
-      return updateFunctionComponent(
-        current$$1,
-        workInProgress,
-        _Component,
-        resolvedProps,
-        renderExpirationTime
-      );
-    }
-    case ClassComponent: {
-      var _Component2 = workInProgress.type;
-      var _unresolvedProps = workInProgress.pendingProps;
-      var _resolvedProps =
-        workInProgress.elementType === _Component2
-          ? _unresolvedProps
-          : resolveDefaultProps(_Component2, _unresolvedProps);
-      return updateClassComponent(
-        current$$1,
-        workInProgress,
-        _Component2,
-        _resolvedProps,
-        renderExpirationTime
-      );
-    }
-    case HostRoot:
-      return updateHostRoot(current$$1, workInProgress, renderExpirationTime);
-    case HostComponent:
-      return updateHostComponent(
-        current$$1,
-        workInProgress,
-        renderExpirationTime
-      );
-    case HostText:
-      return updateHostText(current$$1, workInProgress);
-    case SuspenseComponent:
-      return updateSuspenseComponent(
-        current$$1,
-        workInProgress,
-        renderExpirationTime
-      );
-    case HostPortal:
-      return updatePortalComponent(
-        current$$1,
-        workInProgress,
-        renderExpirationTime
-      );
-    case ForwardRef: {
-      var type = workInProgress.type;
-      var _unresolvedProps2 = workInProgress.pendingProps;
-      var _resolvedProps2 =
-        workInProgress.elementType === type
-          ? _unresolvedProps2
-          : resolveDefaultProps(type, _unresolvedProps2);
-      return updateForwardRef(
-        current$$1,
-        workInProgress,
-        type,
-        _resolvedProps2,
-        renderExpirationTime
-      );
-    }
-    case Fragment:
-      return updateFragment(current$$1, workInProgress, renderExpirationTime);
-    case Mode:
-      return updateMode(current$$1, workInProgress, renderExpirationTime);
-    case Profiler:
-      return updateProfiler(current$$1, workInProgress, renderExpirationTime);
-    case ContextProvider:
-      return updateContextProvider(
-        current$$1,
-        workInProgress,
-        renderExpirationTime
-      );
-    case ContextConsumer:
-      return updateContextConsumer(
-        current$$1,
-        workInProgress,
-        renderExpirationTime
-      );
-    case MemoComponent: {
-      var _type2 = workInProgress.type;
-      var _unresolvedProps3 = workInProgress.pendingProps;
-      // Resolve outer props first, then resolve inner props.
-      var _resolvedProps3 = resolveDefaultProps(_type2, _unresolvedProps3);
-      {
-        if (workInProgress.type !== workInProgress.elementType) {
-          var outerPropTypes = _type2.propTypes;
-          if (outerPropTypes) {
-            checkPropTypes(
-              outerPropTypes,
-              _resolvedProps3, // Resolved for outer only
-              "prop",
-              getComponentName(_type2),
-              getCurrentFiberStackInDev
-            );
-          }
-        }
-      }
-      _resolvedProps3 = resolveDefaultProps(_type2.type, _resolvedProps3);
-      return updateMemoComponent(
-        current$$1,
-        workInProgress,
-        _type2,
-        _resolvedProps3,
-        updateExpirationTime,
-        renderExpirationTime
-      );
-    }
-    case SimpleMemoComponent: {
-      return updateSimpleMemoComponent(
-        current$$1,
-        workInProgress,
-        workInProgress.type,
-        workInProgress.pendingProps,
-        updateExpirationTime,
-        renderExpirationTime
-      );
-    }
-    case IncompleteClassComponent: {
-      var _Component3 = workInProgress.type;
-      var _unresolvedProps4 = workInProgress.pendingProps;
-      var _resolvedProps4 =
-        workInProgress.elementType === _Component3
-          ? _unresolvedProps4
-          : resolveDefaultProps(_Component3, _unresolvedProps4);
-      return mountIncompleteClassComponent(
-        current$$1,
-        workInProgress,
-        _Component3,
-        _resolvedProps4,
-        renderExpirationTime
-      );
-    }
-    case DehydratedSuspenseComponent: {
-      if (enableSuspenseServerRenderer) {
-        return updateDehydratedSuspenseComponent(
-          current$$1,
-          workInProgress,
-          renderExpirationTime
-        );
-      }
-      break;
-    }
-  }
-  invariant(
-    false,
-    "Unknown unit of work tag. This error is likely caused by a bug in " +
-      "React. Please file an issue."
-  );
-}
-
-var valueCursor = createCursor(null);
-
-var rendererSigil = void 0;
-{
-  // Use this to detect multiple renderers using the same context
-  rendererSigil = {};
-}
-
-var currentlyRenderingFiber = null;
-var lastContextDependency = null;
-var lastContextWithAllBitsObserved = null;
-
-var isDisallowedContextReadInDEV = false;
-
-function resetContextDependences() {
-  // This is called right before React yields execution, to ensure `readContext`
-  // cannot be called outside the render phase.
-  currentlyRenderingFiber = null;
-  lastContextDependency = null;
-  lastContextWithAllBitsObserved = null;
-  {
-    isDisallowedContextReadInDEV = false;
-  }
-}
-
-function enterDisallowedContextReadInDEV() {
-  {
-    isDisallowedContextReadInDEV = true;
-  }
-}
-
-function exitDisallowedContextReadInDEV() {
-  {
-    isDisallowedContextReadInDEV = false;
-  }
-}
-
-function pushProvider(providerFiber, nextValue) {
-  var context = providerFiber.type._context;
-
-  if (isPrimaryRenderer) {
-    push(valueCursor, context._currentValue, providerFiber);
-
-    context._currentValue = nextValue;
-    {
-      !(
-        context._currentRenderer === undefined ||
-        context._currentRenderer === null ||
-        context._currentRenderer === rendererSigil
-      )
-        ? warningWithoutStack$1(
-            false,
-            "Detected multiple renderers concurrently rendering the " +
-              "same context provider. This is currently unsupported."
-          )
-        : void 0;
-      context._currentRenderer = rendererSigil;
-    }
-  } else {
-    push(valueCursor, context._currentValue2, providerFiber);
-
-    context._currentValue2 = nextValue;
-    {
-      !(
-        context._currentRenderer2 === undefined ||
-        context._currentRenderer2 === null ||
-        context._currentRenderer2 === rendererSigil
-      )
-        ? warningWithoutStack$1(
-            false,
-            "Detected multiple renderers concurrently rendering the " +
-              "same context provider. This is currently unsupported."
-          )
-        : void 0;
-      context._currentRenderer2 = rendererSigil;
-    }
-  }
-}
-
-function popProvider(providerFiber) {
-  var currentValue = valueCursor.current;
-
-  pop(valueCursor, providerFiber);
-
-  var context = providerFiber.type._context;
-  if (isPrimaryRenderer) {
-    context._currentValue = currentValue;
-  } else {
-    context._currentValue2 = currentValue;
-  }
-}
-
-function calculateChangedBits(context, newValue, oldValue) {
-  if (is(oldValue, newValue)) {
-    // No change
-    return 0;
-  } else {
-    var changedBits =
-      typeof context._calculateChangedBits === "function"
-        ? context._calculateChangedBits(oldValue, newValue)
-        : maxSigned31BitInt;
-
-    {
-      !((changedBits & maxSigned31BitInt) === changedBits)
-        ? warning$1(
-            false,
-            "calculateChangedBits: Expected the return value to be a " +
-              "31-bit integer. Instead received: %s",
-            changedBits
-          )
-        : void 0;
-    }
-    return changedBits | 0;
-  }
-}
-
-function scheduleWorkOnParentPath(parent, renderExpirationTime) {
-  // Update the child expiration time of all the ancestors, including
-  // the alternates.
-  var node = parent;
-  while (node !== null) {
-    var alternate = node.alternate;
-    if (node.childExpirationTime < renderExpirationTime) {
-      node.childExpirationTime = renderExpirationTime;
-      if (
-        alternate !== null &&
-        alternate.childExpirationTime < renderExpirationTime
-      ) {
-        alternate.childExpirationTime = renderExpirationTime;
-      }
-    } else if (
-      alternate !== null &&
-      alternate.childExpirationTime < renderExpirationTime
-    ) {
-      alternate.childExpirationTime = renderExpirationTime;
-    } else {
-      // Neither alternate was updated, which means the rest of the
-      // ancestor path already has sufficient priority.
-      break;
-    }
-    node = node.return;
-  }
 }
 
 function propagateContextChange(
@@ -12872,87 +10066,60 @@ function propagateContextChange(
   }
   while (fiber !== null) {
     var nextFiber = void 0;
-
     // Visit this fiber.
-    var list = fiber.contextDependencies;
-    if (list !== null) {
-      nextFiber = fiber.child;
-
-      var dependency = list.first;
-      while (dependency !== null) {
+    switch (fiber.tag) {
+      case ContextConsumer:
         // Check if the context matches.
-        if (
-          dependency.context === context &&
-          (dependency.observedBits & changedBits) !== 0
-        ) {
-          // Match! Schedule an update on this fiber.
-
-          if (fiber.tag === ClassComponent) {
-            // Schedule a force update on the work-in-progress.
-            var update = createUpdate(renderExpirationTime);
-            update.tag = ForceUpdate;
-            // TODO: Because we don't have a work-in-progress, this will add the
-            // update to the current fiber, too, which means it will persist even if
-            // this render is thrown away. Since it's a race condition, not sure it's
-            // worth fixing.
-            enqueueUpdate(fiber, update);
+        var observedBits = fiber.stateNode | 0;
+        if (fiber.type === context && (observedBits & changedBits) !== 0) {
+          // Update the expiration time of all the ancestors, including
+          // the alternates.
+          var node = fiber;
+          while (node !== null) {
+            var alternate = node.alternate;
+            if (
+              node.expirationTime === NoWork ||
+              node.expirationTime > renderExpirationTime
+            ) {
+              node.expirationTime = renderExpirationTime;
+              if (
+                alternate !== null &&
+                (alternate.expirationTime === NoWork ||
+                  alternate.expirationTime > renderExpirationTime)
+              ) {
+                alternate.expirationTime = renderExpirationTime;
+              }
+            } else if (
+              alternate !== null &&
+              (alternate.expirationTime === NoWork ||
+                alternate.expirationTime > renderExpirationTime)
+            ) {
+              alternate.expirationTime = renderExpirationTime;
+            } else {
+              // Neither alternate was updated, which means the rest of the
+              // ancestor path already has sufficient priority.
+              break;
+            }
+            node = node.return;
           }
-
-          if (fiber.expirationTime < renderExpirationTime) {
-            fiber.expirationTime = renderExpirationTime;
-          }
-          var alternate = fiber.alternate;
-          if (
-            alternate !== null &&
-            alternate.expirationTime < renderExpirationTime
-          ) {
-            alternate.expirationTime = renderExpirationTime;
-          }
-
-          scheduleWorkOnParentPath(fiber.return, renderExpirationTime);
-
-          // Mark the expiration time on the list, too.
-          if (list.expirationTime < renderExpirationTime) {
-            list.expirationTime = renderExpirationTime;
-          }
-
-          // Since we already found a match, we can stop traversing the
-          // dependency list.
-          break;
+          // Don't scan deeper than a matching consumer. When we render the
+          // consumer, we'll continue scanning from that point. This way the
+          // scanning work is time-sliced.
+          nextFiber = null;
+        } else {
+          // Traverse down.
+          nextFiber = fiber.child;
         }
-        dependency = dependency.next;
-      }
-    } else if (fiber.tag === ContextProvider) {
-      // Don't scan deeper if this is a matching provider
-      nextFiber = fiber.type === workInProgress.type ? null : fiber.child;
-    } else if (
-      enableSuspenseServerRenderer &&
-      fiber.tag === DehydratedSuspenseComponent
-    ) {
-      // If a dehydrated suspense component is in this subtree, we don't know
-      // if it will have any context consumers in it. The best we can do is
-      // mark it as having updates on its children.
-      if (fiber.expirationTime < renderExpirationTime) {
-        fiber.expirationTime = renderExpirationTime;
-      }
-      var _alternate = fiber.alternate;
-      if (
-        _alternate !== null &&
-        _alternate.expirationTime < renderExpirationTime
-      ) {
-        _alternate.expirationTime = renderExpirationTime;
-      }
-      // This is intentionally passing this fiber as the parent
-      // because we want to schedule this fiber as having work
-      // on its children. We'll use the childExpirationTime on
-      // this fiber to indicate that a context has changed.
-      scheduleWorkOnParentPath(fiber, renderExpirationTime);
-      nextFiber = fiber.sibling;
-    } else {
-      // Traverse down.
-      nextFiber = fiber.child;
+        break;
+      case ContextProvider:
+        // Don't scan deeper if this is a matching provider
+        nextFiber = fiber.type === workInProgress.type ? null : fiber.child;
+        break;
+      default:
+        // Traverse down.
+        nextFiber = fiber.child;
+        break;
     }
-
     if (nextFiber !== null) {
       // Set the return pointer of the child to the work-in-progress fiber.
       nextFiber.return = fiber;
@@ -12980,647 +10147,344 @@ function propagateContextChange(
   }
 }
 
-function prepareToReadContext(workInProgress, renderExpirationTime) {
-  currentlyRenderingFiber = workInProgress;
-  lastContextDependency = null;
-  lastContextWithAllBitsObserved = null;
+function updateContextProvider(current, workInProgress, renderExpirationTime) {
+  var providerType = workInProgress.type;
+  var context = providerType._context;
 
-  var currentDependencies = workInProgress.contextDependencies;
-  if (
-    currentDependencies !== null &&
-    currentDependencies.expirationTime >= renderExpirationTime
-  ) {
-    // Context list has a pending update. Mark that this fiber performed work.
-    markWorkInProgressReceivedUpdate();
+  var newProps = workInProgress.pendingProps;
+  var oldProps = workInProgress.memoizedProps;
+  var canBailOnProps = true;
+
+  if (hasContextChanged()) {
+    canBailOnProps = false;
+    // Normally we can bail out on props equality but if context has changed
+    // we don't do the bailout and we have to reuse existing props instead.
+  } else if (oldProps === newProps) {
+    workInProgress.stateNode = 0;
+    pushProvider(workInProgress);
+    return bailoutOnAlreadyFinishedWork(current, workInProgress);
   }
 
-  // Reset the work-in-progress list
-  workInProgress.contextDependencies = null;
+  var newValue = newProps.value;
+  workInProgress.memoizedProps = newProps;
+
+  {
+    var providerPropTypes = workInProgress.type.propTypes;
+
+    if (providerPropTypes) {
+      checkPropTypes(
+        providerPropTypes,
+        newProps,
+        "prop",
+        "Context.Provider",
+        getCurrentFiberStackAddendum$1
+      );
+    }
+  }
+
+  var changedBits = void 0;
+  if (oldProps === null) {
+    // Initial render
+    changedBits = MAX_SIGNED_31_BIT_INT;
+  } else {
+    if (oldProps.value === newProps.value) {
+      // No change. Bailout early if children are the same.
+      if (oldProps.children === newProps.children && canBailOnProps) {
+        workInProgress.stateNode = 0;
+        pushProvider(workInProgress);
+        return bailoutOnAlreadyFinishedWork(current, workInProgress);
+      }
+      changedBits = 0;
+    } else {
+      var oldValue = oldProps.value;
+      // Use Object.is to compare the new context value to the old value.
+      // Inlined Object.is polyfill.
+      // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is
+      if (
+        (oldValue === newValue &&
+          (oldValue !== 0 || 1 / oldValue === 1 / newValue)) ||
+        (oldValue !== oldValue && newValue !== newValue) // eslint-disable-line no-self-compare
+      ) {
+        // No change. Bailout early if children are the same.
+        if (oldProps.children === newProps.children && canBailOnProps) {
+          workInProgress.stateNode = 0;
+          pushProvider(workInProgress);
+          return bailoutOnAlreadyFinishedWork(current, workInProgress);
+        }
+        changedBits = 0;
+      } else {
+        changedBits =
+          typeof context._calculateChangedBits === "function"
+            ? context._calculateChangedBits(oldValue, newValue)
+            : MAX_SIGNED_31_BIT_INT;
+        {
+          !((changedBits & MAX_SIGNED_31_BIT_INT) === changedBits)
+            ? warning(
+                false,
+                "calculateChangedBits: Expected the return value to be a " +
+                  "31-bit integer. Instead received: %s",
+                changedBits
+              )
+            : void 0;
+        }
+        changedBits |= 0;
+
+        if (changedBits === 0) {
+          // No change. Bailout early if children are the same.
+          if (oldProps.children === newProps.children && canBailOnProps) {
+            workInProgress.stateNode = 0;
+            pushProvider(workInProgress);
+            return bailoutOnAlreadyFinishedWork(current, workInProgress);
+          }
+        } else {
+          propagateContextChange(
+            workInProgress,
+            context,
+            changedBits,
+            renderExpirationTime
+          );
+        }
+      }
+    }
+  }
+
+  workInProgress.stateNode = changedBits;
+  pushProvider(workInProgress);
+
+  var newChildren = newProps.children;
+  reconcileChildren(current, workInProgress, newChildren);
+  return workInProgress.child;
 }
 
-function readContext(context, observedBits) {
+function updateContextConsumer(current, workInProgress, renderExpirationTime) {
+  var context = workInProgress.type;
+  var newProps = workInProgress.pendingProps;
+  var oldProps = workInProgress.memoizedProps;
+
+  var newValue = getContextCurrentValue(context);
+  var changedBits = getContextChangedBits(context);
+
+  if (hasContextChanged()) {
+    // Normally we can bail out on props equality but if context has changed
+    // we don't do the bailout and we have to reuse existing props instead.
+  } else if (changedBits === 0 && oldProps === newProps) {
+    return bailoutOnAlreadyFinishedWork(current, workInProgress);
+  }
+  workInProgress.memoizedProps = newProps;
+
+  var observedBits = newProps.unstable_observedBits;
+  if (observedBits === undefined || observedBits === null) {
+    // Subscribe to all changes by default
+    observedBits = MAX_SIGNED_31_BIT_INT;
+  }
+  // Store the observedBits on the fiber's stateNode for quick access.
+  workInProgress.stateNode = observedBits;
+
+  if ((changedBits & observedBits) !== 0) {
+    // Context change propagation stops at matching consumers, for time-
+    // slicing. Continue the propagation here.
+    propagateContextChange(
+      workInProgress,
+      context,
+      changedBits,
+      renderExpirationTime
+    );
+  } else if (oldProps === newProps) {
+    // Skip over a memoized parent with a bitmask bailout even
+    // if we began working on it because of a deeper matching child.
+    return bailoutOnAlreadyFinishedWork(current, workInProgress);
+  }
+  // There is no bailout on `children` equality because we expect people
+  // to often pass a bound method as a child, but it may reference
+  // `this.state` or `this.props` (and thus needs to re-render on `setState`).
+
+  var render = newProps.children;
+
   {
-    // This warning would fire if you read context inside a Hook like useMemo.
-    // Unlike the class check below, it's not enforced in production for perf.
-    !!isDisallowedContextReadInDEV
-      ? warning$1(
+    !(typeof render === "function")
+      ? warning(
           false,
-          "Context can only be read while React is rendering. " +
-            "In classes, you can read it in the render method or getDerivedStateFromProps. " +
-            "In function components, you can read it directly in the function body, but not " +
-            "inside Hooks like useReducer() or useMemo()."
+          "A context consumer was rendered with multiple children, or a child " +
+            "that isn't a function. A context consumer expects a single child " +
+            "that is a function. If you did pass a function, make sure there " +
+            "is no trailing or leading whitespace around it."
         )
       : void 0;
   }
 
-  if (lastContextWithAllBitsObserved === context) {
-    // Nothing to do. We already observe everything in this context.
-  } else if (observedBits === false || observedBits === 0) {
-    // Do not observe any updates.
-  } else {
-    var resolvedObservedBits = void 0; // Avoid deopting on observable arguments or heterogeneous types.
-    if (
-      typeof observedBits !== "number" ||
-      observedBits === maxSigned31BitInt
-    ) {
-      // Observe all updates.
-      lastContextWithAllBitsObserved = context;
-      resolvedObservedBits = maxSigned31BitInt;
-    } else {
-      resolvedObservedBits = observedBits;
+  var newChildren = void 0;
+  {
+    ReactCurrentOwner.current = workInProgress;
+    ReactDebugCurrentFiber.setCurrentPhase("render");
+    newChildren = render(newValue);
+    ReactDebugCurrentFiber.setCurrentPhase(null);
+  }
+
+  // React DevTools reads this flag.
+  workInProgress.effectTag |= PerformedWork;
+  reconcileChildren(current, workInProgress, newChildren);
+  return workInProgress.child;
+}
+
+/*
+  function reuseChildrenEffects(returnFiber : Fiber, firstChild : Fiber) {
+    let child = firstChild;
+    do {
+      // Ensure that the first and last effect of the parent corresponds
+      // to the children's first and last effect.
+      if (!returnFiber.firstEffect) {
+        returnFiber.firstEffect = child.firstEffect;
+      }
+      if (child.lastEffect) {
+        if (returnFiber.lastEffect) {
+          returnFiber.lastEffect.nextEffect = child.firstEffect;
+        }
+        returnFiber.lastEffect = child.lastEffect;
+      }
+    } while (child = child.sibling);
+  }
+  */
+
+function bailoutOnAlreadyFinishedWork(current, workInProgress) {
+  cancelWorkTimer(workInProgress);
+
+  if (enableProfilerTimer) {
+    // Don't update "base" render times for bailouts.
+    stopBaseRenderTimerIfRunning();
+  }
+
+  // TODO: We should ideally be able to bail out early if the children have no
+  // more work to do. However, since we don't have a separation of this
+  // Fiber's priority and its children yet - we don't know without doing lots
+  // of the same work we do anyway. Once we have that separation we can just
+  // bail out here if the children has no more work at this priority level.
+  // if (workInProgress.priorityOfChildren <= priorityLevel) {
+  //   // If there are side-effects in these children that have not yet been
+  //   // committed we need to ensure that they get properly transferred up.
+  //   if (current && current.child !== workInProgress.child) {
+  //     reuseChildrenEffects(workInProgress, child);
+  //   }
+  //   return null;
+  // }
+
+  cloneChildFibers(current, workInProgress);
+  return workInProgress.child;
+}
+
+function bailoutOnLowPriority(current, workInProgress) {
+  cancelWorkTimer(workInProgress);
+
+  if (enableProfilerTimer) {
+    // Don't update "base" render times for bailouts.
+    stopBaseRenderTimerIfRunning();
+  }
+
+  // TODO: Handle HostComponent tags here as well and call pushHostContext()?
+  // See PR 8590 discussion for context
+  switch (workInProgress.tag) {
+    case HostRoot:
+      pushHostRootContext(workInProgress);
+      break;
+    case ClassComponent:
+      pushContextProvider(workInProgress);
+      break;
+    case HostPortal:
+      pushHostContainer(workInProgress, workInProgress.stateNode.containerInfo);
+      break;
+    case ContextProvider:
+      pushProvider(workInProgress);
+      break;
+  }
+  // TODO: What if this is currently in progress?
+  // How can that happen? How is this not being cloned?
+  return null;
+}
+
+// TODO: Delete memoizeProps/State and move to reconcile/bailout instead
+function memoizeProps(workInProgress, nextProps) {
+  workInProgress.memoizedProps = nextProps;
+}
+
+function memoizeState(workInProgress, nextState) {
+  workInProgress.memoizedState = nextState;
+  // Don't reset the updateQueue, in case there are pending updates. Resetting
+  // is handled by processUpdateQueue.
+}
+
+function beginWork(current, workInProgress, renderExpirationTime) {
+  if (enableProfilerTimer) {
+    if (workInProgress.mode & ProfileMode) {
+      markActualRenderTimeStarted(workInProgress);
     }
+  }
 
-    var contextItem = {
-      context: context,
-      observedBits: resolvedObservedBits,
-      next: null
-    };
+  if (
+    workInProgress.expirationTime === NoWork ||
+    workInProgress.expirationTime > renderExpirationTime
+  ) {
+    return bailoutOnLowPriority(current, workInProgress);
+  }
 
-    if (lastContextDependency === null) {
+  switch (workInProgress.tag) {
+    case IndeterminateComponent:
+      return mountIndeterminateComponent(
+        current,
+        workInProgress,
+        renderExpirationTime
+      );
+    case FunctionalComponent:
+      return updateFunctionalComponent(current, workInProgress);
+    case ClassComponent:
+      return updateClassComponent(
+        current,
+        workInProgress,
+        renderExpirationTime
+      );
+    case HostRoot:
+      return updateHostRoot(current, workInProgress, renderExpirationTime);
+    case HostComponent:
+      return updateHostComponent(current, workInProgress, renderExpirationTime);
+    case HostText:
+      return updateHostText(current, workInProgress);
+    case TimeoutComponent:
+      return updateTimeoutComponent(
+        current,
+        workInProgress,
+        renderExpirationTime
+      );
+    case HostPortal:
+      return updatePortalComponent(
+        current,
+        workInProgress,
+        renderExpirationTime
+      );
+    case ForwardRef:
+      return updateForwardRef(current, workInProgress);
+    case Fragment:
+      return updateFragment(current, workInProgress);
+    case Mode:
+      return updateMode(current, workInProgress);
+    case Profiler:
+      return updateProfiler(current, workInProgress);
+    case ContextProvider:
+      return updateContextProvider(
+        current,
+        workInProgress,
+        renderExpirationTime
+      );
+    case ContextConsumer:
+      return updateContextConsumer(
+        current,
+        workInProgress,
+        renderExpirationTime
+      );
+    default:
       invariant(
-        currentlyRenderingFiber !== null,
-        "Context can only be read while React is rendering. " +
-          "In classes, you can read it in the render method or getDerivedStateFromProps. " +
-          "In function components, you can read it directly in the function body, but not " +
-          "inside Hooks like useReducer() or useMemo()."
-      );
-
-      // This is the first dependency for this component. Create a new list.
-      lastContextDependency = contextItem;
-      currentlyRenderingFiber.contextDependencies = {
-        first: contextItem,
-        expirationTime: NoWork
-      };
-    } else {
-      // Append a new context item.
-      lastContextDependency = lastContextDependency.next = contextItem;
-    }
-  }
-  return isPrimaryRenderer ? context._currentValue : context._currentValue2;
-}
-
-// UpdateQueue is a linked list of prioritized updates.
-//
-// Like fibers, update queues come in pairs: a current queue, which represents
-// the visible state of the screen, and a work-in-progress queue, which can be
-// mutated and processed asynchronously before it is committed — a form of
-// double buffering. If a work-in-progress render is discarded before finishing,
-// we create a new work-in-progress by cloning the current queue.
-//
-// Both queues share a persistent, singly-linked list structure. To schedule an
-// update, we append it to the end of both queues. Each queue maintains a
-// pointer to first update in the persistent list that hasn't been processed.
-// The work-in-progress pointer always has a position equal to or greater than
-// the current queue, since we always work on that one. The current queue's
-// pointer is only updated during the commit phase, when we swap in the
-// work-in-progress.
-//
-// For example:
-//
-//   Current pointer:           A - B - C - D - E - F
-//   Work-in-progress pointer:              D - E - F
-//                                          ^
-//                                          The work-in-progress queue has
-//                                          processed more updates than current.
-//
-// The reason we append to both queues is because otherwise we might drop
-// updates without ever processing them. For example, if we only add updates to
-// the work-in-progress queue, some updates could be lost whenever a work-in
-// -progress render restarts by cloning from current. Similarly, if we only add
-// updates to the current queue, the updates will be lost whenever an already
-// in-progress queue commits and swaps with the current queue. However, by
-// adding to both queues, we guarantee that the update will be part of the next
-// work-in-progress. (And because the work-in-progress queue becomes the
-// current queue once it commits, there's no danger of applying the same
-// update twice.)
-//
-// Prioritization
-// --------------
-//
-// Updates are not sorted by priority, but by insertion; new updates are always
-// appended to the end of the list.
-//
-// The priority is still important, though. When processing the update queue
-// during the render phase, only the updates with sufficient priority are
-// included in the result. If we skip an update because it has insufficient
-// priority, it remains in the queue to be processed later, during a lower
-// priority render. Crucially, all updates subsequent to a skipped update also
-// remain in the queue *regardless of their priority*. That means high priority
-// updates are sometimes processed twice, at two separate priorities. We also
-// keep track of a base state, that represents the state before the first
-// update in the queue is applied.
-//
-// For example:
-//
-//   Given a base state of '', and the following queue of updates
-//
-//     A1 - B2 - C1 - D2
-//
-//   where the number indicates the priority, and the update is applied to the
-//   previous state by appending a letter, React will process these updates as
-//   two separate renders, one per distinct priority level:
-//
-//   First render, at priority 1:
-//     Base state: ''
-//     Updates: [A1, C1]
-//     Result state: 'AC'
-//
-//   Second render, at priority 2:
-//     Base state: 'A'            <-  The base state does not include C1,
-//                                    because B2 was skipped.
-//     Updates: [B2, C1, D2]      <-  C1 was rebased on top of B2
-//     Result state: 'ABCD'
-//
-// Because we process updates in insertion order, and rebase high priority
-// updates when preceding updates are skipped, the final result is deterministic
-// regardless of priority. Intermediate state may vary according to system
-// resources, but the final state is always the same.
-
-var UpdateState = 0;
-var ReplaceState = 1;
-var ForceUpdate = 2;
-var CaptureUpdate = 3;
-
-// Global state that is reset at the beginning of calling `processUpdateQueue`.
-// It should only be read right after calling `processUpdateQueue`, via
-// `checkHasForceUpdateAfterProcessing`.
-var hasForceUpdate = false;
-
-var didWarnUpdateInsideUpdate = void 0;
-var currentlyProcessingQueue = void 0;
-var resetCurrentlyProcessingQueue = void 0;
-{
-  didWarnUpdateInsideUpdate = false;
-  currentlyProcessingQueue = null;
-  resetCurrentlyProcessingQueue = function() {
-    currentlyProcessingQueue = null;
-  };
-}
-
-function createUpdateQueue(baseState) {
-  var queue = {
-    baseState: baseState,
-    firstUpdate: null,
-    lastUpdate: null,
-    firstCapturedUpdate: null,
-    lastCapturedUpdate: null,
-    firstEffect: null,
-    lastEffect: null,
-    firstCapturedEffect: null,
-    lastCapturedEffect: null
-  };
-  return queue;
-}
-
-function cloneUpdateQueue(currentQueue) {
-  var queue = {
-    baseState: currentQueue.baseState,
-    firstUpdate: currentQueue.firstUpdate,
-    lastUpdate: currentQueue.lastUpdate,
-
-    // TODO: With resuming, if we bail out and resuse the child tree, we should
-    // keep these effects.
-    firstCapturedUpdate: null,
-    lastCapturedUpdate: null,
-
-    firstEffect: null,
-    lastEffect: null,
-
-    firstCapturedEffect: null,
-    lastCapturedEffect: null
-  };
-  return queue;
-}
-
-function createUpdate(expirationTime) {
-  return {
-    expirationTime: expirationTime,
-
-    tag: UpdateState,
-    payload: null,
-    callback: null,
-
-    next: null,
-    nextEffect: null
-  };
-}
-
-function appendUpdateToQueue(queue, update) {
-  // Append the update to the end of the list.
-  if (queue.lastUpdate === null) {
-    // Queue is empty
-    queue.firstUpdate = queue.lastUpdate = update;
-  } else {
-    queue.lastUpdate.next = update;
-    queue.lastUpdate = update;
-  }
-}
-
-function enqueueUpdate(fiber, update) {
-  // Update queues are created lazily.
-  var alternate = fiber.alternate;
-  var queue1 = void 0;
-  var queue2 = void 0;
-  if (alternate === null) {
-    // There's only one fiber.
-    queue1 = fiber.updateQueue;
-    queue2 = null;
-    if (queue1 === null) {
-      queue1 = fiber.updateQueue = createUpdateQueue(fiber.memoizedState);
-    }
-  } else {
-    // There are two owners.
-    queue1 = fiber.updateQueue;
-    queue2 = alternate.updateQueue;
-    if (queue1 === null) {
-      if (queue2 === null) {
-        // Neither fiber has an update queue. Create new ones.
-        queue1 = fiber.updateQueue = createUpdateQueue(fiber.memoizedState);
-        queue2 = alternate.updateQueue = createUpdateQueue(
-          alternate.memoizedState
-        );
-      } else {
-        // Only one fiber has an update queue. Clone to create a new one.
-        queue1 = fiber.updateQueue = cloneUpdateQueue(queue2);
-      }
-    } else {
-      if (queue2 === null) {
-        // Only one fiber has an update queue. Clone to create a new one.
-        queue2 = alternate.updateQueue = cloneUpdateQueue(queue1);
-      } else {
-        // Both owners have an update queue.
-      }
-    }
-  }
-  if (queue2 === null || queue1 === queue2) {
-    // There's only a single queue.
-    appendUpdateToQueue(queue1, update);
-  } else {
-    // There are two queues. We need to append the update to both queues,
-    // while accounting for the persistent structure of the list — we don't
-    // want the same update to be added multiple times.
-    if (queue1.lastUpdate === null || queue2.lastUpdate === null) {
-      // One of the queues is not empty. We must add the update to both queues.
-      appendUpdateToQueue(queue1, update);
-      appendUpdateToQueue(queue2, update);
-    } else {
-      // Both queues are non-empty. The last update is the same in both lists,
-      // because of structural sharing. So, only append to one of the lists.
-      appendUpdateToQueue(queue1, update);
-      // But we still need to update the `lastUpdate` pointer of queue2.
-      queue2.lastUpdate = update;
-    }
-  }
-
-  {
-    if (
-      fiber.tag === ClassComponent &&
-      (currentlyProcessingQueue === queue1 ||
-        (queue2 !== null && currentlyProcessingQueue === queue2)) &&
-      !didWarnUpdateInsideUpdate
-    ) {
-      warningWithoutStack$1(
         false,
-        "An update (setState, replaceState, or forceUpdate) was scheduled " +
-          "from inside an update function. Update functions should be pure, " +
-          "with zero side-effects. Consider using componentDidUpdate or a " +
-          "callback."
+        "Unknown unit of work tag. This error is likely caused by a bug in " +
+          "React. Please file an issue."
       );
-      didWarnUpdateInsideUpdate = true;
-    }
   }
-}
-
-function enqueueCapturedUpdate(workInProgress, update) {
-  // Captured updates go into a separate list, and only on the work-in-
-  // progress queue.
-  var workInProgressQueue = workInProgress.updateQueue;
-  if (workInProgressQueue === null) {
-    workInProgressQueue = workInProgress.updateQueue = createUpdateQueue(
-      workInProgress.memoizedState
-    );
-  } else {
-    // TODO: I put this here rather than createWorkInProgress so that we don't
-    // clone the queue unnecessarily. There's probably a better way to
-    // structure this.
-    workInProgressQueue = ensureWorkInProgressQueueIsAClone(
-      workInProgress,
-      workInProgressQueue
-    );
-  }
-
-  // Append the update to the end of the list.
-  if (workInProgressQueue.lastCapturedUpdate === null) {
-    // This is the first render phase update
-    workInProgressQueue.firstCapturedUpdate = workInProgressQueue.lastCapturedUpdate = update;
-  } else {
-    workInProgressQueue.lastCapturedUpdate.next = update;
-    workInProgressQueue.lastCapturedUpdate = update;
-  }
-}
-
-function ensureWorkInProgressQueueIsAClone(workInProgress, queue) {
-  var current = workInProgress.alternate;
-  if (current !== null) {
-    // If the work-in-progress queue is equal to the current queue,
-    // we need to clone it first.
-    if (queue === current.updateQueue) {
-      queue = workInProgress.updateQueue = cloneUpdateQueue(queue);
-    }
-  }
-  return queue;
-}
-
-function getStateFromUpdate(
-  workInProgress,
-  queue,
-  update,
-  prevState,
-  nextProps,
-  instance
-) {
-  switch (update.tag) {
-    case ReplaceState: {
-      var _payload = update.payload;
-      if (typeof _payload === "function") {
-        // Updater function
-        {
-          enterDisallowedContextReadInDEV();
-          if (
-            debugRenderPhaseSideEffects ||
-            (debugRenderPhaseSideEffectsForStrictMode &&
-              workInProgress.mode & StrictMode)
-          ) {
-            _payload.call(instance, prevState, nextProps);
-          }
-        }
-        var nextState = _payload.call(instance, prevState, nextProps);
-        {
-          exitDisallowedContextReadInDEV();
-        }
-        return nextState;
-      }
-      // State object
-      return _payload;
-    }
-    case CaptureUpdate: {
-      workInProgress.effectTag =
-        (workInProgress.effectTag & ~ShouldCapture) | DidCapture;
-    }
-    // Intentional fallthrough
-    case UpdateState: {
-      var _payload2 = update.payload;
-      var partialState = void 0;
-      if (typeof _payload2 === "function") {
-        // Updater function
-        {
-          enterDisallowedContextReadInDEV();
-          if (
-            debugRenderPhaseSideEffects ||
-            (debugRenderPhaseSideEffectsForStrictMode &&
-              workInProgress.mode & StrictMode)
-          ) {
-            _payload2.call(instance, prevState, nextProps);
-          }
-        }
-        partialState = _payload2.call(instance, prevState, nextProps);
-        {
-          exitDisallowedContextReadInDEV();
-        }
-      } else {
-        // Partial state object
-        partialState = _payload2;
-      }
-      if (partialState === null || partialState === undefined) {
-        // Null and undefined are treated as no-ops.
-        return prevState;
-      }
-      // Merge the partial state and the previous state.
-      return Object.assign({}, prevState, partialState);
-    }
-    case ForceUpdate: {
-      hasForceUpdate = true;
-      return prevState;
-    }
-  }
-  return prevState;
-}
-
-function processUpdateQueue(
-  workInProgress,
-  queue,
-  props,
-  instance,
-  renderExpirationTime
-) {
-  hasForceUpdate = false;
-
-  queue = ensureWorkInProgressQueueIsAClone(workInProgress, queue);
-
-  {
-    currentlyProcessingQueue = queue;
-  }
-
-  // These values may change as we process the queue.
-  var newBaseState = queue.baseState;
-  var newFirstUpdate = null;
-  var newExpirationTime = NoWork;
-
-  // Iterate through the list of updates to compute the result.
-  var update = queue.firstUpdate;
-  var resultState = newBaseState;
-  while (update !== null) {
-    var updateExpirationTime = update.expirationTime;
-    if (updateExpirationTime < renderExpirationTime) {
-      // This update does not have sufficient priority. Skip it.
-      if (newFirstUpdate === null) {
-        // This is the first skipped update. It will be the first update in
-        // the new list.
-        newFirstUpdate = update;
-        // Since this is the first update that was skipped, the current result
-        // is the new base state.
-        newBaseState = resultState;
-      }
-      // Since this update will remain in the list, update the remaining
-      // expiration time.
-      if (newExpirationTime < updateExpirationTime) {
-        newExpirationTime = updateExpirationTime;
-      }
-    } else {
-      // This update does have sufficient priority. Process it and compute
-      // a new result.
-      resultState = getStateFromUpdate(
-        workInProgress,
-        queue,
-        update,
-        resultState,
-        props,
-        instance
-      );
-      var _callback = update.callback;
-      if (_callback !== null) {
-        workInProgress.effectTag |= Callback;
-        // Set this to null, in case it was mutated during an aborted render.
-        update.nextEffect = null;
-        if (queue.lastEffect === null) {
-          queue.firstEffect = queue.lastEffect = update;
-        } else {
-          queue.lastEffect.nextEffect = update;
-          queue.lastEffect = update;
-        }
-      }
-    }
-    // Continue to the next update.
-    update = update.next;
-  }
-
-  // Separately, iterate though the list of captured updates.
-  var newFirstCapturedUpdate = null;
-  update = queue.firstCapturedUpdate;
-  while (update !== null) {
-    var _updateExpirationTime = update.expirationTime;
-    if (_updateExpirationTime < renderExpirationTime) {
-      // This update does not have sufficient priority. Skip it.
-      if (newFirstCapturedUpdate === null) {
-        // This is the first skipped captured update. It will be the first
-        // update in the new list.
-        newFirstCapturedUpdate = update;
-        // If this is the first update that was skipped, the current result is
-        // the new base state.
-        if (newFirstUpdate === null) {
-          newBaseState = resultState;
-        }
-      }
-      // Since this update will remain in the list, update the remaining
-      // expiration time.
-      if (newExpirationTime < _updateExpirationTime) {
-        newExpirationTime = _updateExpirationTime;
-      }
-    } else {
-      // This update does have sufficient priority. Process it and compute
-      // a new result.
-      resultState = getStateFromUpdate(
-        workInProgress,
-        queue,
-        update,
-        resultState,
-        props,
-        instance
-      );
-      var _callback2 = update.callback;
-      if (_callback2 !== null) {
-        workInProgress.effectTag |= Callback;
-        // Set this to null, in case it was mutated during an aborted render.
-        update.nextEffect = null;
-        if (queue.lastCapturedEffect === null) {
-          queue.firstCapturedEffect = queue.lastCapturedEffect = update;
-        } else {
-          queue.lastCapturedEffect.nextEffect = update;
-          queue.lastCapturedEffect = update;
-        }
-      }
-    }
-    update = update.next;
-  }
-
-  if (newFirstUpdate === null) {
-    queue.lastUpdate = null;
-  }
-  if (newFirstCapturedUpdate === null) {
-    queue.lastCapturedUpdate = null;
-  } else {
-    workInProgress.effectTag |= Callback;
-  }
-  if (newFirstUpdate === null && newFirstCapturedUpdate === null) {
-    // We processed every update, without skipping. That means the new base
-    // state is the same as the result state.
-    newBaseState = resultState;
-  }
-
-  queue.baseState = newBaseState;
-  queue.firstUpdate = newFirstUpdate;
-  queue.firstCapturedUpdate = newFirstCapturedUpdate;
-
-  // Set the remaining expiration time to be whatever is remaining in the queue.
-  // This should be fine because the only two other things that contribute to
-  // expiration time are props and context. We're already in the middle of the
-  // begin phase by the time we start processing the queue, so we've already
-  // dealt with the props. Context in components that specify
-  // shouldComponentUpdate is tricky; but we'll have to account for
-  // that regardless.
-  workInProgress.expirationTime = newExpirationTime;
-  workInProgress.memoizedState = resultState;
-
-  {
-    currentlyProcessingQueue = null;
-  }
-}
-
-function callCallback(callback, context) {
-  invariant(
-    typeof callback === "function",
-    "Invalid argument passed as callback. Expected a function. Instead " +
-      "received: %s",
-    callback
-  );
-  callback.call(context);
-}
-
-function resetHasForceUpdateBeforeProcessing() {
-  hasForceUpdate = false;
-}
-
-function checkHasForceUpdateAfterProcessing() {
-  return hasForceUpdate;
-}
-
-function commitUpdateQueue(
-  finishedWork,
-  finishedQueue,
-  instance,
-  renderExpirationTime
-) {
-  // If the finished render included captured updates, and there are still
-  // lower priority updates left over, we need to keep the captured updates
-  // in the queue so that they are rebased and not dropped once we process the
-  // queue again at the lower priority.
-  if (finishedQueue.firstCapturedUpdate !== null) {
-    // Join the captured update list to the end of the normal list.
-    if (finishedQueue.lastUpdate !== null) {
-      finishedQueue.lastUpdate.next = finishedQueue.firstCapturedUpdate;
-      finishedQueue.lastUpdate = finishedQueue.lastCapturedUpdate;
-    }
-    // Clear the list of captured updates.
-    finishedQueue.firstCapturedUpdate = finishedQueue.lastCapturedUpdate = null;
-  }
-
-  // Commit the effects
-  commitUpdateEffects(finishedQueue.firstEffect, instance);
-  finishedQueue.firstEffect = finishedQueue.lastEffect = null;
-
-  commitUpdateEffects(finishedQueue.firstCapturedEffect, instance);
-  finishedQueue.firstCapturedEffect = finishedQueue.lastCapturedEffect = null;
-}
-
-function commitUpdateEffects(effect, instance) {
-  while (effect !== null) {
-    var _callback3 = effect.callback;
-    if (_callback3 !== null) {
-      effect.callback = null;
-      callCallback(_callback3, instance);
-    }
-    effect = effect.nextEffect;
-  }
-}
-
-function createCapturedValue(value, source) {
-  // If the value is an error, call this function immediately after it is thrown
-  // so the stack is accurate.
-  return {
-    value: value,
-    source: source,
-    stack: getStackByFiberInDevAndProd(source)
-  };
 }
 
 function markUpdate(workInProgress) {
@@ -13633,47 +10497,41 @@ function markRef$1(workInProgress) {
   workInProgress.effectTag |= Ref;
 }
 
-var appendAllChildren = void 0;
+function appendAllChildren(parent, workInProgress) {
+  // We only have the top Fiber that was created but we need recurse down its
+  // children to find all the terminal nodes.
+  var node = workInProgress.child;
+  while (node !== null) {
+    if (node.tag === HostComponent || node.tag === HostText) {
+      appendInitialChild(parent, node.stateNode);
+    } else if (node.tag === HostPortal) {
+      // If we have a portal child, then we don't want to traverse
+      // down its children. Instead, we'll get insertions from each child in
+      // the portal directly.
+    } else if (node.child !== null) {
+      node.child.return = node;
+      node = node.child;
+      continue;
+    }
+    if (node === workInProgress) {
+      return;
+    }
+    while (node.sibling === null) {
+      if (node.return === null || node.return === workInProgress) {
+        return;
+      }
+      node = node.return;
+    }
+    node.sibling.return = node.return;
+    node = node.sibling;
+  }
+}
+
 var updateHostContainer = void 0;
 var updateHostComponent$1 = void 0;
 var updateHostText$1 = void 0;
 if (supportsMutation) {
   // Mutation mode
-
-  appendAllChildren = function(
-    parent,
-    workInProgress,
-    needsVisibilityToggle,
-    isHidden
-  ) {
-    // We only have the top Fiber that was created but we need recurse down its
-    // children to find all the terminal nodes.
-    var node = workInProgress.child;
-    while (node !== null) {
-      if (node.tag === HostComponent || node.tag === HostText) {
-        appendInitialChild(parent, node.stateNode);
-      } else if (node.tag === HostPortal) {
-        // If we have a portal child, then we don't want to traverse
-        // down its children. Instead, we'll get insertions from each child in
-        // the portal directly.
-      } else if (node.child !== null) {
-        node.child.return = node;
-        node = node.child;
-        continue;
-      }
-      if (node === workInProgress) {
-        return;
-      }
-      while (node.sibling === null) {
-        if (node.return === null || node.return === workInProgress) {
-          return;
-        }
-        node = node.return;
-      }
-      node.sibling.return = node.return;
-      node = node.sibling;
-    }
-  };
 
   updateHostContainer = function(workInProgress) {
     // Noop
@@ -13681,36 +10539,13 @@ if (supportsMutation) {
   updateHostComponent$1 = function(
     current,
     workInProgress,
+    updatePayload,
     type,
+    oldProps,
     newProps,
-    rootContainerInstance
+    rootContainerInstance,
+    currentHostContext
   ) {
-    // If we have an alternate, that means this is an update and we need to
-    // schedule a side-effect to do the updates.
-    var oldProps = current.memoizedProps;
-    if (oldProps === newProps) {
-      // In mutation mode, this is sufficient for a bailout because
-      // we won't touch this node even if children changed.
-      return;
-    }
-
-    // If we get updated because one of our children updated, we don't
-    // have newProps so we'll have to reuse them.
-    // TODO: Split the update API as separate for the props vs. children.
-    // Even better would be if children weren't special cased at all tho.
-    var instance = workInProgress.stateNode;
-    var currentHostContext = getHostContext();
-    // TODO: Experiencing an error where oldProps is null. Suggests a host
-    // component is hitting the resume path. Figure out why. Possibly
-    // related to `hidden`.
-    var updatePayload = prepareUpdate(
-      instance,
-      type,
-      oldProps,
-      newProps,
-      rootContainerInstance,
-      currentHostContext
-    );
     // TODO: Type this specific to this type of component.
     workInProgress.updateQueue = updatePayload;
     // If the update payload indicates that there is a change or if there
@@ -13728,202 +10563,26 @@ if (supportsMutation) {
 } else if (supportsPersistence) {
   // Persistent host tree mode
 
-  appendAllChildren = function(
-    parent,
-    workInProgress,
-    needsVisibilityToggle,
-    isHidden
-  ) {
-    // We only have the top Fiber that was created but we need recurse down its
-    // children to find all the terminal nodes.
-    var node = workInProgress.child;
-    while (node !== null) {
-      // eslint-disable-next-line no-labels
-      branches: if (node.tag === HostComponent) {
-        var instance = node.stateNode;
-        if (needsVisibilityToggle) {
-          var props = node.memoizedProps;
-          var type = node.type;
-          if (isHidden) {
-            // This child is inside a timed out tree. Hide it.
-            instance = cloneHiddenInstance(instance, type, props, node);
-          } else {
-            // This child was previously inside a timed out tree. If it was not
-            // updated during this render, it may need to be unhidden. Clone
-            // again to be sure.
-            instance = cloneUnhiddenInstance(instance, type, props, node);
-          }
-          node.stateNode = instance;
-        }
-        appendInitialChild(parent, instance);
-      } else if (node.tag === HostText) {
-        var _instance = node.stateNode;
-        if (needsVisibilityToggle) {
-          var text = node.memoizedProps;
-          var rootContainerInstance = getRootHostContainer();
-          var currentHostContext = getHostContext();
-          if (isHidden) {
-            _instance = createHiddenTextInstance(
-              text,
-              rootContainerInstance,
-              currentHostContext,
-              workInProgress
-            );
-          } else {
-            _instance = createTextInstance(
-              text,
-              rootContainerInstance,
-              currentHostContext,
-              workInProgress
-            );
-          }
-          node.stateNode = _instance;
-        }
-        appendInitialChild(parent, _instance);
-      } else if (node.tag === HostPortal) {
-        // If we have a portal child, then we don't want to traverse
-        // down its children. Instead, we'll get insertions from each child in
-        // the portal directly.
-      } else if (node.tag === SuspenseComponent) {
-        var current = node.alternate;
-        if (current !== null) {
-          var oldState = current.memoizedState;
-          var newState = node.memoizedState;
-          var oldIsHidden = oldState !== null;
-          var newIsHidden = newState !== null;
-          if (oldIsHidden !== newIsHidden) {
-            // The placeholder either just timed out or switched back to the normal
-            // children after having previously timed out. Toggle the visibility of
-            // the direct host children.
-            var primaryChildParent = newIsHidden ? node.child : node;
-            if (primaryChildParent !== null) {
-              appendAllChildren(parent, primaryChildParent, true, newIsHidden);
-            }
-            // eslint-disable-next-line no-labels
-            break branches;
-          }
-        }
-        if (node.child !== null) {
-          // Continue traversing like normal
-          node.child.return = node;
-          node = node.child;
-          continue;
-        }
-      } else if (node.child !== null) {
-        node.child.return = node;
-        node = node.child;
-        continue;
-      }
-      // $FlowFixMe This is correct but Flow is confused by the labeled break.
-      node = node;
-      if (node === workInProgress) {
-        return;
-      }
-      while (node.sibling === null) {
-        if (node.return === null || node.return === workInProgress) {
-          return;
-        }
-        node = node.return;
-      }
-      node.sibling.return = node.return;
-      node = node.sibling;
-    }
-  };
-
   // An unfortunate fork of appendAllChildren because we have two different parent types.
   var appendAllChildrenToContainer = function(
     containerChildSet,
-    workInProgress,
-    needsVisibilityToggle,
-    isHidden
+    workInProgress
   ) {
     // We only have the top Fiber that was created but we need recurse down its
     // children to find all the terminal nodes.
     var node = workInProgress.child;
     while (node !== null) {
-      // eslint-disable-next-line no-labels
-      branches: if (node.tag === HostComponent) {
-        var instance = node.stateNode;
-        if (needsVisibilityToggle) {
-          var props = node.memoizedProps;
-          var type = node.type;
-          if (isHidden) {
-            // This child is inside a timed out tree. Hide it.
-            instance = cloneHiddenInstance(instance, type, props, node);
-          } else {
-            // This child was previously inside a timed out tree. If it was not
-            // updated during this render, it may need to be unhidden. Clone
-            // again to be sure.
-            instance = cloneUnhiddenInstance(instance, type, props, node);
-          }
-          node.stateNode = instance;
-        }
-        appendChildToContainerChildSet(containerChildSet, instance);
-      } else if (node.tag === HostText) {
-        var _instance2 = node.stateNode;
-        if (needsVisibilityToggle) {
-          var text = node.memoizedProps;
-          var rootContainerInstance = getRootHostContainer();
-          var currentHostContext = getHostContext();
-          if (isHidden) {
-            _instance2 = createHiddenTextInstance(
-              text,
-              rootContainerInstance,
-              currentHostContext,
-              workInProgress
-            );
-          } else {
-            _instance2 = createTextInstance(
-              text,
-              rootContainerInstance,
-              currentHostContext,
-              workInProgress
-            );
-          }
-          node.stateNode = _instance2;
-        }
-        appendChildToContainerChildSet(containerChildSet, _instance2);
+      if (node.tag === HostComponent || node.tag === HostText) {
+        appendChildToContainerChildSet(containerChildSet, node.stateNode);
       } else if (node.tag === HostPortal) {
         // If we have a portal child, then we don't want to traverse
         // down its children. Instead, we'll get insertions from each child in
         // the portal directly.
-      } else if (node.tag === SuspenseComponent) {
-        var current = node.alternate;
-        if (current !== null) {
-          var oldState = current.memoizedState;
-          var newState = node.memoizedState;
-          var oldIsHidden = oldState !== null;
-          var newIsHidden = newState !== null;
-          if (oldIsHidden !== newIsHidden) {
-            // The placeholder either just timed out or switched back to the normal
-            // children after having previously timed out. Toggle the visibility of
-            // the direct host children.
-            var primaryChildParent = newIsHidden ? node.child : node;
-            if (primaryChildParent !== null) {
-              appendAllChildrenToContainer(
-                containerChildSet,
-                primaryChildParent,
-                true,
-                newIsHidden
-              );
-            }
-            // eslint-disable-next-line no-labels
-            break branches;
-          }
-        }
-        if (node.child !== null) {
-          // Continue traversing like normal
-          node.child.return = node;
-          node = node.child;
-          continue;
-        }
       } else if (node.child !== null) {
         node.child.return = node;
         node = node.child;
         continue;
       }
-      // $FlowFixMe This is correct but Flow is confused by the labeled break.
-      node = node;
       if (node === workInProgress) {
         return;
       }
@@ -13946,7 +10605,7 @@ if (supportsMutation) {
       var container = portalOrRoot.containerInfo;
       var newChildSet = createContainerChildSet(container);
       // If children might have changed, we have to add them all to the set.
-      appendAllChildrenToContainer(newChildSet, workInProgress, false, false);
+      appendAllChildrenToContainer(newChildSet, workInProgress);
       portalOrRoot.pendingChildren = newChildSet;
       // Schedule an update on the container to swap out the container.
       markUpdate(workInProgress);
@@ -13956,70 +10615,54 @@ if (supportsMutation) {
   updateHostComponent$1 = function(
     current,
     workInProgress,
+    updatePayload,
     type,
+    oldProps,
     newProps,
-    rootContainerInstance
+    rootContainerInstance,
+    currentHostContext
   ) {
-    var currentInstance = current.stateNode;
-    var oldProps = current.memoizedProps;
     // If there are no effects associated with this node, then none of our children had any updates.
     // This guarantees that we can reuse all of them.
     var childrenUnchanged = workInProgress.firstEffect === null;
-    if (childrenUnchanged && oldProps === newProps) {
-      // No changes, just reuse the existing instance.
-      // Note that this might release a previous clone.
-      workInProgress.stateNode = currentInstance;
-      return;
-    }
-    var recyclableInstance = workInProgress.stateNode;
-    var currentHostContext = getHostContext();
-    var updatePayload = null;
-    if (oldProps !== newProps) {
-      updatePayload = prepareUpdate(
-        recyclableInstance,
-        type,
-        oldProps,
-        newProps,
-        rootContainerInstance,
-        currentHostContext
-      );
-    }
+    var currentInstance = current.stateNode;
     if (childrenUnchanged && updatePayload === null) {
       // No changes, just reuse the existing instance.
       // Note that this might release a previous clone.
       workInProgress.stateNode = currentInstance;
-      return;
-    }
-    var newInstance = cloneInstance(
-      currentInstance,
-      updatePayload,
-      type,
-      oldProps,
-      newProps,
-      workInProgress,
-      childrenUnchanged,
-      recyclableInstance
-    );
-    if (
-      finalizeInitialChildren(
-        newInstance,
-        type,
-        newProps,
-        rootContainerInstance,
-        currentHostContext
-      )
-    ) {
-      markUpdate(workInProgress);
-    }
-    workInProgress.stateNode = newInstance;
-    if (childrenUnchanged) {
-      // If there are no other effects in this tree, we need to flag this node as having one.
-      // Even though we're not going to use it for anything.
-      // Otherwise parents won't know that there are new children to propagate upwards.
-      markUpdate(workInProgress);
     } else {
-      // If children might have changed, we have to add them all to the set.
-      appendAllChildren(newInstance, workInProgress, false, false);
+      var recyclableInstance = workInProgress.stateNode;
+      var newInstance = cloneInstance(
+        currentInstance,
+        updatePayload,
+        type,
+        oldProps,
+        newProps,
+        workInProgress,
+        childrenUnchanged,
+        recyclableInstance
+      );
+      if (
+        finalizeInitialChildren(
+          newInstance,
+          type,
+          newProps,
+          rootContainerInstance,
+          currentHostContext
+        )
+      ) {
+        markUpdate(workInProgress);
+      }
+      workInProgress.stateNode = newInstance;
+      if (childrenUnchanged) {
+        // If there are no other effects in this tree, we need to flag this node as having one.
+        // Even though we're not going to use it for anything.
+        // Otherwise parents won't know that there are new children to propagate upwards.
+        markUpdate(workInProgress);
+      } else {
+        // If children might have changed, we have to add them all to the set.
+        appendAllChildren(newInstance, workInProgress);
+      }
     }
   };
   updateHostText$1 = function(current, workInProgress, oldText, newText) {
@@ -14046,9 +10689,12 @@ if (supportsMutation) {
   updateHostComponent$1 = function(
     current,
     workInProgress,
+    updatePayload,
     type,
+    oldProps,
     newProps,
-    rootContainerInstance
+    rootContainerInstance,
+    currentHostContext
   ) {
     // Noop
   };
@@ -14060,20 +10706,19 @@ if (supportsMutation) {
 function completeWork(current, workInProgress, renderExpirationTime) {
   var newProps = workInProgress.pendingProps;
 
+  if (enableProfilerTimer) {
+    if (workInProgress.mode & ProfileMode) {
+      recordElapsedActualRenderTime(workInProgress);
+    }
+  }
+
   switch (workInProgress.tag) {
-    case IndeterminateComponent:
-      break;
-    case LazyComponent:
-      break;
-    case SimpleMemoComponent:
-    case FunctionComponent:
-      break;
+    case FunctionalComponent:
+      return null;
     case ClassComponent: {
-      var Component = workInProgress.type;
-      if (isContextProvider(Component)) {
-        popContext(workInProgress);
-      }
-      break;
+      // We are leaving this subtree, so pop context if any.
+      popContextProvider(workInProgress);
+      return null;
     }
     case HostRoot: {
       popHostContainer(workInProgress);
@@ -14092,19 +10737,43 @@ function completeWork(current, workInProgress, renderExpirationTime) {
         workInProgress.effectTag &= ~Placement;
       }
       updateHostContainer(workInProgress);
-      break;
+      return null;
     }
     case HostComponent: {
       popHostContext(workInProgress);
       var rootContainerInstance = getRootHostContainer();
       var type = workInProgress.type;
       if (current !== null && workInProgress.stateNode != null) {
+        // If we have an alternate, that means this is an update and we need to
+        // schedule a side-effect to do the updates.
+        var oldProps = current.memoizedProps;
+        // If we get updated because one of our children updated, we don't
+        // have newProps so we'll have to reuse them.
+        // TODO: Split the update API as separate for the props vs. children.
+        // Even better would be if children weren't special cased at all tho.
+        var instance = workInProgress.stateNode;
+        var currentHostContext = getHostContext();
+        // TODO: Experiencing an error where oldProps is null. Suggests a host
+        // component is hitting the resume path. Figure out why. Possibly
+        // related to `hidden`.
+        var updatePayload = prepareUpdate(
+          instance,
+          type,
+          oldProps,
+          newProps,
+          rootContainerInstance,
+          currentHostContext
+        );
+
         updateHostComponent$1(
           current,
           workInProgress,
+          updatePayload,
           type,
+          oldProps,
           newProps,
-          rootContainerInstance
+          rootContainerInstance,
+          currentHostContext
         );
 
         if (current.ref !== workInProgress.ref) {
@@ -14118,10 +10787,10 @@ function completeWork(current, workInProgress, renderExpirationTime) {
               "caused by a bug in React. Please file an issue."
           );
           // This can happen when we abort work.
-          break;
+          return null;
         }
 
-        var currentHostContext = getHostContext();
+        var _currentHostContext = getHostContext();
         // TODO: Move createInstance to beginWork and keep it on a context
         // "stack" as the parent. Then append children as we go in beginWork
         // or completeWork depending on we want to add then top->down or
@@ -14134,7 +10803,7 @@ function completeWork(current, workInProgress, renderExpirationTime) {
             prepareToHydrateHostInstance(
               workInProgress,
               rootContainerInstance,
-              currentHostContext
+              _currentHostContext
             )
           ) {
             // If changes to the hydrated node needs to be applied at the
@@ -14142,31 +10811,31 @@ function completeWork(current, workInProgress, renderExpirationTime) {
             markUpdate(workInProgress);
           }
         } else {
-          var instance = createInstance(
+          var _instance = createInstance(
             type,
             newProps,
             rootContainerInstance,
-            currentHostContext,
+            _currentHostContext,
             workInProgress
           );
 
-          appendAllChildren(instance, workInProgress, false, false);
+          appendAllChildren(_instance, workInProgress);
 
           // Certain renderers require commit-time effects for initial mount.
           // (eg DOM renderer supports auto-focus for certain elements).
           // Make sure such renderers get scheduled for later work.
           if (
             finalizeInitialChildren(
-              instance,
+              _instance,
               type,
               newProps,
               rootContainerInstance,
-              currentHostContext
+              _currentHostContext
             )
           ) {
             markUpdate(workInProgress);
           }
-          workInProgress.stateNode = instance;
+          workInProgress.stateNode = _instance;
         }
 
         if (workInProgress.ref !== null) {
@@ -14174,7 +10843,7 @@ function completeWork(current, workInProgress, renderExpirationTime) {
           markRef$1(workInProgress);
         }
       }
-      break;
+      return null;
     }
     case HostText: {
       var newText = newProps;
@@ -14191,9 +10860,10 @@ function completeWork(current, workInProgress, renderExpirationTime) {
               "caused by a bug in React. Please file an issue."
           );
           // This can happen when we abort work.
+          return null;
         }
         var _rootContainerInstance = getRootHostContainer();
-        var _currentHostContext = getHostContext();
+        var _currentHostContext2 = getHostContext();
         var _wasHydrated = popHydrationState(workInProgress);
         if (_wasHydrated) {
           if (prepareToHydrateHostTextInstance(workInProgress)) {
@@ -14203,109 +10873,42 @@ function completeWork(current, workInProgress, renderExpirationTime) {
           workInProgress.stateNode = createTextInstance(
             newText,
             _rootContainerInstance,
-            _currentHostContext,
+            _currentHostContext2,
             workInProgress
           );
         }
       }
-      break;
+      return null;
     }
     case ForwardRef:
-      break;
-    case SuspenseComponent: {
-      var nextState = workInProgress.memoizedState;
-      if ((workInProgress.effectTag & DidCapture) !== NoEffect) {
-        // Something suspended. Re-render with the fallback children.
-        workInProgress.expirationTime = renderExpirationTime;
-        // Do not reset the effect list.
-        return workInProgress;
-      }
-
-      var nextDidTimeout = nextState !== null;
-      var prevDidTimeout = current !== null && current.memoizedState !== null;
-
-      if (current === null) {
-        // In cases where we didn't find a suitable hydration boundary we never
-        // downgraded this to a DehydratedSuspenseComponent, but we still need to
-        // pop the hydration state since we might be inside the insertion tree.
-        popHydrationState(workInProgress);
-      } else if (!nextDidTimeout && prevDidTimeout) {
-        // We just switched from the fallback to the normal children. Delete
-        // the fallback.
-        // TODO: Would it be better to store the fallback fragment on
-        var currentFallbackChild = current.child.sibling;
-        if (currentFallbackChild !== null) {
-          // Deletions go at the beginning of the return fiber's effect list
-          var first = workInProgress.firstEffect;
-          if (first !== null) {
-            workInProgress.firstEffect = currentFallbackChild;
-            currentFallbackChild.nextEffect = first;
-          } else {
-            workInProgress.firstEffect = workInProgress.lastEffect = currentFallbackChild;
-            currentFallbackChild.nextEffect = null;
-          }
-          currentFallbackChild.effectTag = Deletion;
-        }
-      }
-
-      if (nextDidTimeout || prevDidTimeout) {
-        // If the children are hidden, or if they were previous hidden, schedule
-        // an effect to toggle their visibility. This is also used to attach a
-        // retry listener to the promise.
-        workInProgress.effectTag |= Update;
-      }
-      break;
-    }
+      return null;
+    case TimeoutComponent:
+      return null;
     case Fragment:
-      break;
+      return null;
     case Mode:
-      break;
+      return null;
     case Profiler:
-      break;
+      return null;
     case HostPortal:
       popHostContainer(workInProgress);
       updateHostContainer(workInProgress);
-      break;
+      return null;
     case ContextProvider:
       // Pop provider fiber
       popProvider(workInProgress);
-      break;
+      return null;
     case ContextConsumer:
-      break;
-    case MemoComponent:
-      break;
-    case IncompleteClassComponent: {
-      // Same as class component case. I put it down here so that the tags are
-      // sequential to ensure this switch is compiled to a jump table.
-      var _Component = workInProgress.type;
-      if (isContextProvider(_Component)) {
-        popContext(workInProgress);
-      }
-      break;
-    }
-    case DehydratedSuspenseComponent: {
-      if (enableSuspenseServerRenderer) {
-        if (current === null) {
-          var _wasHydrated2 = popHydrationState(workInProgress);
-          invariant(
-            _wasHydrated2,
-            "A dehydrated suspense component was completed without a hydrated node. " +
-              "This is probably a bug in React."
-          );
-          skipPastDehydratedSuspenseInstance(workInProgress);
-        } else if ((workInProgress.effectTag & DidCapture) === NoEffect) {
-          // This boundary did not suspend so it's now hydrated.
-          // To handle any future suspense cases, we're going to now upgrade it
-          // to a Suspense component. We detach it from the existing current fiber.
-          current.alternate = null;
-          workInProgress.alternate = null;
-          workInProgress.tag = SuspenseComponent;
-          workInProgress.memoizedState = null;
-          workInProgress.stateNode = null;
-        }
-      }
-      break;
-    }
+      return null;
+    // Error cases
+    case IndeterminateComponent:
+      invariant(
+        false,
+        "An indeterminate component should have become determinate before " +
+          "completing. This error is likely caused by a bug in React. Please " +
+          "file an issue."
+      );
+    // eslint-disable-next-line no-fallthrough
     default:
       invariant(
         false,
@@ -14313,19 +10916,6 @@ function completeWork(current, workInProgress, renderExpirationTime) {
           "React. Please file an issue."
       );
   }
-
-  return null;
-}
-
-function shouldCaptureSuspense(workInProgress) {
-  // In order to capture, the Suspense component must have a fallback prop.
-  if (workInProgress.memoizedProps.fallback === undefined) {
-    return false;
-  }
-  // If it was the primary children that just suspended, capture and render the
-  // fallback. Otherwise, don't capture and bubble to the next boundary.
-  var nextState = workInProgress.memoizedState;
-  return nextState === null;
 }
 
 // Module provided by RN:
@@ -14379,32 +10969,17 @@ function logCapturedError(capturedError) {
   }
 
   var error = capturedError.error;
+  var suppressLogging = error && error.suppressReactErrorLogging;
+  if (suppressLogging) {
+    return;
+  }
+
   {
     var componentName = capturedError.componentName,
       componentStack = capturedError.componentStack,
       errorBoundaryName = capturedError.errorBoundaryName,
       errorBoundaryFound = capturedError.errorBoundaryFound,
       willRetry = capturedError.willRetry;
-
-    // Browsers support silencing uncaught errors by calling
-    // `preventDefault()` in window `error` handler.
-    // We record this information as an expando on the error.
-
-    if (error != null && error._suppressLogging) {
-      if (errorBoundaryFound && willRetry) {
-        // The error is recoverable and was silenced.
-        // Ignore it and don't print the stack addendum.
-        // This is handy for testing error boundaries without noise.
-        return;
-      }
-      // The error is fatal. Since the silencing might have
-      // been accidental, we'll surface it anyway.
-      // However, the browser would have silenced the original error
-      // so we'll print it first, and then print the stack addendum.
-      console.error(error);
-      // For a more detailed description of this block, see:
-      // https://github.com/facebook/react/pull/13384
-    }
 
     var componentNameMessage = componentName
       ? "The above error occurred in the <" + componentName + "> component:"
@@ -14444,22 +11019,24 @@ function logCapturedError(capturedError) {
   }
 }
 
+var invokeGuardedCallback$3 = ReactErrorUtils.invokeGuardedCallback;
+var hasCaughtError$1 = ReactErrorUtils.hasCaughtError;
+var clearCaughtError$1 = ReactErrorUtils.clearCaughtError;
+
 var didWarnAboutUndefinedSnapshotBeforeUpdate = null;
 {
   didWarnAboutUndefinedSnapshotBeforeUpdate = new Set();
 }
 
-var PossiblyWeakSet$1 = typeof WeakSet === "function" ? WeakSet : Set;
-
 function logError(boundary, errorInfo) {
   var source = errorInfo.source;
   var stack = errorInfo.stack;
   if (stack === null && source !== null) {
-    stack = getStackByFiberInDevAndProd(source);
+    stack = getStackAddendumByWorkInProgressFiber(source);
   }
 
   var capturedError = {
-    componentName: source !== null ? getComponentName(source.type) : null,
+    componentName: source !== null ? getComponentName(source) : null,
     componentStack: stack !== null ? stack : "",
     error: errorInfo.value,
     errorBoundary: null,
@@ -14470,7 +11047,7 @@ function logError(boundary, errorInfo) {
 
   if (boundary !== null && boundary.tag === ClassComponent) {
     capturedError.errorBoundary = boundary.stateNode;
-    capturedError.errorBoundaryName = getComponentName(boundary.type);
+    capturedError.errorBoundaryName = getComponentName(boundary);
     capturedError.errorBoundaryFound = true;
     capturedError.willRetry = true;
   }
@@ -14478,50 +11055,49 @@ function logError(boundary, errorInfo) {
   try {
     logCapturedError(capturedError);
   } catch (e) {
-    // This method must not throw, or React internal state will get messed up.
-    // If console.error is overridden, or logCapturedError() shows a dialog that throws,
-    // we want to report this error outside of the normal stack as a last resort.
-    // https://github.com/facebook/react/issues/13188
-    setTimeout(function() {
-      throw e;
-    });
+    // Prevent cycle if logCapturedError() throws.
+    // A cycle may still occur if logCapturedError renders a component that throws.
+    var suppressLogging = e && e.suppressReactErrorLogging;
+    if (!suppressLogging) {
+      console.error(e);
+    }
   }
 }
 
-var callComponentWillUnmountWithTimer = function(current$$1, instance) {
-  startPhaseTimer(current$$1, "componentWillUnmount");
-  instance.props = current$$1.memoizedProps;
-  instance.state = current$$1.memoizedState;
+var callComponentWillUnmountWithTimer = function(current, instance) {
+  startPhaseTimer(current, "componentWillUnmount");
+  instance.props = current.memoizedProps;
+  instance.state = current.memoizedState;
   instance.componentWillUnmount();
   stopPhaseTimer();
 };
 
 // Capture errors so they don't interrupt unmounting.
-function safelyCallComponentWillUnmount(current$$1, instance) {
+function safelyCallComponentWillUnmount(current, instance) {
   {
-    invokeGuardedCallback(
+    invokeGuardedCallback$3(
       null,
       callComponentWillUnmountWithTimer,
       null,
-      current$$1,
+      current,
       instance
     );
-    if (hasCaughtError()) {
-      var unmountError = clearCaughtError();
-      captureCommitPhaseError(current$$1, unmountError);
+    if (hasCaughtError$1()) {
+      var unmountError = clearCaughtError$1();
+      captureCommitPhaseError(current, unmountError);
     }
   }
 }
 
-function safelyDetachRef(current$$1) {
-  var ref = current$$1.ref;
+function safelyDetachRef(current) {
+  var ref = current.ref;
   if (ref !== null) {
     if (typeof ref === "function") {
       {
-        invokeGuardedCallback(null, ref, null, null);
-        if (hasCaughtError()) {
-          var refError = clearCaughtError();
-          captureCommitPhaseError(current$$1, refError);
+        invokeGuardedCallback$3(null, ref, null, null);
+        if (hasCaughtError$1()) {
+          var refError = clearCaughtError$1();
+          captureCommitPhaseError(current, refError);
         }
       }
     } else {
@@ -14530,78 +11106,27 @@ function safelyDetachRef(current$$1) {
   }
 }
 
-function safelyCallDestroy(current$$1, destroy) {
-  {
-    invokeGuardedCallback(null, destroy, null);
-    if (hasCaughtError()) {
-      var error = clearCaughtError();
-      captureCommitPhaseError(current$$1, error);
-    }
-  }
-}
-
-function commitBeforeMutationLifeCycles(current$$1, finishedWork) {
+function commitBeforeMutationLifeCycles(current, finishedWork) {
   switch (finishedWork.tag) {
-    case FunctionComponent:
-    case ForwardRef:
-    case SimpleMemoComponent: {
-      commitHookEffectList(UnmountSnapshot, NoEffect$1, finishedWork);
-      return;
-    }
     case ClassComponent: {
       if (finishedWork.effectTag & Snapshot) {
-        if (current$$1 !== null) {
-          var prevProps = current$$1.memoizedProps;
-          var prevState = current$$1.memoizedState;
+        if (current !== null) {
+          var prevProps = current.memoizedProps;
+          var prevState = current.memoizedState;
           startPhaseTimer(finishedWork, "getSnapshotBeforeUpdate");
           var instance = finishedWork.stateNode;
-          // We could update instance props and state here,
-          // but instead we rely on them being set during last render.
-          // TODO: revisit this when we implement resuming.
-          {
-            if (
-              finishedWork.type === finishedWork.elementType &&
-              !didWarnAboutReassigningProps
-            ) {
-              !(instance.props === finishedWork.memoizedProps)
-                ? warning$1(
-                    false,
-                    "Expected %s props to match memoized props before " +
-                      "getSnapshotBeforeUpdate. " +
-                      "This might either be because of a bug in React, or because " +
-                      "a component reassigns its own `this.props`. " +
-                      "Please file an issue.",
-                    getComponentName(finishedWork.type) || "instance"
-                  )
-                : void 0;
-              !(instance.state === finishedWork.memoizedState)
-                ? warning$1(
-                    false,
-                    "Expected %s state to match memoized state before " +
-                      "getSnapshotBeforeUpdate. " +
-                      "This might either be because of a bug in React, or because " +
-                      "a component reassigns its own `this.props`. " +
-                      "Please file an issue.",
-                    getComponentName(finishedWork.type) || "instance"
-                  )
-                : void 0;
-            }
-          }
-          var snapshot = instance.getSnapshotBeforeUpdate(
-            finishedWork.elementType === finishedWork.type
-              ? prevProps
-              : resolveDefaultProps(finishedWork.type, prevProps),
-            prevState
-          );
+          instance.props = finishedWork.memoizedProps;
+          instance.state = finishedWork.memoizedState;
+          var snapshot = instance.getSnapshotBeforeUpdate(prevProps, prevState);
           {
             var didWarnSet = didWarnAboutUndefinedSnapshotBeforeUpdate;
             if (snapshot === undefined && !didWarnSet.has(finishedWork.type)) {
               didWarnSet.add(finishedWork.type);
-              warningWithoutStack$1(
+              warning(
                 false,
                 "%s.getSnapshotBeforeUpdate(): A snapshot value (or null) " +
                   "must be returned. You have returned undefined.",
-                getComponentName(finishedWork.type)
+                getComponentName(finishedWork)
               );
             }
           }
@@ -14615,7 +11140,6 @@ function commitBeforeMutationLifeCycles(current$$1, finishedWork) {
     case HostComponent:
     case HostText:
     case HostPortal:
-    case IncompleteClassComponent:
       // Nothing to do for these component types
       return;
     default: {
@@ -14628,164 +11152,29 @@ function commitBeforeMutationLifeCycles(current$$1, finishedWork) {
   }
 }
 
-function commitHookEffectList(unmountTag, mountTag, finishedWork) {
-  var updateQueue = finishedWork.updateQueue;
-  var lastEffect = updateQueue !== null ? updateQueue.lastEffect : null;
-  if (lastEffect !== null) {
-    var firstEffect = lastEffect.next;
-    var effect = firstEffect;
-    do {
-      if ((effect.tag & unmountTag) !== NoEffect$1) {
-        // Unmount
-        var destroy = effect.destroy;
-        effect.destroy = undefined;
-        if (destroy !== undefined) {
-          destroy();
-        }
-      }
-      if ((effect.tag & mountTag) !== NoEffect$1) {
-        // Mount
-        var create = effect.create;
-        effect.destroy = create();
-
-        {
-          var _destroy = effect.destroy;
-          if (_destroy !== undefined && typeof _destroy !== "function") {
-            var addendum = void 0;
-            if (_destroy === null) {
-              addendum =
-                " You returned null. If your effect does not require clean " +
-                "up, return undefined (or nothing).";
-            } else if (typeof _destroy.then === "function") {
-              addendum =
-                "\n\nIt looks like you wrote useEffect(async () => ...) or returned a Promise. " +
-                "Instead, you may write an async function separately " +
-                "and then call it from inside the effect:\n\n" +
-                "async function fetchComment(commentId) {\n" +
-                "  // You can await here\n" +
-                "}\n\n" +
-                "useEffect(() => {\n" +
-                "  fetchComment(commentId);\n" +
-                "}, [commentId]);\n\n" +
-                "In the future, React will provide a more idiomatic solution for data fetching " +
-                "that doesn't involve writing effects manually.";
-            } else {
-              addendum = " You returned: " + _destroy;
-            }
-            warningWithoutStack$1(
-              false,
-              "An Effect function must not return anything besides a function, " +
-                "which is used for clean-up.%s%s",
-              addendum,
-              getStackByFiberInDevAndProd(finishedWork)
-            );
-          }
-        }
-      }
-      effect = effect.next;
-    } while (effect !== firstEffect);
-  }
-}
-
-function commitPassiveHookEffects(finishedWork) {
-  commitHookEffectList(UnmountPassive, NoEffect$1, finishedWork);
-  commitHookEffectList(NoEffect$1, MountPassive, finishedWork);
-}
-
 function commitLifeCycles(
   finishedRoot,
-  current$$1,
+  current,
   finishedWork,
+  currentTime,
   committedExpirationTime
 ) {
   switch (finishedWork.tag) {
-    case FunctionComponent:
-    case ForwardRef:
-    case SimpleMemoComponent: {
-      commitHookEffectList(UnmountLayout, MountLayout, finishedWork);
-      break;
-    }
     case ClassComponent: {
       var instance = finishedWork.stateNode;
       if (finishedWork.effectTag & Update) {
-        if (current$$1 === null) {
+        if (current === null) {
           startPhaseTimer(finishedWork, "componentDidMount");
-          // We could update instance props and state here,
-          // but instead we rely on them being set during last render.
-          // TODO: revisit this when we implement resuming.
-          {
-            if (
-              finishedWork.type === finishedWork.elementType &&
-              !didWarnAboutReassigningProps
-            ) {
-              !(instance.props === finishedWork.memoizedProps)
-                ? warning$1(
-                    false,
-                    "Expected %s props to match memoized props before " +
-                      "componentDidMount. " +
-                      "This might either be because of a bug in React, or because " +
-                      "a component reassigns its own `this.props`. " +
-                      "Please file an issue.",
-                    getComponentName(finishedWork.type) || "instance"
-                  )
-                : void 0;
-              !(instance.state === finishedWork.memoizedState)
-                ? warning$1(
-                    false,
-                    "Expected %s state to match memoized state before " +
-                      "componentDidMount. " +
-                      "This might either be because of a bug in React, or because " +
-                      "a component reassigns its own `this.props`. " +
-                      "Please file an issue.",
-                    getComponentName(finishedWork.type) || "instance"
-                  )
-                : void 0;
-            }
-          }
+          instance.props = finishedWork.memoizedProps;
+          instance.state = finishedWork.memoizedState;
           instance.componentDidMount();
           stopPhaseTimer();
         } else {
-          var prevProps =
-            finishedWork.elementType === finishedWork.type
-              ? current$$1.memoizedProps
-              : resolveDefaultProps(
-                  finishedWork.type,
-                  current$$1.memoizedProps
-                );
-          var prevState = current$$1.memoizedState;
+          var prevProps = current.memoizedProps;
+          var prevState = current.memoizedState;
           startPhaseTimer(finishedWork, "componentDidUpdate");
-          // We could update instance props and state here,
-          // but instead we rely on them being set during last render.
-          // TODO: revisit this when we implement resuming.
-          {
-            if (
-              finishedWork.type === finishedWork.elementType &&
-              !didWarnAboutReassigningProps
-            ) {
-              !(instance.props === finishedWork.memoizedProps)
-                ? warning$1(
-                    false,
-                    "Expected %s props to match memoized props before " +
-                      "componentDidUpdate. " +
-                      "This might either be because of a bug in React, or because " +
-                      "a component reassigns its own `this.props`. " +
-                      "Please file an issue.",
-                    getComponentName(finishedWork.type) || "instance"
-                  )
-                : void 0;
-              !(instance.state === finishedWork.memoizedState)
-                ? warning$1(
-                    false,
-                    "Expected %s state to match memoized state before " +
-                      "componentDidUpdate. " +
-                      "This might either be because of a bug in React, or because " +
-                      "a component reassigns its own `this.props`. " +
-                      "Please file an issue.",
-                    getComponentName(finishedWork.type) || "instance"
-                  )
-                : void 0;
-            }
-          }
+          instance.props = finishedWork.memoizedProps;
+          instance.state = finishedWork.memoizedState;
           instance.componentDidUpdate(
             prevProps,
             prevState,
@@ -14796,38 +11185,8 @@ function commitLifeCycles(
       }
       var updateQueue = finishedWork.updateQueue;
       if (updateQueue !== null) {
-        {
-          if (
-            finishedWork.type === finishedWork.elementType &&
-            !didWarnAboutReassigningProps
-          ) {
-            !(instance.props === finishedWork.memoizedProps)
-              ? warning$1(
-                  false,
-                  "Expected %s props to match memoized props before " +
-                    "processing the update queue. " +
-                    "This might either be because of a bug in React, or because " +
-                    "a component reassigns its own `this.props`. " +
-                    "Please file an issue.",
-                  getComponentName(finishedWork.type) || "instance"
-                )
-              : void 0;
-            !(instance.state === finishedWork.memoizedState)
-              ? warning$1(
-                  false,
-                  "Expected %s state to match memoized state before " +
-                    "processing the update queue. " +
-                    "This might either be because of a bug in React, or because " +
-                    "a component reassigns its own `this.props`. " +
-                    "Please file an issue.",
-                  getComponentName(finishedWork.type) || "instance"
-                )
-              : void 0;
-          }
-        }
-        // We could update instance props and state here,
-        // but instead we rely on them being set during last render.
-        // TODO: revisit this when we implement resuming.
+        instance.props = finishedWork.memoizedProps;
+        instance.state = finishedWork.memoizedState;
         commitUpdateQueue(
           finishedWork,
           updateQueue,
@@ -14867,7 +11226,7 @@ function commitLifeCycles(
       // (eg DOM renderer may schedule auto-focus for inputs and form controls).
       // These effects should only be committed when components are first mounted,
       // aka when there is no current/alternate.
-      if (current$$1 === null && finishedWork.effectTag & Update) {
+      if (current === null && finishedWork.effectTag & Update) {
         var type = finishedWork.type;
         var props = finishedWork.memoizedProps;
         commitMount(_instance2, type, props, finishedWork);
@@ -14884,90 +11243,19 @@ function commitLifeCycles(
       return;
     }
     case Profiler: {
-      if (enableProfilerTimer) {
-        var onRender = finishedWork.memoizedProps.onRender;
-
-        if (enableSchedulerTracing) {
-          onRender(
-            finishedWork.memoizedProps.id,
-            current$$1 === null ? "mount" : "update",
-            finishedWork.actualDuration,
-            finishedWork.treeBaseDuration,
-            finishedWork.actualStartTime,
-            getCommitTime(),
-            finishedRoot.memoizedInteractions
-          );
-        } else {
-          onRender(
-            finishedWork.memoizedProps.id,
-            current$$1 === null ? "mount" : "update",
-            finishedWork.actualDuration,
-            finishedWork.treeBaseDuration,
-            finishedWork.actualStartTime,
-            getCommitTime()
-          );
-        }
-      }
+      // We have no life-cycles associated with Profiler.
       return;
     }
-    case SuspenseComponent:
-      break;
-    case IncompleteClassComponent:
-      break;
+    case TimeoutComponent: {
+      // We have no life-cycles associated with Timeouts.
+      return;
+    }
     default: {
       invariant(
         false,
         "This unit of work tag should not have side-effects. This error is " +
           "likely caused by a bug in React. Please file an issue."
       );
-    }
-  }
-}
-
-function hideOrUnhideAllChildren(finishedWork, isHidden) {
-  if (supportsMutation) {
-    // We only have the top Fiber that was inserted but we need to recurse down its
-    var node = finishedWork;
-    while (true) {
-      if (node.tag === HostComponent) {
-        var instance = node.stateNode;
-        if (isHidden) {
-          hideInstance(instance);
-        } else {
-          unhideInstance(node.stateNode, node.memoizedProps);
-        }
-      } else if (node.tag === HostText) {
-        var _instance3 = node.stateNode;
-        if (isHidden) {
-          hideTextInstance(_instance3);
-        } else {
-          unhideTextInstance(_instance3, node.memoizedProps);
-        }
-      } else if (
-        node.tag === SuspenseComponent &&
-        node.memoizedState !== null
-      ) {
-        // Found a nested Suspense component that timed out. Skip over the
-        var fallbackChildFragment = node.child.sibling;
-        fallbackChildFragment.return = node;
-        node = fallbackChildFragment;
-        continue;
-      } else if (node.child !== null) {
-        node.child.return = node;
-        node = node.child;
-        continue;
-      }
-      if (node === finishedWork) {
-        return;
-      }
-      while (node.sibling === null) {
-        if (node.return === null || node.return === finishedWork) {
-          return;
-        }
-        node = node.return;
-      }
-      node.sibling.return = node.return;
-      node = node.sibling;
     }
   }
 }
@@ -14989,12 +11277,12 @@ function commitAttachRef(finishedWork) {
     } else {
       {
         if (!ref.hasOwnProperty("current")) {
-          warningWithoutStack$1(
+          warning(
             false,
             "Unexpected ref object provided for %s. " +
               "Use either a ref-setter function or React.createRef().%s",
-            getComponentName(finishedWork.type),
-            getStackByFiberInDevAndProd(finishedWork)
+            getComponentName(finishedWork),
+            getStackAddendumByWorkInProgressFiber(finishedWork)
           );
         }
       }
@@ -15004,8 +11292,8 @@ function commitAttachRef(finishedWork) {
   }
 }
 
-function commitDetachRef(current$$1) {
-  var currentRef = current$$1.ref;
+function commitDetachRef(current) {
+  var currentRef = current.ref;
   if (currentRef !== null) {
     if (typeof currentRef === "function") {
       currentRef(null);
@@ -15018,41 +11306,22 @@ function commitDetachRef(current$$1) {
 // User-originating errors (lifecycles and refs) should not interrupt
 // deletion, so don't let them throw. Host-originating errors should
 // interrupt deletion, so it's okay
-function commitUnmount(current$$1) {
-  onCommitUnmount(current$$1);
+function commitUnmount(current) {
+  if (typeof onCommitUnmount === "function") {
+    onCommitUnmount(current);
+  }
 
-  switch (current$$1.tag) {
-    case FunctionComponent:
-    case ForwardRef:
-    case MemoComponent:
-    case SimpleMemoComponent: {
-      var updateQueue = current$$1.updateQueue;
-      if (updateQueue !== null) {
-        var lastEffect = updateQueue.lastEffect;
-        if (lastEffect !== null) {
-          var firstEffect = lastEffect.next;
-          var effect = firstEffect;
-          do {
-            var destroy = effect.destroy;
-            if (destroy !== undefined) {
-              safelyCallDestroy(current$$1, destroy);
-            }
-            effect = effect.next;
-          } while (effect !== firstEffect);
-        }
-      }
-      break;
-    }
+  switch (current.tag) {
     case ClassComponent: {
-      safelyDetachRef(current$$1);
-      var instance = current$$1.stateNode;
+      safelyDetachRef(current);
+      var instance = current.stateNode;
       if (typeof instance.componentWillUnmount === "function") {
-        safelyCallComponentWillUnmount(current$$1, instance);
+        safelyCallComponentWillUnmount(current, instance);
       }
       return;
     }
     case HostComponent: {
-      safelyDetachRef(current$$1);
+      safelyDetachRef(current);
       return;
     }
     case HostPortal: {
@@ -15060,9 +11329,9 @@ function commitUnmount(current$$1) {
       // We are also not using this parent because
       // the portal will get pushed immediately.
       if (supportsMutation) {
-        unmountHostComponents(current$$1);
+        unmountHostComponents(current);
       } else if (supportsPersistence) {
-        emptyPortalContainer(current$$1);
+        emptyPortalContainer(current);
       }
       return;
     }
@@ -15103,31 +11372,26 @@ function commitNestedUnmounts(root) {
   }
 }
 
-function detachFiber(current$$1) {
+function detachFiber(current) {
   // Cut off the return pointers to disconnect it from the tree. Ideally, we
   // should clear the child pointer of the parent alternate to let this
   // get GC:ed but we don't know which for sure which parent is the current
   // one so we'll settle for GC:ing the subtree of this child. This child
   // itself will be GC:ed when the parent updates the next time.
-  current$$1.return = null;
-  current$$1.child = null;
-  current$$1.memoizedState = null;
-  current$$1.updateQueue = null;
-  var alternate = current$$1.alternate;
-  if (alternate !== null) {
-    alternate.return = null;
-    alternate.child = null;
-    alternate.memoizedState = null;
-    alternate.updateQueue = null;
+  current.return = null;
+  current.child = null;
+  if (current.alternate) {
+    current.alternate.child = null;
+    current.alternate.return = null;
   }
 }
 
-function emptyPortalContainer(current$$1) {
+function emptyPortalContainer(current) {
   if (!supportsPersistence) {
     return;
   }
 
-  var portal = current$$1.stateNode;
+  var portal = current.stateNode;
   var containerInfo = portal.containerInfo;
 
   var emptyChildSet = createContainerChildSet(containerInfo);
@@ -15206,11 +11470,7 @@ function getHostSibling(fiber) {
     }
     node.sibling.return = node.return;
     node = node.sibling;
-    while (
-      node.tag !== HostComponent &&
-      node.tag !== HostText &&
-      node.tag !== DehydratedSuspenseComponent
-    ) {
+    while (node.tag !== HostComponent && node.tag !== HostText) {
       // If it is not host node and, we might have a host node inside it.
       // Try to search down until we find one.
       if (node.effectTag & Placement) {
@@ -15241,11 +11501,8 @@ function commitPlacement(finishedWork) {
 
   // Recursively insert all host nodes into the parent.
   var parentFiber = getHostParentFiber(finishedWork);
-
-  // Note: these two variables *must* always be updated together.
   var parent = void 0;
   var isContainer = void 0;
-
   switch (parentFiber.tag) {
     case HostComponent:
       parent = parentFiber.stateNode;
@@ -15274,7 +11531,7 @@ function commitPlacement(finishedWork) {
   }
 
   var before = getHostSibling(finishedWork);
-  // We only have the top Fiber that was inserted but we need to recurse down its
+  // We only have the top Fiber that was inserted but we need recurse down its
   // children to find all the terminal nodes.
   var node = finishedWork;
   while (true) {
@@ -15315,15 +11572,13 @@ function commitPlacement(finishedWork) {
   }
 }
 
-function unmountHostComponents(current$$1) {
-  // We only have the top Fiber that was deleted but we need to recurse down its
-  var node = current$$1;
+function unmountHostComponents(current) {
+  // We only have the top Fiber that was inserted but we need recurse down its
+  var node = current;
 
   // Each iteration, currentParent is populated with node's host parent if not
   // currentParentIsValid.
   var currentParentIsValid = false;
-
-  // Note: these two variables *must* always be updated together.
   var currentParent = void 0;
   var currentParentIsContainer = void 0;
 
@@ -15365,23 +11620,12 @@ function unmountHostComponents(current$$1) {
         removeChild(currentParent, node.stateNode);
       }
       // Don't visit children because we already visited them.
-    } else if (
-      enableSuspenseServerRenderer &&
-      node.tag === DehydratedSuspenseComponent
-    ) {
-      // Delete the dehydrated suspense boundary and all of its content.
-      if (currentParentIsContainer) {
-        clearSuspenseBoundaryFromContainer(currentParent, node.stateNode);
-      } else {
-        clearSuspenseBoundary(currentParent, node.stateNode);
-      }
     } else if (node.tag === HostPortal) {
+      // When we go into a portal, it becomes the parent to remove from.
+      // We will reassign it back when we pop the portal on the way up.
+      currentParent = node.stateNode.containerInfo;
+      // Visit children because portals might contain host components.
       if (node.child !== null) {
-        // When we go into a portal, it becomes the parent to remove from.
-        // We will reassign it back when we pop the portal on the way up.
-        currentParent = node.stateNode.containerInfo;
-        currentParentIsContainer = true;
-        // Visit children because portals might contain host components.
         node.child.return = node;
         node = node.child;
         continue;
@@ -15395,11 +11639,11 @@ function unmountHostComponents(current$$1) {
         continue;
       }
     }
-    if (node === current$$1) {
+    if (node === current) {
       return;
     }
     while (node.sibling === null) {
-      if (node.return === null || node.return === current$$1) {
+      if (node.return === null || node.return === current) {
         return;
       }
       node = node.return;
@@ -15414,46 +11658,25 @@ function unmountHostComponents(current$$1) {
   }
 }
 
-function commitDeletion(current$$1) {
+function commitDeletion(current) {
   if (supportsMutation) {
     // Recursively delete all host nodes from the parent.
     // Detach refs and call componentWillUnmount() on the whole subtree.
-    unmountHostComponents(current$$1);
+    unmountHostComponents(current);
   } else {
     // Detach refs and call componentWillUnmount() on the whole subtree.
-    commitNestedUnmounts(current$$1);
+    commitNestedUnmounts(current);
   }
-  detachFiber(current$$1);
+  detachFiber(current);
 }
 
-function commitWork(current$$1, finishedWork) {
+function commitWork(current, finishedWork) {
   if (!supportsMutation) {
-    switch (finishedWork.tag) {
-      case FunctionComponent:
-      case ForwardRef:
-      case MemoComponent:
-      case SimpleMemoComponent: {
-        // Note: We currently never use MountMutation, but useLayout uses
-        // UnmountMutation.
-        commitHookEffectList(UnmountMutation, MountMutation, finishedWork);
-        return;
-      }
-    }
-
     commitContainer(finishedWork);
     return;
   }
 
   switch (finishedWork.tag) {
-    case FunctionComponent:
-    case ForwardRef:
-    case MemoComponent:
-    case SimpleMemoComponent: {
-      // Note: We currently never use MountMutation, but useLayout uses
-      // UnmountMutation.
-      commitHookEffectList(UnmountMutation, MountMutation, finishedWork);
-      return;
-    }
     case ClassComponent: {
       return;
     }
@@ -15465,8 +11688,7 @@ function commitWork(current$$1, finishedWork) {
         // For hydration we reuse the update path but we treat the oldProps
         // as the newProps. The updatePayload will contain the real change in
         // this case.
-        var oldProps =
-          current$$1 !== null ? current$$1.memoizedProps : newProps;
+        var oldProps = current !== null ? current.memoizedProps : newProps;
         var type = finishedWork.type;
         // TODO: Type the updateQueue to be specific to host components.
         var updatePayload = finishedWork.updateQueue;
@@ -15495,7 +11717,7 @@ function commitWork(current$$1, finishedWork) {
       // For hydration we reuse the update path but we treat the oldProps
       // as the newProps. The updatePayload will contain the real change in
       // this case.
-      var oldText = current$$1 !== null ? current$$1.memoizedProps : newText;
+      var oldText = current !== null ? current.memoizedProps : newText;
       commitTextUpdate(textInstance, oldText, newText);
       return;
     }
@@ -15503,56 +11725,20 @@ function commitWork(current$$1, finishedWork) {
       return;
     }
     case Profiler: {
+      if (enableProfilerTimer) {
+        var onRender = finishedWork.memoizedProps.onRender;
+        onRender(
+          finishedWork.memoizedProps.id,
+          current === null ? "mount" : "update",
+          finishedWork.actualDuration,
+          finishedWork.treeBaseTime,
+          finishedWork.actualStartTime,
+          getCommitTime()
+        );
+      }
       return;
     }
-    case SuspenseComponent: {
-      var newState = finishedWork.memoizedState;
-
-      var newDidTimeout = void 0;
-      var primaryChildParent = finishedWork;
-      if (newState === null) {
-        newDidTimeout = false;
-      } else {
-        newDidTimeout = true;
-        primaryChildParent = finishedWork.child;
-        if (newState.timedOutAt === NoWork) {
-          // If the children had not already timed out, record the time.
-          // This is used to compute the elapsed time during subsequent
-          // attempts to render the children.
-          newState.timedOutAt = requestCurrentTime();
-        }
-      }
-
-      if (primaryChildParent !== null) {
-        hideOrUnhideAllChildren(primaryChildParent, newDidTimeout);
-      }
-
-      // If this boundary just timed out, then it will have a set of thenables.
-      // For each thenable, attach a listener so that when it resolves, React
-      // attempts to re-render the boundary in the primary (pre-timeout) state.
-      var thenables = finishedWork.updateQueue;
-      if (thenables !== null) {
-        finishedWork.updateQueue = null;
-        var retryCache = finishedWork.stateNode;
-        if (retryCache === null) {
-          retryCache = finishedWork.stateNode = new PossiblyWeakSet$1();
-        }
-        thenables.forEach(function(thenable) {
-          // Memoize using the boundary fiber to prevent redundant listeners.
-          var retry = resolveRetryThenable.bind(null, finishedWork, thenable);
-          if (enableSchedulerTracing) {
-            retry = tracing.unstable_wrap(retry);
-          }
-          if (!retryCache.has(thenable)) {
-            retryCache.add(thenable);
-            thenable.then(retry, retry);
-          }
-        });
-      }
-
-      return;
-    }
-    case IncompleteClassComponent: {
+    case TimeoutComponent: {
       return;
     }
     default: {
@@ -15565,15 +11751,12 @@ function commitWork(current$$1, finishedWork) {
   }
 }
 
-function commitResetTextContent(current$$1) {
+function commitResetTextContent(current) {
   if (!supportsMutation) {
     return;
   }
-  resetTextContent(current$$1.stateNode);
+  resetTextContent(current.stateNode);
 }
-
-var PossiblyWeakSet = typeof WeakSet === "function" ? WeakSet : Set;
-var PossiblyWeakMap = typeof WeakMap === "function" ? WeakMap : Map;
 
 function createRootErrorUpdate(fiber, errorInfo, expirationTime) {
   var update = createUpdate(expirationTime);
@@ -15593,22 +11776,28 @@ function createRootErrorUpdate(fiber, errorInfo, expirationTime) {
 function createClassErrorUpdate(fiber, errorInfo, expirationTime) {
   var update = createUpdate(expirationTime);
   update.tag = CaptureUpdate;
-  var getDerivedStateFromError = fiber.type.getDerivedStateFromError;
-  if (typeof getDerivedStateFromError === "function") {
+  var getDerivedStateFromCatch = fiber.type.getDerivedStateFromCatch;
+  if (
+    enableGetDerivedStateFromCatch &&
+    typeof getDerivedStateFromCatch === "function"
+  ) {
     var error = errorInfo.value;
     update.payload = function() {
-      return getDerivedStateFromError(error);
+      return getDerivedStateFromCatch(error);
     };
   }
 
   var inst = fiber.stateNode;
   if (inst !== null && typeof inst.componentDidCatch === "function") {
     update.callback = function callback() {
-      if (typeof getDerivedStateFromError !== "function") {
+      if (
+        !enableGetDerivedStateFromCatch ||
+        getDerivedStateFromCatch !== "function"
+      ) {
         // To preserve the preexisting retry behavior of error boundaries,
         // we keep track of which ones already failed during this batch.
         // This gets reset before we yield back to the browser.
-        // TODO: Warn in strict mode if getDerivedStateFromError is
+        // TODO: Warn in strict mode if getDerivedStateFromCatch is
         // not defined.
         markLegacyErrorBoundaryAsFailed(this);
       }
@@ -15618,57 +11807,19 @@ function createClassErrorUpdate(fiber, errorInfo, expirationTime) {
       this.componentDidCatch(error, {
         componentStack: stack !== null ? stack : ""
       });
-      {
-        if (typeof getDerivedStateFromError !== "function") {
-          // If componentDidCatch is the only error boundary method defined,
-          // then it needs to call setState to recover from errors.
-          // If no state update is scheduled then the boundary will swallow the error.
-          !(fiber.expirationTime === Sync)
-            ? warningWithoutStack$1(
-                false,
-                "%s: Error boundaries should implement getDerivedStateFromError(). " +
-                  "In that method, return a state update to display an error message or fallback UI.",
-                getComponentName(fiber.type) || "Unknown"
-              )
-            : void 0;
-        }
-      }
     };
   }
   return update;
 }
 
-function attachPingListener(root, renderExpirationTime, thenable) {
-  // Attach a listener to the promise to "ping" the root and retry. But
-  // only if one does not already exist for the current render expiration
-  // time (which acts like a "thread ID" here).
-  var pingCache = root.pingCache;
-  var threadIDs = void 0;
-  if (pingCache === null) {
-    pingCache = root.pingCache = new PossiblyWeakMap();
-    threadIDs = new Set();
-    pingCache.set(thenable, threadIDs);
-  } else {
-    threadIDs = pingCache.get(thenable);
-    if (threadIDs === undefined) {
-      threadIDs = new Set();
-      pingCache.set(thenable, threadIDs);
-    }
-  }
-  if (!threadIDs.has(renderExpirationTime)) {
-    // Memoize using the thread ID to prevent redundant listeners.
-    threadIDs.add(renderExpirationTime);
-    var ping = pingSuspendedRoot.bind(
-      null,
-      root,
-      thenable,
-      renderExpirationTime
-    );
-    if (enableSchedulerTracing) {
-      ping = tracing.unstable_wrap(ping);
-    }
-    thenable.then(ping, ping);
-  }
+function schedulePing(finishedWork) {
+  // Once the promise resolves, we should try rendering the non-
+  // placeholder state again.
+  var currentTime = recalculateCurrentTime();
+  var expirationTime = computeExpirationForFiber(currentTime, finishedWork);
+  var recoveryUpdate = createUpdate(expirationTime);
+  enqueueUpdate(finishedWork, recoveryUpdate, expirationTime);
+  scheduleWork(finishedWork, expirationTime);
 }
 
 function throwException(
@@ -15676,7 +11827,8 @@ function throwException(
   returnFiber,
   sourceFiber,
   value,
-  renderExpirationTime
+  renderExpirationTime,
+  currentTimeMs
 ) {
   // The source fiber did not complete.
   sourceFiber.effectTag |= Incomplete;
@@ -15684,6 +11836,7 @@ function throwException(
   sourceFiber.firstEffect = sourceFiber.lastEffect = null;
 
   if (
+    enableSuspense &&
     value !== null &&
     typeof value === "object" &&
     typeof value.then === "function"
@@ -15691,204 +11844,111 @@ function throwException(
     // This is a thenable.
     var thenable = value;
 
-    // Find the earliest timeout threshold of all the placeholders in the
-    // ancestor path. We could avoid this traversal by storing the thresholds on
-    // the stack, but we choose not to because we only hit this path if we're
-    // IO-bound (i.e. if something suspends). Whereas the stack is used even in
-    // the non-IO- bound case.
+    // TODO: Should use the earliest known expiration time
+    var expirationTimeMs = expirationTimeToMs(renderExpirationTime);
+    var startTimeMs = expirationTimeMs - 5000;
+    var elapsedMs = currentTimeMs - startTimeMs;
+    if (elapsedMs < 0) {
+      elapsedMs = 0;
+    }
+    var remainingTimeMs = expirationTimeMs - currentTimeMs;
+
+    // Find the earliest timeout of all the timeouts in the ancestor path.
+    // TODO: Alternatively, we could store the earliest timeout on the context
+    // stack, rather than searching on every suspend.
     var _workInProgress = returnFiber;
     var earliestTimeoutMs = -1;
-    var startTimeMs = -1;
-    do {
-      if (_workInProgress.tag === SuspenseComponent) {
-        var current$$1 = _workInProgress.alternate;
-        if (current$$1 !== null) {
-          var currentState = current$$1.memoizedState;
-          if (currentState !== null) {
-            // Reached a boundary that already timed out. Do not search
-            // any further.
-            var timedOutAt = currentState.timedOutAt;
-            startTimeMs = expirationTimeToMs(timedOutAt);
-            // Do not search any further.
-            break;
-          }
+    searchForEarliestTimeout: do {
+      if (_workInProgress.tag === TimeoutComponent) {
+        var current = _workInProgress.alternate;
+        if (current !== null && current.memoizedState === true) {
+          // A parent Timeout already committed in a placeholder state. We
+          // need to handle this promise immediately. In other words, we
+          // should never suspend inside a tree that already expired.
+          earliestTimeoutMs = 0;
+          break searchForEarliestTimeout;
         }
-        var timeoutPropMs = _workInProgress.pendingProps.maxDuration;
+        var timeoutPropMs = _workInProgress.pendingProps.ms;
         if (typeof timeoutPropMs === "number") {
           if (timeoutPropMs <= 0) {
             earliestTimeoutMs = 0;
+            break searchForEarliestTimeout;
           } else if (
             earliestTimeoutMs === -1 ||
             timeoutPropMs < earliestTimeoutMs
           ) {
             earliestTimeoutMs = timeoutPropMs;
           }
+        } else if (earliestTimeoutMs === -1) {
+          earliestTimeoutMs = remainingTimeMs;
         }
       }
-      // If there is a DehydratedSuspenseComponent we don't have to do anything because
-      // if something suspends inside it, we will simply leave that as dehydrated. It
-      // will never timeout.
       _workInProgress = _workInProgress.return;
     } while (_workInProgress !== null);
 
-    // Schedule the nearest Suspense to re-render the timed out view.
-    _workInProgress = returnFiber;
-    do {
-      if (
-        _workInProgress.tag === SuspenseComponent &&
-        shouldCaptureSuspense(_workInProgress)
-      ) {
-        // Found the nearest boundary.
+    // Compute the remaining time until the timeout.
+    var msUntilTimeout = earliestTimeoutMs - elapsedMs;
 
-        // Stash the promise on the boundary fiber. If the boundary times out, we'll
-        var thenables = _workInProgress.updateQueue;
-        if (thenables === null) {
-          var updateQueue = new Set();
-          updateQueue.add(thenable);
-          _workInProgress.updateQueue = updateQueue;
-        } else {
-          thenables.add(thenable);
-        }
-
-        // If the boundary is outside of concurrent mode, we should *not*
-        // suspend the commit. Pretend as if the suspended component rendered
-        // null and keep rendering. In the commit phase, we'll schedule a
-        // subsequent synchronous update to re-render the Suspense.
-        //
-        // Note: It doesn't matter whether the component that suspended was
-        // inside a concurrent mode tree. If the Suspense is outside of it, we
-        // should *not* suspend the commit.
-        if ((_workInProgress.mode & ConcurrentMode) === NoEffect) {
-          _workInProgress.effectTag |= DidCapture;
-
-          // We're going to commit this fiber even though it didn't complete.
-          // But we shouldn't call any lifecycle methods or callbacks. Remove
-          // all lifecycle effect tags.
-          sourceFiber.effectTag &= ~(LifecycleEffectMask | Incomplete);
-
-          if (sourceFiber.tag === ClassComponent) {
-            var currentSourceFiber = sourceFiber.alternate;
-            if (currentSourceFiber === null) {
-              // This is a new mount. Change the tag so it's not mistaken for a
-              // completed class component. For example, we should not call
-              // componentWillUnmount if it is deleted.
-              sourceFiber.tag = IncompleteClassComponent;
-            } else {
-              // When we try rendering again, we should not reuse the current fiber,
-              // since it's known to be in an inconsistent state. Use a force updte to
-              // prevent a bail out.
-              var update = createUpdate(Sync);
-              update.tag = ForceUpdate;
-              enqueueUpdate(sourceFiber, update);
+    if (renderExpirationTime === Never || msUntilTimeout > 0) {
+      // There's still time remaining.
+      markTimeout(root, thenable, msUntilTimeout, renderExpirationTime);
+      var onResolveOrReject = function() {
+        retrySuspendedRoot(root, renderExpirationTime);
+      };
+      thenable.then(onResolveOrReject, onResolveOrReject);
+      return;
+    } else {
+      // No time remaining. Need to fallback to placeholder.
+      // Find the nearest timeout that can be retried.
+      _workInProgress = returnFiber;
+      do {
+        switch (_workInProgress.tag) {
+          case HostRoot: {
+            // The root expired, but no fallback was provided. Throw a
+            // helpful error.
+            var message =
+              renderExpirationTime === Sync
+                ? "A synchronous update was suspended, but no fallback UI " +
+                  "was provided."
+                : "An update was suspended for longer than the timeout, " +
+                  "but no fallback UI was provided.";
+            value = new Error(message);
+            break;
+          }
+          case TimeoutComponent: {
+            if ((_workInProgress.effectTag & DidCapture) === NoEffect) {
+              _workInProgress.effectTag |= ShouldCapture;
+              var _onResolveOrReject = schedulePing.bind(null, _workInProgress);
+              thenable.then(_onResolveOrReject, _onResolveOrReject);
+              return;
             }
+            // Already captured during this render. Continue to the next
+            // Timeout ancestor.
+            break;
           }
-
-          // The source fiber did not complete. Mark it with Sync priority to
-          // indicate that it still has pending work.
-          sourceFiber.expirationTime = Sync;
-
-          // Exit without suspending.
-          return;
         }
-
-        // Confirmed that the boundary is in a concurrent mode tree. Continue
-        // with the normal suspend path.
-
-        attachPingListener(root, renderExpirationTime, thenable);
-
-        var absoluteTimeoutMs = void 0;
-        if (earliestTimeoutMs === -1) {
-          // If no explicit threshold is given, default to an arbitrarily large
-          // value. The actual size doesn't matter because the threshold for the
-          // whole tree will be clamped to the expiration time.
-          absoluteTimeoutMs = maxSigned31BitInt;
-        } else {
-          if (startTimeMs === -1) {
-            // This suspend happened outside of any already timed-out
-            // placeholders. We don't know exactly when the update was
-            // scheduled, but we can infer an approximate start time from the
-            // expiration time. First, find the earliest uncommitted expiration
-            // time in the tree, including work that is suspended. Then subtract
-            // the offset used to compute an async update's expiration time.
-            // This will cause high priority (interactive) work to expire
-            // earlier than necessary, but we can account for this by adjusting
-            // for the Just Noticeable Difference.
-            var earliestExpirationTime = findEarliestOutstandingPriorityLevel(
-              root,
-              renderExpirationTime
-            );
-            var earliestExpirationTimeMs = expirationTimeToMs(
-              earliestExpirationTime
-            );
-            startTimeMs = earliestExpirationTimeMs - LOW_PRIORITY_EXPIRATION;
-          }
-          absoluteTimeoutMs = startTimeMs + earliestTimeoutMs;
-        }
-
-        // Mark the earliest timeout in the suspended fiber's ancestor path.
-        // After completing the root, we'll take the largest of all the
-        // suspended fiber's timeouts and use it to compute a timeout for the
-        // whole tree.
-        renderDidSuspend(root, absoluteTimeoutMs, renderExpirationTime);
-
-        _workInProgress.effectTag |= ShouldCapture;
-        _workInProgress.expirationTime = renderExpirationTime;
-        return;
-      } else if (
-        enableSuspenseServerRenderer &&
-        _workInProgress.tag === DehydratedSuspenseComponent
-      ) {
-        attachPingListener(root, renderExpirationTime, thenable);
-
-        // Since we already have a current fiber, we can eagerly add a retry listener.
-        var retryCache = _workInProgress.memoizedState;
-        if (retryCache === null) {
-          retryCache = _workInProgress.memoizedState = new PossiblyWeakSet();
-          var _current = _workInProgress.alternate;
-          invariant(
-            _current,
-            "A dehydrated suspense boundary must commit before trying to render. " +
-              "This is probably a bug in React."
-          );
-          _current.memoizedState = retryCache;
-        }
-        // Memoize using the boundary fiber to prevent redundant listeners.
-        if (!retryCache.has(thenable)) {
-          retryCache.add(thenable);
-          var retry = resolveRetryThenable.bind(
-            null,
-            _workInProgress,
-            thenable
-          );
-          if (enableSchedulerTracing) {
-            retry = tracing.unstable_wrap(retry);
-          }
-          thenable.then(retry, retry);
-        }
-        _workInProgress.effectTag |= ShouldCapture;
-        _workInProgress.expirationTime = renderExpirationTime;
-        return;
-      }
-      // This boundary already captured during this render. Continue to the next
-      // boundary.
-      _workInProgress = _workInProgress.return;
-    } while (_workInProgress !== null);
-    // No boundary was found. Fallthrough to error mode.
-    // TODO: Use invariant so the message is stripped in prod?
-    value = new Error(
-      (getComponentName(sourceFiber.type) || "A React component") +
-        " suspended while rendering, but no fallback UI was specified.\n" +
-        "\n" +
-        "Add a <Suspense fallback=...> component higher in the tree to " +
-        "provide a loading indicator or placeholder to display." +
-        getStackByFiberInDevAndProd(sourceFiber)
-    );
+        _workInProgress = _workInProgress.return;
+      } while (_workInProgress !== null);
+    }
+  } else {
+    // This is an error.
+    markError(root);
+    if (
+      // Retry (at the same priority) one more time before handling the error.
+      // The retry will flush synchronously. (Unless we're already rendering
+      // synchronously, in which case move to the next check.)
+      (!root.didError && renderExpirationTime !== Sync) ||
+      // There's lower priority work. If so, it may have the effect of fixing
+      // the exception that was just thrown.
+      hasLowerPriorityWork(root, renderExpirationTime)
+    ) {
+      return;
+    }
   }
 
   // We didn't find a boundary that could handle this type of exception. Start
   // over and traverse parent path again, this time treating the exception
   // as an error.
-  renderDidError();
   value = createCapturedValue(value, sourceFiber);
   var workInProgress = returnFiber;
   do {
@@ -15896,13 +11956,12 @@ function throwException(
       case HostRoot: {
         var _errorInfo = value;
         workInProgress.effectTag |= ShouldCapture;
-        workInProgress.expirationTime = renderExpirationTime;
-        var _update = createRootErrorUpdate(
+        var update = createRootErrorUpdate(
           workInProgress,
           _errorInfo,
           renderExpirationTime
         );
-        enqueueCapturedUpdate(workInProgress, _update);
+        enqueueCapturedUpdate(workInProgress, update, renderExpirationTime);
         return;
       }
       case ClassComponent:
@@ -15912,20 +11971,20 @@ function throwException(
         var instance = workInProgress.stateNode;
         if (
           (workInProgress.effectTag & DidCapture) === NoEffect &&
-          (typeof ctor.getDerivedStateFromError === "function" ||
+          ((typeof ctor.getDerivedStateFromCatch === "function" &&
+            enableGetDerivedStateFromCatch) ||
             (instance !== null &&
               typeof instance.componentDidCatch === "function" &&
               !isAlreadyFailedLegacyErrorBoundary(instance)))
         ) {
           workInProgress.effectTag |= ShouldCapture;
-          workInProgress.expirationTime = renderExpirationTime;
           // Schedule the error boundary to re-render using updated state
-          var _update2 = createClassErrorUpdate(
+          var _update = createClassErrorUpdate(
             workInProgress,
             errorInfo,
             renderExpirationTime
           );
-          enqueueCapturedUpdate(workInProgress, _update2);
+          enqueueCapturedUpdate(workInProgress, _update, renderExpirationTime);
           return;
         }
         break;
@@ -15937,12 +11996,15 @@ function throwException(
 }
 
 function unwindWork(workInProgress, renderExpirationTime) {
+  if (enableProfilerTimer) {
+    if (workInProgress.mode & ProfileMode) {
+      recordElapsedActualRenderTime(workInProgress);
+    }
+  }
+
   switch (workInProgress.tag) {
     case ClassComponent: {
-      var Component = workInProgress.type;
-      if (isContextProvider(Component)) {
-        popContext(workInProgress);
-      }
+      popContextProvider(workInProgress);
       var effectTag = workInProgress.effectTag;
       if (effectTag & ShouldCapture) {
         workInProgress.effectTag = (effectTag & ~ShouldCapture) | DidCapture;
@@ -15954,38 +12016,21 @@ function unwindWork(workInProgress, renderExpirationTime) {
       popHostContainer(workInProgress);
       popTopLevelContextObject(workInProgress);
       var _effectTag = workInProgress.effectTag;
-      invariant(
-        (_effectTag & DidCapture) === NoEffect,
-        "The root failed to unmount after an error. This is likely a bug in " +
-          "React. Please file an issue."
-      );
-      workInProgress.effectTag = (_effectTag & ~ShouldCapture) | DidCapture;
-      return workInProgress;
-    }
-    case HostComponent: {
-      // TODO: popHydrationState
-      popHostContext(workInProgress);
-      return null;
-    }
-    case SuspenseComponent: {
-      var _effectTag2 = workInProgress.effectTag;
-      if (_effectTag2 & ShouldCapture) {
-        workInProgress.effectTag = (_effectTag2 & ~ShouldCapture) | DidCapture;
-        // Captured a suspense effect. Re-render the boundary.
+      if (_effectTag & ShouldCapture) {
+        workInProgress.effectTag = (_effectTag & ~ShouldCapture) | DidCapture;
         return workInProgress;
       }
       return null;
     }
-    case DehydratedSuspenseComponent: {
-      if (enableSuspenseServerRenderer) {
-        // TODO: popHydrationState
-        var _effectTag3 = workInProgress.effectTag;
-        if (_effectTag3 & ShouldCapture) {
-          workInProgress.effectTag =
-            (_effectTag3 & ~ShouldCapture) | DidCapture;
-          // Captured a suspense effect. Re-render the boundary.
-          return workInProgress;
-        }
+    case HostComponent: {
+      popHostContext(workInProgress);
+      return null;
+    }
+    case TimeoutComponent: {
+      var _effectTag2 = workInProgress.effectTag;
+      if (_effectTag2 & ShouldCapture) {
+        workInProgress.effectTag = (_effectTag2 & ~ShouldCapture) | DidCapture;
+        return workInProgress;
       }
       return null;
     }
@@ -16001,12 +12046,17 @@ function unwindWork(workInProgress, renderExpirationTime) {
 }
 
 function unwindInterruptedWork(interruptedWork) {
+  if (enableProfilerTimer) {
+    if (interruptedWork.mode & ProfileMode) {
+      // Resume in case we're picking up on work that was paused.
+      resumeActualRenderTimerIfPaused();
+      recordElapsedActualRenderTime(interruptedWork);
+    }
+  }
+
   switch (interruptedWork.tag) {
     case ClassComponent: {
-      var childContextTypes = interruptedWork.type.childContextTypes;
-      if (childContextTypes !== null && childContextTypes !== undefined) {
-        popContext(interruptedWork);
-      }
+      popContextProvider(interruptedWork);
       break;
     }
     case HostRoot: {
@@ -16029,59 +12079,45 @@ function unwindInterruptedWork(interruptedWork) {
   }
 }
 
-var ReactCurrentDispatcher = ReactSharedInternals.ReactCurrentDispatcher;
-var ReactCurrentOwner$2 = ReactSharedInternals.ReactCurrentOwner;
+var invokeGuardedCallback$2 = ReactErrorUtils.invokeGuardedCallback;
+var hasCaughtError = ReactErrorUtils.hasCaughtError;
+var clearCaughtError = ReactErrorUtils.clearCaughtError;
 
 var didWarnAboutStateTransition = void 0;
 var didWarnSetStateChildContext = void 0;
 var warnAboutUpdateOnUnmounted = void 0;
 var warnAboutInvalidUpdates = void 0;
 
-if (enableSchedulerTracing) {
-  // Provide explicit error message when production+profiling bundle of e.g. react-dom
-  // is used with production (non-profiling) bundle of scheduler/tracing
-  invariant(
-    tracing.__interactionsRef != null &&
-      tracing.__interactionsRef.current != null,
-    "It is not supported to run the profiling version of a renderer (for example, `react-dom/profiling`) " +
-      "without also replacing the `scheduler/tracing` module with `scheduler/tracing-profiling`. " +
-      "Your bundler might have a setting for aliasing both modules. " +
-      "Learn more at http://fb.me/react-profiling"
-  );
-}
-
 {
   didWarnAboutStateTransition = false;
   didWarnSetStateChildContext = false;
   var didWarnStateUpdateForUnmountedComponent = {};
 
-  warnAboutUpdateOnUnmounted = function(fiber, isClass) {
+  warnAboutUpdateOnUnmounted = function(fiber) {
     // We show the whole stack but dedupe on the top component's name because
     // the problematic code almost always lies inside that component.
-    var componentName = getComponentName(fiber.type) || "ReactComponent";
+    var componentName = getComponentName(fiber) || "ReactClass";
     if (didWarnStateUpdateForUnmountedComponent[componentName]) {
       return;
     }
-    warningWithoutStack$1(
+    warning(
       false,
-      "Can't perform a React state update on an unmounted component. This " +
+      "Can't call setState (or forceUpdate) on an unmounted component. This " +
         "is a no-op, but it indicates a memory leak in your application. To " +
-        "fix, cancel all subscriptions and asynchronous tasks in %s.%s",
-      isClass
-        ? "the componentWillUnmount method"
-        : "a useEffect cleanup function",
-      getStackByFiberInDevAndProd(fiber)
+        "fix, cancel all subscriptions and asynchronous tasks in the " +
+        "componentWillUnmount method.%s",
+      getStackAddendumByWorkInProgressFiber(fiber)
     );
     didWarnStateUpdateForUnmountedComponent[componentName] = true;
   };
 
   warnAboutInvalidUpdates = function(instance) {
-    switch (phase) {
+    switch (ReactDebugCurrentFiber.phase) {
       case "getChildContext":
         if (didWarnSetStateChildContext) {
           return;
         }
-        warningWithoutStack$1(
+        warning(
           false,
           "setState(...): Cannot call setState() inside getChildContext()"
         );
@@ -16091,16 +12127,31 @@ if (enableSchedulerTracing) {
         if (didWarnAboutStateTransition) {
           return;
         }
-        warningWithoutStack$1(
+        warning(
           false,
           "Cannot update during an existing state transition (such as within " +
-            "`render`). Render methods should be a pure function of props and state."
+            "`render` or another component's constructor). Render methods should " +
+            "be a pure function of props and state; constructor side-effects are " +
+            "an anti-pattern, but can be moved to `componentWillMount`."
         );
         didWarnAboutStateTransition = true;
         break;
     }
   };
 }
+
+// Represents the current time in ms.
+var originalStartTimeMs = now();
+var mostRecentCurrentTime = msToExpirationTime(0);
+var mostRecentCurrentTimeMs = originalStartTimeMs;
+
+// Used to ensure computeUniqueAsyncExpiration is monotonically increases.
+var lastUniqueAsyncExpiration = 0;
+
+// Represents the expiration time that incoming updates should use. (If this
+// is NoWork, use the default strategy: async updates in async mode, sync
+// updates in sync mode.)
+var expirationContext = NoWork;
 
 var isWorking = false;
 
@@ -16109,16 +12160,13 @@ var nextUnitOfWork = null;
 var nextRoot = null;
 // The time at which we're currently rendering work.
 var nextRenderExpirationTime = NoWork;
-var nextLatestAbsoluteTimeoutMs = -1;
+var nextLatestTimeoutMs = -1;
 var nextRenderDidError = false;
 
 // The next fiber with an effect that we're currently committing.
 var nextEffect = null;
 
 var isCommitting$1 = false;
-var rootWithPendingPassiveEffects = null;
-var passiveEffectCallbackHandle = null;
-var passiveEffectCallback = null;
 
 var legacyErrorBoundariesThatAlreadyFailed = null;
 
@@ -16127,13 +12175,11 @@ var interruptedBy = null;
 
 var stashedWorkInProgressProperties = void 0;
 var replayUnitOfWork = void 0;
-var mayReplayFailedUnitOfWork = void 0;
 var isReplayingFailedUnitOfWork = void 0;
 var originalReplayError = void 0;
 var rethrowOriginalError = void 0;
 if (true && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
   stashedWorkInProgressProperties = null;
-  mayReplayFailedUnitOfWork = true;
   isReplayingFailedUnitOfWork = false;
   originalReplayError = null;
   replayUnitOfWork = function(failedUnitOfWork, thrownValue, isYieldy) {
@@ -16151,7 +12197,7 @@ if (true && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
     // Restore the original state of the work-in-progress
     if (stashedWorkInProgressProperties === null) {
       // This should never happen. Don't throw because this code is DEV-only.
-      warningWithoutStack$1(
+      warning(
         false,
         "Could not replay rendering after an error. This is likely a bug in React. " +
           "Please file an issue."
@@ -16171,13 +12217,9 @@ if (true && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
       case HostComponent:
         popHostContext(failedUnitOfWork);
         break;
-      case ClassComponent: {
-        var Component = failedUnitOfWork.type;
-        if (isContextProvider(Component)) {
-          popContext(failedUnitOfWork);
-        }
+      case ClassComponent:
+        popContextProvider(failedUnitOfWork);
         break;
-      }
       case HostPortal:
         popHostContainer(failedUnitOfWork);
         break;
@@ -16188,22 +12230,19 @@ if (true && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
     // Replay the begin phase.
     isReplayingFailedUnitOfWork = true;
     originalReplayError = thrownValue;
-    invokeGuardedCallback(null, workLoop, null, isYieldy);
+    invokeGuardedCallback$2(null, workLoop, null, isYieldy);
     isReplayingFailedUnitOfWork = false;
     originalReplayError = null;
     if (hasCaughtError()) {
-      var replayError = clearCaughtError();
-      if (replayError != null && thrownValue != null) {
-        try {
-          // Reading the expando property is intentionally
-          // inside `try` because it might be a getter or Proxy.
-          if (replayError._suppressLogging) {
-            // Also suppress logging for the original error.
-            thrownValue._suppressLogging = true;
-          }
-        } catch (inner) {
-          // Ignore.
+      clearCaughtError();
+
+      if (enableProfilerTimer) {
+        if (failedUnitOfWork.mode & ProfileMode) {
+          recordElapsedActualRenderTime(failedUnitOfWork);
         }
+
+        // Stop "base" render timer again (after the re-thrown error).
+        stopBaseRenderTimerIfRunning();
       }
     } else {
       // If the begin phase did not fail the second time, set this pointer
@@ -16232,7 +12271,7 @@ function resetStack() {
 
   nextRoot = null;
   nextRenderExpirationTime = NoWork;
-  nextLatestAbsoluteTimeoutMs = -1;
+  nextLatestTimeoutMs = -1;
   nextRenderDidError = false;
   nextUnitOfWork = null;
 }
@@ -16240,7 +12279,7 @@ function resetStack() {
 function commitAllHostEffects() {
   while (nextEffect !== null) {
     {
-      setCurrentFiber(nextEffect);
+      ReactDebugCurrentFiber.setCurrentFiber(nextEffect);
     }
     recordEffect();
 
@@ -16251,9 +12290,9 @@ function commitAllHostEffects() {
     }
 
     if (effectTag & Ref) {
-      var current$$1 = nextEffect.alternate;
-      if (current$$1 !== null) {
-        commitDetachRef(current$$1);
+      var current = nextEffect.alternate;
+      if (current !== null) {
+        commitDetachRef(current);
       }
     }
 
@@ -16299,53 +12338,53 @@ function commitAllHostEffects() {
   }
 
   {
-    resetCurrentFiber();
+    ReactDebugCurrentFiber.resetCurrentFiber();
   }
 }
 
 function commitBeforeMutationLifecycles() {
   while (nextEffect !== null) {
-    {
-      setCurrentFiber(nextEffect);
-    }
-
     var effectTag = nextEffect.effectTag;
+
     if (effectTag & Snapshot) {
       recordEffect();
-      var current$$1 = nextEffect.alternate;
-      commitBeforeMutationLifeCycles(current$$1, nextEffect);
+      var current = nextEffect.alternate;
+      commitBeforeMutationLifeCycles(current, nextEffect);
     }
 
+    // Don't cleanup effects yet;
+    // This will be done by commitAllLifeCycles()
     nextEffect = nextEffect.nextEffect;
-  }
-
-  {
-    resetCurrentFiber();
   }
 }
 
-function commitAllLifeCycles(finishedRoot, committedExpirationTime) {
+function commitAllLifeCycles(
+  finishedRoot,
+  currentTime,
+  committedExpirationTime
+) {
   {
     ReactStrictModeWarnings.flushPendingUnsafeLifecycleWarnings();
-    ReactStrictModeWarnings.flushLegacyContextWarning();
 
     if (warnAboutDeprecatedLifecycles) {
       ReactStrictModeWarnings.flushPendingDeprecationWarnings();
     }
+
+    if (warnAboutLegacyContextAPI) {
+      ReactStrictModeWarnings.flushLegacyContextWarning();
+    }
   }
   while (nextEffect !== null) {
-    {
-      setCurrentFiber(nextEffect);
-    }
     var effectTag = nextEffect.effectTag;
 
     if (effectTag & (Update | Callback)) {
       recordEffect();
-      var current$$1 = nextEffect.alternate;
+      var current = nextEffect.alternate;
       commitLifeCycles(
         finishedRoot,
-        current$$1,
+        current,
         nextEffect,
+        currentTime,
         committedExpirationTime
       );
     }
@@ -16355,62 +12394,15 @@ function commitAllLifeCycles(finishedRoot, committedExpirationTime) {
       commitAttachRef(nextEffect);
     }
 
-    if (effectTag & Passive) {
-      rootWithPendingPassiveEffects = finishedRoot;
-    }
-
-    nextEffect = nextEffect.nextEffect;
-  }
-  {
-    resetCurrentFiber();
-  }
-}
-
-function commitPassiveEffects(root, firstEffect) {
-  rootWithPendingPassiveEffects = null;
-  passiveEffectCallbackHandle = null;
-  passiveEffectCallback = null;
-
-  // Set this to true to prevent re-entrancy
-  var previousIsRendering = isRendering;
-  isRendering = true;
-
-  var effect = firstEffect;
-  do {
-    {
-      setCurrentFiber(effect);
-    }
-
-    if (effect.effectTag & Passive) {
-      var didError = false;
-      var error = void 0;
-      {
-        invokeGuardedCallback(null, commitPassiveHookEffects, null, effect);
-        if (hasCaughtError()) {
-          didError = true;
-          error = clearCaughtError();
-        }
-      }
-      if (didError) {
-        captureCommitPhaseError(effect, error);
-      }
-    }
-    effect = effect.nextEffect;
-  } while (effect !== null);
-  {
-    resetCurrentFiber();
-  }
-
-  isRendering = previousIsRendering;
-
-  // Check if work was scheduled by one of the effects
-  var rootExpirationTime = root.expirationTime;
-  if (rootExpirationTime !== NoWork) {
-    requestWork(root, rootExpirationTime);
-  }
-  // Flush any sync work that was scheduled by effects
-  if (!isBatchingUpdates && !isRendering) {
-    performSyncWork();
+    var next = nextEffect.nextEffect;
+    // Ensure that we clean these up so that we don't accidentally keep them.
+    // I'm not actually sure this matters because we can't reset firstEffect
+    // and lastEffect since they're on every node, not just the effectful
+    // ones. So we have to clean everything as we reuse nodes anyway.
+    nextEffect.nextEffect = null;
+    // Ensure that we reset the effectTag here so that we can rely on effect
+    // tags to reason about the current life-cycle.
+    nextEffect = next;
   }
 }
 
@@ -16426,17 +12418,6 @@ function markLegacyErrorBoundaryAsFailed(instance) {
     legacyErrorBoundariesThatAlreadyFailed = new Set([instance]);
   } else {
     legacyErrorBoundariesThatAlreadyFailed.add(instance);
-  }
-}
-
-function flushPassiveEffects() {
-  if (passiveEffectCallbackHandle !== null) {
-    cancelPassiveEffects(passiveEffectCallbackHandle);
-  }
-  if (passiveEffectCallback !== null) {
-    // We call the scheduled callback instead of commitPassiveEffects directly
-    // to ensure tracing works correctly.
-    passiveEffectCallback();
   }
 }
 
@@ -16462,24 +12443,12 @@ function commitRoot(root, finishedWork) {
   // Update the pending priority levels to account for the work that we are
   // about to commit. This needs to happen before calling the lifecycles, since
   // they may schedule additional updates.
-  var updateExpirationTimeBeforeCommit = finishedWork.expirationTime;
-  var childExpirationTimeBeforeCommit = finishedWork.childExpirationTime;
-  var earliestRemainingTimeBeforeCommit =
-    childExpirationTimeBeforeCommit > updateExpirationTimeBeforeCommit
-      ? childExpirationTimeBeforeCommit
-      : updateExpirationTimeBeforeCommit;
-  markCommittedPriorityLevels(root, earliestRemainingTimeBeforeCommit);
-
-  var prevInteractions = null;
-  if (enableSchedulerTracing) {
-    // Restore any pending interactions at this point,
-    // So that cascading work triggered during the render phase will be accounted for.
-    prevInteractions = tracing.__interactionsRef.current;
-    tracing.__interactionsRef.current = root.memoizedInteractions;
-  }
+  var earliestRemainingTime = finishedWork.expirationTime;
+  var currentTime = recalculateCurrentTime();
+  markCommittedPriorityLevels(root, currentTime, earliestRemainingTime);
 
   // Reset this to null before calling lifecycles
-  ReactCurrentOwner$2.current = null;
+  ReactCurrentOwner.current = null;
 
   var firstEffect = void 0;
   if (finishedWork.effectTag > PerformedWork) {
@@ -16507,7 +12476,7 @@ function commitRoot(root, finishedWork) {
     var didError = false;
     var error = void 0;
     {
-      invokeGuardedCallback(null, commitBeforeMutationLifecycles, null);
+      invokeGuardedCallback$2(null, commitBeforeMutationLifecycles, null);
       if (hasCaughtError()) {
         didError = true;
         error = clearCaughtError();
@@ -16543,7 +12512,7 @@ function commitRoot(root, finishedWork) {
     var _didError = false;
     var _error = void 0;
     {
-      invokeGuardedCallback(null, commitAllHostEffects, null);
+      invokeGuardedCallback$2(null, commitAllHostEffects, null);
       if (hasCaughtError()) {
         _didError = true;
         _error = clearCaughtError();
@@ -16582,11 +12551,12 @@ function commitRoot(root, finishedWork) {
     var _didError2 = false;
     var _error2 = void 0;
     {
-      invokeGuardedCallback(
+      invokeGuardedCallback$2(
         null,
         commitAllLifeCycles,
         null,
         root,
+        currentTime,
         committedExpirationTime
       );
       if (hasCaughtError()) {
@@ -16607,168 +12577,86 @@ function commitRoot(root, finishedWork) {
     }
   }
 
-  if (firstEffect !== null && rootWithPendingPassiveEffects !== null) {
-    // This commit included a passive effect. These do not need to fire until
-    // after the next paint. Schedule an callback to fire them in an async
-    // event. To ensure serial execution, the callback will be flushed early if
-    // we enter rootWithPendingPassiveEffects commit phase before then.
-    var callback = commitPassiveEffects.bind(null, root, firstEffect);
-    if (enableSchedulerTracing) {
-      // TODO: Avoid this extra callback by mutating the tracing ref directly,
-      // like we do at the beginning of commitRoot. I've opted not to do that
-      // here because that code is still in flux.
-      callback = tracing.unstable_wrap(callback);
+  if (enableProfilerTimer) {
+    {
+      checkActualRenderTimeStackEmpty();
     }
-    passiveEffectCallbackHandle = scheduler.unstable_runWithPriority(
-      scheduler.unstable_NormalPriority,
-      function() {
-        return schedulePassiveEffects(callback);
-      }
-    );
-    passiveEffectCallback = callback;
+    resetActualRenderTimer();
   }
 
   isCommitting$1 = false;
   isWorking = false;
   stopCommitLifeCyclesTimer();
   stopCommitTimer();
-  onCommitRoot(finishedWork.stateNode);
+  if (typeof onCommitRoot === "function") {
+    onCommitRoot(finishedWork.stateNode);
+  }
   if (true && ReactFiberInstrumentation_1.debugTool) {
     ReactFiberInstrumentation_1.debugTool.onCommitWork(finishedWork);
   }
 
-  var updateExpirationTimeAfterCommit = finishedWork.expirationTime;
-  var childExpirationTimeAfterCommit = finishedWork.childExpirationTime;
-  var earliestRemainingTimeAfterCommit =
-    childExpirationTimeAfterCommit > updateExpirationTimeAfterCommit
-      ? childExpirationTimeAfterCommit
-      : updateExpirationTimeAfterCommit;
-  if (earliestRemainingTimeAfterCommit === NoWork) {
+  var expirationTime = root.expirationTime;
+  if (expirationTime === NoWork) {
     // If there's no remaining work, we can clear the set of already failed
     // error boundaries.
     legacyErrorBoundariesThatAlreadyFailed = null;
   }
-  onCommit(root, earliestRemainingTimeAfterCommit);
-
-  if (enableSchedulerTracing) {
-    tracing.__interactionsRef.current = prevInteractions;
-
-    var subscriber = void 0;
-
-    try {
-      subscriber = tracing.__subscriberRef.current;
-      if (subscriber !== null && root.memoizedInteractions.size > 0) {
-        var threadID = computeThreadID(
-          committedExpirationTime,
-          root.interactionThreadID
-        );
-        subscriber.onWorkStopped(root.memoizedInteractions, threadID);
-      }
-    } catch (error) {
-      // It's not safe for commitRoot() to throw.
-      // Store the error for now and we'll re-throw in finishRendering().
-      if (!hasUnhandledError) {
-        hasUnhandledError = true;
-        unhandledError = error;
-      }
-    } finally {
-      // Clear completed interactions from the pending Map.
-      // Unless the render was suspended or cascading work was scheduled,
-      // In which case– leave pending interactions until the subsequent render.
-      var pendingInteractionMap = root.pendingInteractionMap;
-      pendingInteractionMap.forEach(function(
-        scheduledInteractions,
-        scheduledExpirationTime
-      ) {
-        // Only decrement the pending interaction count if we're done.
-        // If there's still work at the current priority,
-        // That indicates that we are waiting for suspense data.
-        if (scheduledExpirationTime > earliestRemainingTimeAfterCommit) {
-          pendingInteractionMap.delete(scheduledExpirationTime);
-
-          scheduledInteractions.forEach(function(interaction) {
-            interaction.__count--;
-
-            if (subscriber !== null && interaction.__count === 0) {
-              try {
-                subscriber.onInteractionScheduledWorkCompleted(interaction);
-              } catch (error) {
-                // It's not safe for commitRoot() to throw.
-                // Store the error for now and we'll re-throw in finishRendering().
-                if (!hasUnhandledError) {
-                  hasUnhandledError = true;
-                  unhandledError = error;
-                }
-              }
-            }
-          });
-        }
-      });
-    }
-  }
+  onCommit(root, expirationTime);
 }
 
-function resetChildExpirationTime(workInProgress, renderTime) {
-  if (renderTime !== Never && workInProgress.childExpirationTime === Never) {
+function resetExpirationTime(workInProgress, renderTime) {
+  if (renderTime !== Never && workInProgress.expirationTime === Never) {
     // The children of this component are hidden. Don't bubble their
     // expiration times.
     return;
   }
 
-  var newChildExpirationTime = NoWork;
+  // Check for pending updates.
+  var newExpirationTime = NoWork;
+  switch (workInProgress.tag) {
+    case HostRoot:
+    case ClassComponent: {
+      var updateQueue = workInProgress.updateQueue;
+      if (updateQueue !== null) {
+        newExpirationTime = updateQueue.expirationTime;
+      }
+    }
+  }
+
+  // TODO: Calls need to visit stateNode
 
   // Bubble up the earliest expiration time.
+  // (And "base" render timers if that feature flag is enabled)
   if (enableProfilerTimer && workInProgress.mode & ProfileMode) {
-    // We're in profiling mode.
-    // Let's use this same traversal to update the render durations.
-    var actualDuration = workInProgress.actualDuration;
-    var treeBaseDuration = workInProgress.selfBaseDuration;
-
-    // When a fiber is cloned, its actualDuration is reset to 0.
-    // This value will only be updated if work is done on the fiber (i.e. it doesn't bailout).
-    // When work is done, it should bubble to the parent's actualDuration.
-    // If the fiber has not been cloned though, (meaning no work was done),
-    // Then this value will reflect the amount of time spent working on a previous render.
-    // In that case it should not bubble.
-    // We determine whether it was cloned by comparing the child pointer.
-    var shouldBubbleActualDurations =
-      workInProgress.alternate === null ||
-      workInProgress.child !== workInProgress.alternate.child;
-
+    var treeBaseTime = workInProgress.selfBaseTime;
     var child = workInProgress.child;
     while (child !== null) {
-      var childUpdateExpirationTime = child.expirationTime;
-      var childChildExpirationTime = child.childExpirationTime;
-      if (childUpdateExpirationTime > newChildExpirationTime) {
-        newChildExpirationTime = childUpdateExpirationTime;
+      treeBaseTime += child.treeBaseTime;
+      if (
+        child.expirationTime !== NoWork &&
+        (newExpirationTime === NoWork ||
+          newExpirationTime > child.expirationTime)
+      ) {
+        newExpirationTime = child.expirationTime;
       }
-      if (childChildExpirationTime > newChildExpirationTime) {
-        newChildExpirationTime = childChildExpirationTime;
-      }
-      if (shouldBubbleActualDurations) {
-        actualDuration += child.actualDuration;
-      }
-      treeBaseDuration += child.treeBaseDuration;
       child = child.sibling;
     }
-    workInProgress.actualDuration = actualDuration;
-    workInProgress.treeBaseDuration = treeBaseDuration;
+    workInProgress.treeBaseTime = treeBaseTime;
   } else {
     var _child = workInProgress.child;
     while (_child !== null) {
-      var _childUpdateExpirationTime = _child.expirationTime;
-      var _childChildExpirationTime = _child.childExpirationTime;
-      if (_childUpdateExpirationTime > newChildExpirationTime) {
-        newChildExpirationTime = _childUpdateExpirationTime;
-      }
-      if (_childChildExpirationTime > newChildExpirationTime) {
-        newChildExpirationTime = _childChildExpirationTime;
+      if (
+        _child.expirationTime !== NoWork &&
+        (newExpirationTime === NoWork ||
+          newExpirationTime > _child.expirationTime)
+      ) {
+        newExpirationTime = _child.expirationTime;
       }
       _child = _child.sibling;
     }
   }
 
-  workInProgress.childExpirationTime = newChildExpirationTime;
+  workInProgress.expirationTime = newExpirationTime;
 }
 
 function completeUnitOfWork(workInProgress) {
@@ -16780,55 +12668,35 @@ function completeUnitOfWork(workInProgress) {
     // Ideally nothing should rely on this, but relying on it here
     // means that we don't need an additional field on the work in
     // progress.
-    var current$$1 = workInProgress.alternate;
+    var current = workInProgress.alternate;
     {
-      setCurrentFiber(workInProgress);
+      ReactDebugCurrentFiber.setCurrentFiber(workInProgress);
     }
 
     var returnFiber = workInProgress.return;
     var siblingFiber = workInProgress.sibling;
 
     if ((workInProgress.effectTag & Incomplete) === NoEffect) {
-      if (true && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
-        // Don't replay if it fails during completion phase.
-        mayReplayFailedUnitOfWork = false;
-      }
       // This fiber completed.
-      // Remember we're completing this unit so we can find a boundary if it fails.
-      nextUnitOfWork = workInProgress;
-      if (enableProfilerTimer) {
-        if (workInProgress.mode & ProfileMode) {
-          startProfilerTimer(workInProgress);
-        }
-        nextUnitOfWork = completeWork(
-          current$$1,
-          workInProgress,
-          nextRenderExpirationTime
-        );
-        if (workInProgress.mode & ProfileMode) {
-          // Update render duration assuming we didn't error.
-          stopProfilerTimerIfRunningAndRecordDelta(workInProgress, false);
-        }
-      } else {
-        nextUnitOfWork = completeWork(
-          current$$1,
-          workInProgress,
-          nextRenderExpirationTime
-        );
-      }
-      if (true && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
-        // We're out of completion phase so replaying is fine now.
-        mayReplayFailedUnitOfWork = true;
-      }
+      var next = completeWork(
+        current,
+        workInProgress,
+        nextRenderExpirationTime
+      );
       stopWorkTimer(workInProgress);
-      resetChildExpirationTime(workInProgress, nextRenderExpirationTime);
+      resetExpirationTime(workInProgress, nextRenderExpirationTime);
       {
-        resetCurrentFiber();
+        ReactDebugCurrentFiber.resetCurrentFiber();
       }
 
-      if (nextUnitOfWork !== null) {
-        // Completing this fiber spawned new work. Work on that next.
-        return nextUnitOfWork;
+      if (next !== null) {
+        stopWorkTimer(workInProgress);
+        if (true && ReactFiberInstrumentation_1.debugTool) {
+          ReactFiberInstrumentation_1.debugTool.onCompleteWork(workInProgress);
+        }
+        // If completing this work spawned new work, do that next. We'll come
+        // back here again.
+        return next;
       }
 
       if (
@@ -16884,24 +12752,10 @@ function completeUnitOfWork(workInProgress) {
         return null;
       }
     } else {
-      if (enableProfilerTimer && workInProgress.mode & ProfileMode) {
-        // Record the render duration for the fiber that errored.
-        stopProfilerTimerIfRunningAndRecordDelta(workInProgress, false);
-
-        // Include the time spent working on failed children before continuing.
-        var actualDuration = workInProgress.actualDuration;
-        var child = workInProgress.child;
-        while (child !== null) {
-          actualDuration += child.actualDuration;
-          child = child.sibling;
-        }
-        workInProgress.actualDuration = actualDuration;
-      }
-
       // This fiber did not complete because something threw. Pop values off
       // the stack without entering the complete phase. If this is a boundary,
       // capture values if possible.
-      var next = unwindWork(workInProgress, nextRenderExpirationTime);
+      var _next = unwindWork(workInProgress, nextRenderExpirationTime);
       // Because this fiber did not complete, don't reset its expiration time.
       if (workInProgress.effectTag & DidCapture) {
         // Restarting an error boundary
@@ -16911,21 +12765,20 @@ function completeUnitOfWork(workInProgress) {
       }
 
       {
-        resetCurrentFiber();
+        ReactDebugCurrentFiber.resetCurrentFiber();
       }
 
-      if (next !== null) {
+      if (_next !== null) {
         stopWorkTimer(workInProgress);
         if (true && ReactFiberInstrumentation_1.debugTool) {
           ReactFiberInstrumentation_1.debugTool.onCompleteWork(workInProgress);
         }
-
         // If completing this work spawned new work, do that next. We'll come
         // back here again.
         // Since we're restarting, remove anything that is not a host effect
         // from the effect tag.
-        next.effectTag &= HostEffectMask;
-        return next;
+        _next.effectTag &= HostEffectMask;
+        return _next;
       }
 
       if (returnFiber !== null) {
@@ -16962,12 +12815,12 @@ function performUnitOfWork(workInProgress) {
   // Ideally nothing should rely on this, but relying on it here
   // means that we don't need an additional field on the work in
   // progress.
-  var current$$1 = workInProgress.alternate;
+  var current = workInProgress.alternate;
 
   // See if beginning this work spawns more work.
   startWorkTimer(workInProgress);
   {
-    setCurrentFiber(workInProgress);
+    ReactDebugCurrentFiber.setCurrentFiber(workInProgress);
   }
 
   if (true && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
@@ -16980,23 +12833,22 @@ function performUnitOfWork(workInProgress) {
   var next = void 0;
   if (enableProfilerTimer) {
     if (workInProgress.mode & ProfileMode) {
-      startProfilerTimer(workInProgress);
+      startBaseRenderTimer();
     }
 
-    next = beginWork(current$$1, workInProgress, nextRenderExpirationTime);
-    workInProgress.memoizedProps = workInProgress.pendingProps;
+    next = beginWork(current, workInProgress, nextRenderExpirationTime);
 
     if (workInProgress.mode & ProfileMode) {
-      // Record the render duration assuming we didn't bailout (or error).
-      stopProfilerTimerIfRunningAndRecordDelta(workInProgress, true);
+      // Update "base" time if the render wasn't bailed out on.
+      recordElapsedBaseRenderTimeIfRunning(workInProgress);
+      stopBaseRenderTimerIfRunning();
     }
   } else {
-    next = beginWork(current$$1, workInProgress, nextRenderExpirationTime);
-    workInProgress.memoizedProps = workInProgress.pendingProps;
+    next = beginWork(current, workInProgress, nextRenderExpirationTime);
   }
 
   {
-    resetCurrentFiber();
+    ReactDebugCurrentFiber.resetCurrentFiber();
     if (isReplayingFailedUnitOfWork) {
       // Currently replaying a failed unit of work. This should be unreachable,
       // because the render phase is meant to be idempotent, and it should
@@ -17014,7 +12866,7 @@ function performUnitOfWork(workInProgress) {
     next = completeUnitOfWork(workInProgress);
   }
 
-  ReactCurrentOwner$2.current = null;
+  ReactCurrentOwner.current = null;
 
   return next;
 }
@@ -17026,9 +12878,15 @@ function workLoop(isYieldy) {
       nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
     }
   } else {
-    // Flush asynchronous work until there's a higher priority event
-    while (nextUnitOfWork !== null && !shouldYield$$1()) {
+    // Flush asynchronous work until the deadline runs out of time.
+    while (nextUnitOfWork !== null && !shouldYield()) {
       nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+    }
+
+    if (enableProfilerTimer) {
+      // If we didn't finish, pause the "actual" render timer.
+      // We'll restart it when we resume work.
+      pauseActualRenderTimerIfRunning();
     }
   }
 }
@@ -17039,12 +12897,7 @@ function renderRoot(root, isYieldy) {
     "renderRoot was called recursively. This error is likely caused " +
       "by a bug in React. Please file an issue."
   );
-
-  flushPassiveEffects();
-
   isWorking = true;
-  var previousDispatcher = ReactCurrentDispatcher.current;
-  ReactCurrentDispatcher.current = ContextOnlyDispatcher;
 
   var expirationTime = root.nextExpirationTimeToWorkOn;
 
@@ -17059,63 +12912,14 @@ function renderRoot(root, isYieldy) {
     resetStack();
     nextRoot = root;
     nextRenderExpirationTime = expirationTime;
+    nextLatestTimeoutMs = -1;
+    nextRenderDidError = false;
     nextUnitOfWork = createWorkInProgress(
       nextRoot.current,
       null,
       nextRenderExpirationTime
     );
     root.pendingCommitExpirationTime = NoWork;
-
-    if (enableSchedulerTracing) {
-      // Determine which interactions this batch of work currently includes,
-      // So that we can accurately attribute time spent working on it,
-      var interactions = new Set();
-      root.pendingInteractionMap.forEach(function(
-        scheduledInteractions,
-        scheduledExpirationTime
-      ) {
-        if (scheduledExpirationTime >= expirationTime) {
-          scheduledInteractions.forEach(function(interaction) {
-            return interactions.add(interaction);
-          });
-        }
-      });
-
-      // Store the current set of interactions on the FiberRoot for a few reasons:
-      // We can re-use it in hot functions like renderRoot() without having to recalculate it.
-      // We will also use it in commitWork() to pass to any Profiler onRender() hooks.
-      // This also provides DevTools with a way to access it when the onCommitRoot() hook is called.
-      root.memoizedInteractions = interactions;
-
-      if (interactions.size > 0) {
-        var subscriber = tracing.__subscriberRef.current;
-        if (subscriber !== null) {
-          var threadID = computeThreadID(
-            expirationTime,
-            root.interactionThreadID
-          );
-          try {
-            subscriber.onWorkStarted(interactions, threadID);
-          } catch (error) {
-            // Work thrown by an interaction tracing subscriber should be rethrown,
-            // But only once it's safe (to avoid leaving the scheduler in an invalid state).
-            // Store the error for now and we'll re-throw in finishRendering().
-            if (!hasUnhandledError) {
-              hasUnhandledError = true;
-              unhandledError = error;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  var prevInteractions = null;
-  if (enableSchedulerTracing) {
-    // We're about to start new traced work.
-    // Restore pending interactions so cascading work triggered during the render phase will be accounted for.
-    prevInteractions = tracing.__interactionsRef.current;
-    tracing.__interactionsRef.current = root.memoizedInteractions;
   }
 
   var didFatal = false;
@@ -17126,15 +12930,9 @@ function renderRoot(root, isYieldy) {
     try {
       workLoop(isYieldy);
     } catch (thrownValue) {
-      resetContextDependences();
-      resetHooks();
-
-      // Reset in case completion throws.
-      // This is only used in DEV and when replaying is on.
-      var mayReplay = void 0;
-      if (true && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
-        mayReplay = mayReplayFailedUnitOfWork;
-        mayReplayFailedUnitOfWork = true;
+      if (enableProfilerTimer) {
+        // Stop "base" render timer in the event of an error.
+        stopBaseRenderTimerIfRunning();
       }
 
       if (nextUnitOfWork === null) {
@@ -17142,23 +12940,15 @@ function renderRoot(root, isYieldy) {
         didFatal = true;
         onUncaughtError(thrownValue);
       } else {
-        if (enableProfilerTimer && nextUnitOfWork.mode & ProfileMode) {
-          // Record the time spent rendering before an error was thrown.
-          // This avoids inaccurate Profiler durations in the case of a suspended render.
-          stopProfilerTimerIfRunningAndRecordDelta(nextUnitOfWork, true);
-        }
-
         {
           // Reset global debug state
           // We assume this is defined in DEV
           resetCurrentlyProcessingQueue();
         }
 
+        var failedUnitOfWork = nextUnitOfWork;
         if (true && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
-          if (mayReplay) {
-            var failedUnitOfWork = nextUnitOfWork;
-            replayUnitOfWork(failedUnitOfWork, thrownValue, isYieldy);
-          }
+          replayUnitOfWork(failedUnitOfWork, thrownValue, isYieldy);
         }
 
         // TODO: we already know this isn't true in some cases.
@@ -17182,163 +12972,78 @@ function renderRoot(root, isYieldy) {
           // for now.
           didFatal = true;
           onUncaughtError(thrownValue);
-        } else {
-          throwException(
-            root,
-            returnFiber,
-            sourceFiber,
-            thrownValue,
-            nextRenderExpirationTime
-          );
-          nextUnitOfWork = completeUnitOfWork(sourceFiber);
-          continue;
+          break;
         }
+        throwException(
+          root,
+          returnFiber,
+          sourceFiber,
+          thrownValue,
+          nextRenderExpirationTime,
+          mostRecentCurrentTimeMs
+        );
+        nextUnitOfWork = completeUnitOfWork(sourceFiber);
       }
     }
     break;
   } while (true);
 
-  if (enableSchedulerTracing) {
-    // Traced work is done for now; restore the previous interactions.
-    tracing.__interactionsRef.current = prevInteractions;
-  }
-
   // We're done performing work. Time to clean up.
   isWorking = false;
-  ReactCurrentDispatcher.current = previousDispatcher;
-  resetContextDependences();
-  resetHooks();
 
   // Yield back to main thread.
   if (didFatal) {
-    var _didCompleteRoot = false;
-    stopWorkLoopTimer(interruptedBy, _didCompleteRoot);
+    var didCompleteRoot = false;
+    stopWorkLoopTimer(interruptedBy, didCompleteRoot);
     interruptedBy = null;
     // There was a fatal error.
     {
       resetStackAfterFatalErrorInDev();
     }
-    // `nextRoot` points to the in-progress root. A non-null value indicates
-    // that we're in the middle of an async render. Set it to null to indicate
-    // there's no more work to be done in the current batch.
-    nextRoot = null;
     onFatal(root);
-    return;
-  }
-
-  if (nextUnitOfWork !== null) {
-    // There's still remaining async work in this tree, but we ran out of time
-    // in the current frame. Yield back to the renderer. Unless we're
-    // interrupted by a higher priority update, we'll continue later from where
-    // we left off.
-    var _didCompleteRoot2 = false;
-    stopWorkLoopTimer(interruptedBy, _didCompleteRoot2);
+  } else if (nextUnitOfWork === null) {
+    // We reached the root.
+    var rootWorkInProgress = root.current.alternate;
+    invariant(
+      rootWorkInProgress !== null,
+      "Finished root should have a work-in-progress. This error is likely " +
+        "caused by a bug in React. Please file an issue."
+    );
+    if ((rootWorkInProgress.effectTag & Incomplete) === NoEffect) {
+      var _didCompleteRoot = true;
+      stopWorkLoopTimer(interruptedBy, _didCompleteRoot);
+      interruptedBy = null;
+      // The root successfully completed.
+      onComplete(root, rootWorkInProgress, expirationTime);
+    } else {
+      // The root did not complete.
+      var _didCompleteRoot2 = false;
+      stopWorkLoopTimer(interruptedBy, _didCompleteRoot2);
+      interruptedBy = null;
+      markSuspendedPriorityLevel(root, expirationTime, nextRenderDidError);
+      var suspendedExpirationTime = expirationTime;
+      var newExpirationTime = root.expirationTime;
+      onSuspend(
+        root,
+        suspendedExpirationTime,
+        newExpirationTime,
+        nextLatestTimeoutMs
+      );
+    }
+  } else {
+    var _didCompleteRoot3 = false;
+    stopWorkLoopTimer(interruptedBy, _didCompleteRoot3);
     interruptedBy = null;
     onYield(root);
-    return;
   }
-
-  // We completed the whole tree.
-  var didCompleteRoot = true;
-  stopWorkLoopTimer(interruptedBy, didCompleteRoot);
-  var rootWorkInProgress = root.current.alternate;
-  invariant(
-    rootWorkInProgress !== null,
-    "Finished root should have a work-in-progress. This error is likely " +
-      "caused by a bug in React. Please file an issue."
-  );
-
-  // `nextRoot` points to the in-progress root. A non-null value indicates
-  // that we're in the middle of an async render. Set it to null to indicate
-  // there's no more work to be done in the current batch.
-  nextRoot = null;
-  interruptedBy = null;
-
-  if (nextRenderDidError) {
-    // There was an error
-    if (hasLowerPriorityWork(root, expirationTime)) {
-      // There's lower priority work. If so, it may have the effect of fixing
-      // the exception that was just thrown. Exit without committing. This is
-      // similar to a suspend, but without a timeout because we're not waiting
-      // for a promise to resolve. React will restart at the lower
-      // priority level.
-      markSuspendedPriorityLevel(root, expirationTime);
-      var suspendedExpirationTime = expirationTime;
-      var rootExpirationTime = root.expirationTime;
-      onSuspend(
-        root,
-        rootWorkInProgress,
-        suspendedExpirationTime,
-        rootExpirationTime,
-        -1 // Indicates no timeout
-      );
-      return;
-    } else if (
-      // There's no lower priority work, but we're rendering asynchronously.
-      // Synchronously attempt to render the same level one more time. This is
-      // similar to a suspend, but without a timeout because we're not waiting
-      // for a promise to resolve.
-      !root.didError &&
-      isYieldy
-    ) {
-      root.didError = true;
-      var _suspendedExpirationTime = (root.nextExpirationTimeToWorkOn = expirationTime);
-      var _rootExpirationTime = (root.expirationTime = Sync);
-      onSuspend(
-        root,
-        rootWorkInProgress,
-        _suspendedExpirationTime,
-        _rootExpirationTime,
-        -1 // Indicates no timeout
-      );
-      return;
-    }
-  }
-
-  if (isYieldy && nextLatestAbsoluteTimeoutMs !== -1) {
-    // The tree was suspended.
-    var _suspendedExpirationTime2 = expirationTime;
-    markSuspendedPriorityLevel(root, _suspendedExpirationTime2);
-
-    // Find the earliest uncommitted expiration time in the tree, including
-    // work that is suspended. The timeout threshold cannot be longer than
-    // the overall expiration.
-    var earliestExpirationTime = findEarliestOutstandingPriorityLevel(
-      root,
-      expirationTime
-    );
-    var earliestExpirationTimeMs = expirationTimeToMs(earliestExpirationTime);
-    if (earliestExpirationTimeMs < nextLatestAbsoluteTimeoutMs) {
-      nextLatestAbsoluteTimeoutMs = earliestExpirationTimeMs;
-    }
-
-    // Subtract the current time from the absolute timeout to get the number
-    // of milliseconds until the timeout. In other words, convert an absolute
-    // timestamp to a relative time. This is the value that is passed
-    // to `setTimeout`.
-    var currentTimeMs = expirationTimeToMs(requestCurrentTime());
-    var msUntilTimeout = nextLatestAbsoluteTimeoutMs - currentTimeMs;
-    msUntilTimeout = msUntilTimeout < 0 ? 0 : msUntilTimeout;
-
-    // TODO: Account for the Just Noticeable Difference
-
-    var _rootExpirationTime2 = root.expirationTime;
-    onSuspend(
-      root,
-      rootWorkInProgress,
-      _suspendedExpirationTime2,
-      _rootExpirationTime2,
-      msUntilTimeout
-    );
-    return;
-  }
-
-  // Ready to commit.
-  onComplete(root, rootWorkInProgress, expirationTime);
 }
 
-function captureCommitPhaseError(sourceFiber, value) {
-  var expirationTime = Sync;
+function dispatch(sourceFiber, value, expirationTime) {
+  invariant(
+    !isWorking || isCommitting$1,
+    "dispatch: Cannot dispatch during the render phase."
+  );
+
   var fiber = sourceFiber.return;
   while (fiber !== null) {
     switch (fiber.tag) {
@@ -17346,13 +13051,13 @@ function captureCommitPhaseError(sourceFiber, value) {
         var ctor = fiber.type;
         var instance = fiber.stateNode;
         if (
-          typeof ctor.getDerivedStateFromError === "function" ||
+          typeof ctor.getDerivedStateFromCatch === "function" ||
           (typeof instance.componentDidCatch === "function" &&
             !isAlreadyFailedLegacyErrorBoundary(instance))
         ) {
           var errorInfo = createCapturedValue(value, sourceFiber);
           var update = createClassErrorUpdate(fiber, errorInfo, expirationTime);
-          enqueueUpdate(fiber, update);
+          enqueueUpdate(fiber, update, expirationTime);
           scheduleWork(fiber, expirationTime);
           return;
         }
@@ -17360,7 +13065,7 @@ function captureCommitPhaseError(sourceFiber, value) {
       case HostRoot: {
         var _errorInfo = createCapturedValue(value, sourceFiber);
         var _update = createRootErrorUpdate(fiber, _errorInfo, expirationTime);
-        enqueueUpdate(fiber, _update);
+        enqueueUpdate(fiber, _update, expirationTime);
         scheduleWork(fiber, expirationTime);
         return;
       }
@@ -17378,160 +13083,121 @@ function captureCommitPhaseError(sourceFiber, value) {
       _errorInfo2,
       expirationTime
     );
-    enqueueUpdate(rootFiber, _update2);
+    enqueueUpdate(rootFiber, _update2, expirationTime);
     scheduleWork(rootFiber, expirationTime);
   }
 }
 
-function computeThreadID(expirationTime, interactionThreadID) {
-  // Interaction threads are unique per root and expiration time.
-  return expirationTime * 1000 + interactionThreadID;
+function captureCommitPhaseError(fiber, error) {
+  return dispatch(fiber, error, Sync);
+}
+
+function computeAsyncExpiration(currentTime) {
+  // Given the current clock time, returns an expiration time. We use rounding
+  // to batch like updates together.
+  // Should complete within ~5000ms. 5250ms max.
+  var expirationMs = 5000;
+  var bucketSizeMs = 250;
+  return computeExpirationBucket(currentTime, expirationMs, bucketSizeMs);
+}
+
+function computeInteractiveExpiration(currentTime) {
+  var expirationMs = void 0;
+  // We intentionally set a higher expiration time for interactive updates in
+  // dev than in production.
+  // If the main thread is being blocked so long that you hit the expiration,
+  // it's a problem that could be solved with better scheduling.
+  // People will be more likely to notice this and fix it with the long
+  // expiration time in development.
+  // In production we opt for better UX at the risk of masking scheduling
+  // problems, by expiring fast.
+  {
+    // Should complete within ~500ms. 600ms max.
+    expirationMs = 500;
+  }
+  var bucketSizeMs = 100;
+  return computeExpirationBucket(currentTime, expirationMs, bucketSizeMs);
+}
+
+// Creates a unique async expiration time.
+function computeUniqueAsyncExpiration() {
+  var currentTime = recalculateCurrentTime();
+  var result = computeAsyncExpiration(currentTime);
+  if (result <= lastUniqueAsyncExpiration) {
+    // Since we assume the current time monotonically increases, we only hit
+    // this branch when computeUniqueAsyncExpiration is fired multiple times
+    // within a 200ms window (or whatever the async bucket size is).
+    result = lastUniqueAsyncExpiration + 1;
+  }
+  lastUniqueAsyncExpiration = result;
+  return lastUniqueAsyncExpiration;
 }
 
 function computeExpirationForFiber(currentTime, fiber) {
-  var priorityLevel = scheduler.unstable_getCurrentPriorityLevel();
-
   var expirationTime = void 0;
-  if ((fiber.mode & ConcurrentMode) === NoContext) {
-    // Outside of concurrent mode, updates are always synchronous.
-    expirationTime = Sync;
-  } else if (isWorking && !isCommitting$1) {
-    // During render phase, updates expire during as the current render.
-    expirationTime = nextRenderExpirationTime;
+  if (expirationContext !== NoWork) {
+    // An explicit expiration context was set;
+    expirationTime = expirationContext;
+  } else if (isWorking) {
+    if (isCommitting$1) {
+      // Updates that occur during the commit phase should have sync priority
+      // by default.
+      expirationTime = Sync;
+    } else {
+      // Updates during the render phase should expire at the same time as
+      // the work that is being rendered.
+      expirationTime = nextRenderExpirationTime;
+    }
   } else {
-    switch (priorityLevel) {
-      case scheduler.unstable_ImmediatePriority:
-        expirationTime = Sync;
-        break;
-      case scheduler.unstable_UserBlockingPriority:
+    // No explicit expiration context was set, and we're not currently
+    // performing work. Calculate a new expiration time.
+    if (fiber.mode & AsyncMode) {
+      if (isBatchingInteractiveUpdates) {
+        // This is an interactive update
         expirationTime = computeInteractiveExpiration(currentTime);
-        break;
-      case scheduler.unstable_NormalPriority:
-        // This is a normal, concurrent update
+      } else {
+        // This is an async update
         expirationTime = computeAsyncExpiration(currentTime);
-        break;
-      case scheduler.unstable_LowPriority:
-      case scheduler.unstable_IdlePriority:
-        expirationTime = Never;
-        break;
-      default:
-        invariant(
-          false,
-          "Unknown priority level. This error is likely caused by a bug in " +
-            "React. Please file an issue."
-        );
-    }
-
-    // If we're in the middle of rendering a tree, do not update at the same
-    // expiration time that is already rendering.
-    if (nextRoot !== null && expirationTime === nextRenderExpirationTime) {
-      expirationTime -= 1;
+      }
+    } else {
+      // This is a sync update
+      expirationTime = Sync;
     }
   }
-
-  // Keep track of the lowest pending interactive expiration time. This
-  // allows us to synchronously flush all interactive updates
-  // when needed.
-  // TODO: Move this to renderer?
-  if (
-    priorityLevel === scheduler.unstable_UserBlockingPriority &&
-    (lowestPriorityPendingInteractiveExpirationTime === NoWork ||
-      expirationTime < lowestPriorityPendingInteractiveExpirationTime)
-  ) {
-    lowestPriorityPendingInteractiveExpirationTime = expirationTime;
+  if (isBatchingInteractiveUpdates) {
+    // This is an interactive update. Keep track of the lowest pending
+    // interactive expiration time. This allows us to synchronously flush
+    // all interactive updates when needed.
+    if (
+      lowestPendingInteractiveExpirationTime === NoWork ||
+      expirationTime > lowestPendingInteractiveExpirationTime
+    ) {
+      lowestPendingInteractiveExpirationTime = expirationTime;
+    }
   }
-
   return expirationTime;
 }
 
-function renderDidSuspend(root, absoluteTimeoutMs, suspendedTime) {
+function markTimeout(root, thenable, timeoutMs, suspendedTime) {
   // Schedule the timeout.
-  if (
-    absoluteTimeoutMs >= 0 &&
-    nextLatestAbsoluteTimeoutMs < absoluteTimeoutMs
-  ) {
-    nextLatestAbsoluteTimeoutMs = absoluteTimeoutMs;
+  if (timeoutMs >= 0 && nextLatestTimeoutMs < timeoutMs) {
+    nextLatestTimeoutMs = timeoutMs;
   }
 }
 
-function renderDidError() {
+function markError(root) {
   nextRenderDidError = true;
 }
 
-function pingSuspendedRoot(root, thenable, pingTime) {
-  // A promise that previously suspended React from committing has resolved.
-  // If React is still suspended, try again at the previous level (pingTime).
-
-  var pingCache = root.pingCache;
-  if (pingCache !== null) {
-    // The thenable resolved, so we no longer need to memoize, because it will
-    // never be thrown again.
-    pingCache.delete(thenable);
-  }
-
-  if (nextRoot !== null && nextRenderExpirationTime === pingTime) {
-    // Received a ping at the same priority level at which we're currently
-    // rendering. Restart from the root.
-    nextRoot = null;
-  } else {
-    // Confirm that the root is still suspended at this level. Otherwise exit.
-    if (isPriorityLevelSuspended(root, pingTime)) {
-      // Ping at the original level
-      markPingedPriorityLevel(root, pingTime);
-      var rootExpirationTime = root.expirationTime;
-      if (rootExpirationTime !== NoWork) {
-        requestWork(root, rootExpirationTime);
-      }
-    }
+function retrySuspendedRoot(root, suspendedTime) {
+  markPingedPriorityLevel(root, suspendedTime);
+  var retryTime = root.expirationTime;
+  if (retryTime !== NoWork) {
+    requestWork(root, retryTime);
   }
 }
 
-function retryTimedOutBoundary(boundaryFiber) {
-  var currentTime = requestCurrentTime();
-  var retryTime = computeExpirationForFiber(currentTime, boundaryFiber);
-  var root = scheduleWorkToRoot(boundaryFiber, retryTime);
-  if (root !== null) {
-    markPendingPriorityLevel(root, retryTime);
-    var rootExpirationTime = root.expirationTime;
-    if (rootExpirationTime !== NoWork) {
-      requestWork(root, rootExpirationTime);
-    }
-  }
-}
-
-function resolveRetryThenable(boundaryFiber, thenable) {
-  // The boundary fiber (a Suspense component) previously timed out and was
-  // rendered in its fallback state. One of the promises that suspended it has
-  // resolved, which means at least part of the tree was likely unblocked. Try
-  var retryCache = void 0;
-  if (enableSuspenseServerRenderer) {
-    switch (boundaryFiber.tag) {
-      case SuspenseComponent:
-        retryCache = boundaryFiber.stateNode;
-        break;
-      case DehydratedSuspenseComponent:
-        retryCache = boundaryFiber.memoizedState;
-        break;
-      default:
-        invariant(
-          false,
-          "Pinged unknown suspense boundary type. " +
-            "This is probably a bug in React."
-        );
-    }
-  } else {
-    retryCache = boundaryFiber.stateNode;
-  }
-  if (retryCache !== null) {
-    // The thenable resolved, so we no longer need to memoize, because it will
-    // never be thrown again.
-    retryCache.delete(thenable);
-  }
-
-  retryTimedOutBoundary(boundaryFiber);
-}
-
-function scheduleWorkToRoot(fiber, expirationTime) {
+function scheduleWork(fiber, expirationTime) {
   recordScheduleUpdate();
 
   {
@@ -17541,153 +13207,94 @@ function scheduleWorkToRoot(fiber, expirationTime) {
     }
   }
 
-  // Update the source fiber's expiration time
-  if (fiber.expirationTime < expirationTime) {
-    fiber.expirationTime = expirationTime;
-  }
-  var alternate = fiber.alternate;
-  if (alternate !== null && alternate.expirationTime < expirationTime) {
-    alternate.expirationTime = expirationTime;
-  }
-  // Walk the parent path to the root and update the child expiration time.
-  var node = fiber.return;
-  var root = null;
-  if (node === null && fiber.tag === HostRoot) {
-    root = fiber.stateNode;
-  } else {
-    while (node !== null) {
-      alternate = node.alternate;
-      if (node.childExpirationTime < expirationTime) {
-        node.childExpirationTime = expirationTime;
-        if (
-          alternate !== null &&
-          alternate.childExpirationTime < expirationTime
-        ) {
-          alternate.childExpirationTime = expirationTime;
-        }
-      } else if (
-        alternate !== null &&
-        alternate.childExpirationTime < expirationTime
+  var node = fiber;
+  while (node !== null) {
+    // Walk the parent path to the root and update each node's
+    // expiration time.
+    if (
+      node.expirationTime === NoWork ||
+      node.expirationTime > expirationTime
+    ) {
+      node.expirationTime = expirationTime;
+    }
+    if (node.alternate !== null) {
+      if (
+        node.alternate.expirationTime === NoWork ||
+        node.alternate.expirationTime > expirationTime
       ) {
-        alternate.childExpirationTime = expirationTime;
+        node.alternate.expirationTime = expirationTime;
       }
-      if (node.return === null && node.tag === HostRoot) {
-        root = node.stateNode;
-        break;
-      }
-      node = node.return;
     }
-  }
-
-  if (enableSchedulerTracing) {
-    if (root !== null) {
-      var interactions = tracing.__interactionsRef.current;
-      if (interactions.size > 0) {
-        var pendingInteractionMap = root.pendingInteractionMap;
-        var pendingInteractions = pendingInteractionMap.get(expirationTime);
-        if (pendingInteractions != null) {
-          interactions.forEach(function(interaction) {
-            if (!pendingInteractions.has(interaction)) {
-              // Update the pending async work count for previously unscheduled interaction.
-              interaction.__count++;
-            }
-
-            pendingInteractions.add(interaction);
-          });
-        } else {
-          pendingInteractionMap.set(expirationTime, new Set(interactions));
-
-          // Update the pending async work count for the current interactions.
-          interactions.forEach(function(interaction) {
-            interaction.__count++;
-          });
+    if (node.return === null) {
+      if (node.tag === HostRoot) {
+        var root = node.stateNode;
+        if (
+          !isWorking &&
+          nextRenderExpirationTime !== NoWork &&
+          expirationTime < nextRenderExpirationTime
+        ) {
+          // This is an interruption. (Used for performance tracking.)
+          interruptedBy = fiber;
+          resetStack();
         }
-
-        var subscriber = tracing.__subscriberRef.current;
-        if (subscriber !== null) {
-          var threadID = computeThreadID(
-            expirationTime,
-            root.interactionThreadID
+        markPendingPriorityLevel(root, expirationTime);
+        if (
+          // If we're in the render phase, we don't need to schedule this root
+          // for an update, because we'll do it before we exit...
+          !isWorking ||
+          isCommitting$1 ||
+          // ...unless this is a different root than the one we're rendering.
+          nextRoot !== root
+        ) {
+          var rootExpirationTime = root.expirationTime;
+          requestWork(root, rootExpirationTime);
+        }
+        if (nestedUpdateCount > NESTED_UPDATE_LIMIT) {
+          invariant(
+            false,
+            "Maximum update depth exceeded. This can happen when a " +
+              "component repeatedly calls setState inside " +
+              "componentWillUpdate or componentDidUpdate. React limits " +
+              "the number of nested updates to prevent infinite loops."
           );
-          subscriber.onWorkScheduled(interactions, threadID);
         }
+      } else {
+        {
+          if (fiber.tag === ClassComponent) {
+            warnAboutUpdateOnUnmounted(fiber);
+          }
+        }
+        return;
       }
     }
-  }
-  return root;
-}
-
-function warnIfNotCurrentlyBatchingInDev(fiber) {
-  {
-    if (isRendering === false && isBatchingUpdates === false) {
-      warningWithoutStack$1(
-        false,
-        "An update to %s inside a test was not wrapped in act(...).\n\n" +
-          "When testing, code that causes React state updates should be wrapped into act(...):\n\n" +
-          "act(() => {\n" +
-          "  /* fire events that update state */\n" +
-          "});\n" +
-          "/* assert on the output */\n\n" +
-          "This ensures that you're testing the behavior the user would see in the browser." +
-          " Learn more at https://fb.me/react-wrap-tests-with-act" +
-          "%s",
-        getComponentName(fiber.type),
-        getStackByFiberInDevAndProd(fiber)
-      );
-    }
+    node = node.return;
   }
 }
 
-function scheduleWork(fiber, expirationTime) {
-  var root = scheduleWorkToRoot(fiber, expirationTime);
-  if (root === null) {
-    {
-      switch (fiber.tag) {
-        case ClassComponent:
-          warnAboutUpdateOnUnmounted(fiber, true);
-          break;
-        case FunctionComponent:
-        case ForwardRef:
-        case MemoComponent:
-        case SimpleMemoComponent:
-          warnAboutUpdateOnUnmounted(fiber, false);
-          break;
-      }
-    }
-    return;
-  }
+function recalculateCurrentTime() {
+  // Subtract initial time so it fits inside 32bits
+  mostRecentCurrentTimeMs = now() - originalStartTimeMs;
+  mostRecentCurrentTime = msToExpirationTime(mostRecentCurrentTimeMs);
+  return mostRecentCurrentTime;
+}
 
-  if (
-    !isWorking &&
-    nextRenderExpirationTime !== NoWork &&
-    expirationTime > nextRenderExpirationTime
-  ) {
-    // This is an interruption. (Used for performance tracking.)
-    interruptedBy = fiber;
-    resetStack();
+function deferredUpdates(fn) {
+  var previousExpirationContext = expirationContext;
+  var currentTime = recalculateCurrentTime();
+  expirationContext = computeAsyncExpiration(currentTime);
+  try {
+    return fn();
+  } finally {
+    expirationContext = previousExpirationContext;
   }
-  markPendingPriorityLevel(root, expirationTime);
-  if (
-    // If we're in the render phase, we don't need to schedule this root
-    // for an update, because we'll do it before we exit...
-    !isWorking ||
-    isCommitting$1 ||
-    // ...unless this is a different root than the one we're rendering.
-    nextRoot !== root
-  ) {
-    var rootExpirationTime = root.expirationTime;
-    requestWork(root, rootExpirationTime);
-  }
-  if (nestedUpdateCount > NESTED_UPDATE_LIMIT) {
-    // Reset this back to zero so subsequent updates don't throw.
-    nestedUpdateCount = 0;
-    invariant(
-      false,
-      "Maximum update depth exceeded. This can happen when a " +
-        "component repeatedly calls setState inside " +
-        "componentWillUpdate or componentDidUpdate. React limits " +
-        "the number of nested updates to prevent infinite loops."
-    );
+}
+function syncUpdates(fn, a, b, c, d) {
+  var previousExpirationContext = expirationContext;
+  expirationContext = Sync;
+  try {
+    return fn(a, b, c, d);
+  } finally {
+    expirationContext = previousExpirationContext;
   }
 }
 
@@ -17703,40 +13310,35 @@ var callbackID = void 0;
 var isRendering = false;
 var nextFlushedRoot = null;
 var nextFlushedExpirationTime = NoWork;
-var lowestPriorityPendingInteractiveExpirationTime = NoWork;
+var lowestPendingInteractiveExpirationTime = NoWork;
+var deadlineDidExpire = false;
 var hasUnhandledError = false;
 var unhandledError = null;
+var deadline = null;
 
 var isBatchingUpdates = false;
 var isUnbatchingUpdates = false;
+var isBatchingInteractiveUpdates = false;
 
 var completedBatches = null;
 
-var originalStartTimeMs = now$$1();
-var currentRendererTime = msToExpirationTime(originalStartTimeMs);
-var currentSchedulerTime = currentRendererTime;
-
 // Use these to prevent an infinite loop of nested updates
-var NESTED_UPDATE_LIMIT = 50;
+var NESTED_UPDATE_LIMIT = 1000;
 var nestedUpdateCount = 0;
-var lastCommittedRootDuringThisBatch = null;
 
-function recomputeCurrentRendererTime() {
-  var currentTimeMs = now$$1() - originalStartTimeMs;
-  currentRendererTime = msToExpirationTime(currentTimeMs);
-}
+var timeHeuristicForUnitOfWork = 1;
 
-function scheduleCallbackWithExpirationTime(root, expirationTime) {
+function scheduleCallbackWithExpirationTime(expirationTime) {
   if (callbackExpirationTime !== NoWork) {
     // A callback is already scheduled. Check its expiration time (timeout).
-    if (expirationTime < callbackExpirationTime) {
+    if (expirationTime > callbackExpirationTime) {
       // Existing callback has sufficient timeout. Exit.
       return;
     } else {
       if (callbackID !== null) {
         // Existing callback has insufficient timeout. Cancel and schedule a
         // new one.
-        cancelDeferredCallback$$1(callbackID);
+        cancelDeferredCallback(callbackID);
       }
     }
     // The request callback timer is already running. Don't start a new one.
@@ -17745,12 +13347,10 @@ function scheduleCallbackWithExpirationTime(root, expirationTime) {
   }
 
   callbackExpirationTime = expirationTime;
-  var currentMs = now$$1() - originalStartTimeMs;
+  var currentMs = now() - originalStartTimeMs;
   var expirationTimeMs = expirationTimeToMs(expirationTime);
   var timeout = expirationTimeMs - currentMs;
-  callbackID = scheduleDeferredCallback$$1(performAsyncWork, {
-    timeout: timeout
-  });
+  callbackID = scheduleDeferredCallback(performAsyncWork, { timeout: timeout });
 }
 
 // For every call to renderRoot, one of onFatal, onComplete, onSuspend, and
@@ -17766,41 +13366,18 @@ function onComplete(root, finishedWork, expirationTime) {
   root.finishedWork = finishedWork;
 }
 
-function onSuspend(
-  root,
-  finishedWork,
-  suspendedExpirationTime,
-  rootExpirationTime,
-  msUntilTimeout
-) {
-  root.expirationTime = rootExpirationTime;
-  if (msUntilTimeout === 0 && !shouldYield$$1()) {
-    // Don't wait an additional tick. Commit the tree immediately.
-    root.pendingCommitExpirationTime = suspendedExpirationTime;
-    root.finishedWork = finishedWork;
-  } else if (msUntilTimeout > 0) {
-    // Wait `msUntilTimeout` milliseconds before committing.
-    root.timeoutHandle = scheduleTimeout(
-      onTimeout.bind(null, root, finishedWork, suspendedExpirationTime),
-      msUntilTimeout
-    );
+function onSuspend(root, suspendedExpirationTime, expirationTime, timeoutMs) {
+  if (timeoutMs >= 0) {
+    var suspendedRoot = root;
+    setTimeout(function() {
+      retrySuspendedRoot(suspendedRoot, suspendedExpirationTime);
+    }, timeoutMs);
   }
+  root.expirationTime = expirationTime;
 }
 
 function onYield(root) {
   root.finishedWork = null;
-}
-
-function onTimeout(root, finishedWork, suspendedExpirationTime) {
-  // The root timed out. Commit it.
-  root.pendingCommitExpirationTime = suspendedExpirationTime;
-  root.finishedWork = finishedWork;
-  // Read the current time before entering the commit phase. We can be
-  // certain this won't cause tearing related to batching of event updates
-  // because we're at the top of a timer event.
-  recomputeCurrentRendererTime();
-  currentSchedulerTime = currentRendererTime;
-  flushRoot(root, suspendedExpirationTime);
 }
 
 function onCommit(root, expirationTime) {
@@ -17808,54 +13385,11 @@ function onCommit(root, expirationTime) {
   root.finishedWork = null;
 }
 
-function requestCurrentTime() {
-  // requestCurrentTime is called by the scheduler to compute an expiration
-  // time.
-  //
-  // Expiration times are computed by adding to the current time (the start
-  // time). However, if two updates are scheduled within the same event, we
-  // should treat their start times as simultaneous, even if the actual clock
-  // time has advanced between the first and second call.
-
-  // In other words, because expiration times determine how updates are batched,
-  // we want all updates of like priority that occur within the same event to
-  // receive the same expiration time. Otherwise we get tearing.
-  //
-  // We keep track of two separate times: the current "renderer" time and the
-  // current "scheduler" time. The renderer time can be updated whenever; it
-  // only exists to minimize the calls performance.now.
-  //
-  // But the scheduler time can only be updated if there's no pending work, or
-  // if we know for certain that we're not in the middle of an event.
-
-  if (isRendering) {
-    // We're already rendering. Return the most recently read time.
-    return currentSchedulerTime;
-  }
-  // Check if there's pending work.
-  findHighestPriorityRoot();
-  if (
-    nextFlushedExpirationTime === NoWork ||
-    nextFlushedExpirationTime === Never
-  ) {
-    // If there's no pending work, or if the pending work is offscreen, we can
-    // read the current time without risk of tearing.
-    recomputeCurrentRendererTime();
-    currentSchedulerTime = currentRendererTime;
-    return currentSchedulerTime;
-  }
-  // There's already pending work. We might be in the middle of a browser
-  // event. If we were to read the current time, it could cause multiple updates
-  // within the same event to receive different expiration times, leading to
-  // tearing. Return the last read time. During the next idle callback, the
-  // time will be updated.
-  return currentSchedulerTime;
-}
-
 // requestWork is called by the scheduler whenever a root receives an update.
 // It's up to the renderer to call renderRoot at some point in the future.
 function requestWork(root, expirationTime) {
   addRootToSchedule(root, expirationTime);
+
   if (isRendering) {
     // Prevent reentrancy. Remaining work will be scheduled at the end of
     // the currently rendering batch.
@@ -17878,7 +13412,7 @@ function requestWork(root, expirationTime) {
   if (expirationTime === Sync) {
     performSyncWork();
   } else {
-    scheduleCallbackWithExpirationTime(root, expirationTime);
+    scheduleCallbackWithExpirationTime(expirationTime);
   }
 }
 
@@ -17899,7 +13433,10 @@ function addRootToSchedule(root, expirationTime) {
   } else {
     // This root is already scheduled, but its priority may have increased.
     var remainingExpirationTime = root.expirationTime;
-    if (expirationTime > remainingExpirationTime) {
+    if (
+      remainingExpirationTime === NoWork ||
+      expirationTime < remainingExpirationTime
+    ) {
       // Update the priority.
       root.expirationTime = expirationTime;
     }
@@ -17948,17 +13485,15 @@ function findHighestPriorityRoot() {
         }
         root = previousScheduledRoot.nextScheduledRoot;
       } else {
-        if (remainingExpirationTime > highestPriorityWork) {
+        if (
+          highestPriorityWork === NoWork ||
+          remainingExpirationTime < highestPriorityWork
+        ) {
           // Update the priority, if it's higher
           highestPriorityWork = remainingExpirationTime;
           highestPriorityRoot = root;
         }
         if (root === lastScheduledRoot) {
-          break;
-        }
-        if (highestPriorityWork === Sync) {
-          // Sync is highest priority by definition so
-          // we can stop searching.
           break;
         }
         previousScheduledRoot = root;
@@ -17967,69 +13502,67 @@ function findHighestPriorityRoot() {
     }
   }
 
+  // If the next root is the same as the previous root, this is a nested
+  // update. To prevent an infinite loop, increment the nested update count.
+  var previousFlushedRoot = nextFlushedRoot;
+  if (
+    previousFlushedRoot !== null &&
+    previousFlushedRoot === highestPriorityRoot &&
+    highestPriorityWork === Sync
+  ) {
+    nestedUpdateCount++;
+  } else {
+    // Reset whenever we switch roots.
+    nestedUpdateCount = 0;
+  }
   nextFlushedRoot = highestPriorityRoot;
   nextFlushedExpirationTime = highestPriorityWork;
 }
 
-function performAsyncWork(didTimeout) {
-  if (didTimeout) {
-    // The callback timed out. That means at least one update has expired.
-    // Iterate through the root schedule. If they contain expired work, set
-    // the next render expiration time to the current time. This has the effect
-    // of flushing all expired work in a single batch, instead of flushing each
-    // level one at a time.
-    if (firstScheduledRoot !== null) {
-      recomputeCurrentRendererTime();
-      var root = firstScheduledRoot;
-      do {
-        didExpireAtExpirationTime(root, currentRendererTime);
-        // The root schedule is circular, so this is never null.
-        root = root.nextScheduledRoot;
-      } while (root !== firstScheduledRoot);
-    }
-  }
-  performWork(NoWork, true);
+function performAsyncWork(dl) {
+  performWork(NoWork, dl);
 }
 
 function performSyncWork() {
-  performWork(Sync, false);
+  performWork(Sync, null);
 }
 
-function performWork(minExpirationTime, isYieldy) {
-  // Keep working on roots until there's no more work, or until there's a higher
-  // priority event.
+function performWork(minExpirationTime, dl) {
+  deadline = dl;
+
+  // Keep working on roots until there's no more work, or until the we reach
+  // the deadline.
   findHighestPriorityRoot();
 
-  if (isYieldy) {
-    recomputeCurrentRendererTime();
-    currentSchedulerTime = currentRendererTime;
+  if (enableProfilerTimer) {
+    resumeActualRenderTimerIfPaused();
+  }
 
-    if (enableUserTimingAPI) {
-      var didExpire = nextFlushedExpirationTime > currentRendererTime;
-      var timeout = expirationTimeToMs(nextFlushedExpirationTime);
-      stopRequestCallbackTimer(didExpire, timeout);
-    }
+  if (enableUserTimingAPI && deadline !== null) {
+    var didExpire = nextFlushedExpirationTime < recalculateCurrentTime();
+    var timeout = expirationTimeToMs(nextFlushedExpirationTime);
+    stopRequestCallbackTimer(didExpire, timeout);
+  }
 
+  if (deadline !== null) {
     while (
       nextFlushedRoot !== null &&
       nextFlushedExpirationTime !== NoWork &&
-      minExpirationTime <= nextFlushedExpirationTime &&
-      !(shouldYield$$1() && currentRendererTime > nextFlushedExpirationTime)
+      (minExpirationTime === NoWork ||
+        minExpirationTime >= nextFlushedExpirationTime) &&
+      (!deadlineDidExpire ||
+        recalculateCurrentTime() >= nextFlushedExpirationTime)
     ) {
-      performWorkOnRoot(
-        nextFlushedRoot,
-        nextFlushedExpirationTime,
-        currentRendererTime > nextFlushedExpirationTime
-      );
+      recalculateCurrentTime();
+      performWorkOnRoot(nextFlushedRoot, nextFlushedExpirationTime, true);
       findHighestPriorityRoot();
-      recomputeCurrentRendererTime();
-      currentSchedulerTime = currentRendererTime;
     }
   } else {
     while (
       nextFlushedRoot !== null &&
       nextFlushedExpirationTime !== NoWork &&
-      minExpirationTime <= nextFlushedExpirationTime
+      (minExpirationTime === NoWork ||
+        minExpirationTime >= nextFlushedExpirationTime)
     ) {
       performWorkOnRoot(nextFlushedRoot, nextFlushedExpirationTime, false);
       findHighestPriorityRoot();
@@ -18040,19 +13573,19 @@ function performWork(minExpirationTime, isYieldy) {
   // or there's no more work left with sufficient priority.
 
   // If we're inside a callback, set this to false since we just completed it.
-  if (isYieldy) {
+  if (deadline !== null) {
     callbackExpirationTime = NoWork;
     callbackID = null;
   }
   // If there's work left over, schedule a new callback.
   if (nextFlushedExpirationTime !== NoWork) {
-    scheduleCallbackWithExpirationTime(
-      nextFlushedRoot,
-      nextFlushedExpirationTime
-    );
+    scheduleCallbackWithExpirationTime(nextFlushedExpirationTime);
   }
 
   // Clean-up.
+  deadline = null;
+  deadlineDidExpire = false;
+
   finishRendering();
 }
 
@@ -18070,11 +13603,11 @@ function flushRoot(root, expirationTime) {
   performWorkOnRoot(root, expirationTime, false);
   // Flush any sync work that was scheduled by lifecycles
   performSyncWork();
+  finishRendering();
 }
 
 function finishRendering() {
   nestedUpdateCount = 0;
-  lastCommittedRootDuringThisBatch = null;
 
   if (completedBatches !== null) {
     var batches = completedBatches;
@@ -18112,25 +13645,13 @@ function performWorkOnRoot(root, expirationTime, isYieldy) {
   // Check if this is async work or sync/expired work.
   if (!isYieldy) {
     // Flush work without yielding.
-    // TODO: Non-yieldy work does not necessarily imply expired work. A renderer
-    // may want to perform some work without yielding, but also without
-    // requiring the root to complete (by triggering placeholders).
-
     var finishedWork = root.finishedWork;
     if (finishedWork !== null) {
       // This root is already complete. We can commit it.
       completeRoot$1(root, finishedWork, expirationTime);
     } else {
       root.finishedWork = null;
-      // If this root previously suspended, clear its existing timeout, since
-      // we're about to try rendering again.
-      var timeoutHandle = root.timeoutHandle;
-      if (timeoutHandle !== noTimeout) {
-        root.timeoutHandle = noTimeout;
-        // $FlowFixMe Complains noTimeout is not a TimeoutID, despite the check above
-        cancelTimeout(timeoutHandle);
-      }
-      renderRoot(root, isYieldy);
+      renderRoot(root, false);
       finishedWork = root.finishedWork;
       if (finishedWork !== null) {
         // We've completed the root. Commit it.
@@ -18145,26 +13666,24 @@ function performWorkOnRoot(root, expirationTime, isYieldy) {
       completeRoot$1(root, _finishedWork, expirationTime);
     } else {
       root.finishedWork = null;
-      // If this root previously suspended, clear its existing timeout, since
-      // we're about to try rendering again.
-      var _timeoutHandle = root.timeoutHandle;
-      if (_timeoutHandle !== noTimeout) {
-        root.timeoutHandle = noTimeout;
-        // $FlowFixMe Complains noTimeout is not a TimeoutID, despite the check above
-        cancelTimeout(_timeoutHandle);
-      }
-      renderRoot(root, isYieldy);
+      renderRoot(root, true);
       _finishedWork = root.finishedWork;
       if (_finishedWork !== null) {
-        // We've completed the root. Check the if we should yield one more time
+        // We've completed the root. Check the deadline one more time
         // before committing.
-        if (!shouldYield$$1()) {
+        if (!shouldYield()) {
           // Still time left. Commit the root.
           completeRoot$1(root, _finishedWork, expirationTime);
         } else {
           // There's no time left. Mark this root as complete. We'll come
           // back and commit it later.
           root.finishedWork = _finishedWork;
+
+          if (enableProfilerTimer) {
+            // If we didn't finish, pause the "actual" render timer.
+            // We'll restart it when we resume work.
+            pauseActualRenderTimerIfRunning();
+          }
         }
       }
     }
@@ -18176,7 +13695,7 @@ function performWorkOnRoot(root, expirationTime, isYieldy) {
 function completeRoot$1(root, finishedWork, expirationTime) {
   // Check if there's a batch that matches this expiration time.
   var firstBatch = root.firstBatch;
-  if (firstBatch !== null && firstBatch._expirationTime >= expirationTime) {
+  if (firstBatch !== null && firstBatch._expirationTime <= expirationTime) {
     if (completedBatches === null) {
       completedBatches = [firstBatch];
     } else {
@@ -18193,24 +13712,22 @@ function completeRoot$1(root, finishedWork, expirationTime) {
 
   // Commit the root.
   root.finishedWork = null;
+  commitRoot(root, finishedWork);
+}
 
-  // Check if this is a nested update (a sync update scheduled during the
-  // commit phase).
-  if (root === lastCommittedRootDuringThisBatch) {
-    // If the next root is the same as the previous root, this is a nested
-    // update. To prevent an infinite loop, increment the nested update count.
-    nestedUpdateCount++;
-  } else {
-    // Reset whenever we switch roots.
-    lastCommittedRootDuringThisBatch = root;
-    nestedUpdateCount = 0;
+// When working on async work, the reconciler asks the renderer if it should
+// yield execution. For DOM, we implement this with requestIdleCallback.
+function shouldYield() {
+  if (deadline === null || deadlineDidExpire) {
+    return false;
   }
-  scheduler.unstable_runWithPriority(
-    scheduler.unstable_ImmediatePriority,
-    function() {
-      commitRoot(root, finishedWork);
-    }
-  );
+  if (deadline.timeRemaining() > timeHeuristicForUnitOfWork) {
+    // Disregard deadline.didTimeout. Only expired work should be flushed
+    // during a timeout. This path is only hit for non-expired work.
+    return false;
+  }
+  deadlineDidExpire = true;
+  return true;
 }
 
 function onUncaughtError(error) {
@@ -18243,7 +13760,42 @@ function batchedUpdates$1(fn, a) {
   }
 }
 
+// TODO: Batching should be implemented at the renderer level, not inside
+// the reconciler.
+function unbatchedUpdates(fn, a) {
+  if (isBatchingUpdates && !isUnbatchingUpdates) {
+    isUnbatchingUpdates = true;
+    try {
+      return fn(a);
+    } finally {
+      isUnbatchingUpdates = false;
+    }
+  }
+  return fn(a);
+}
+
+// TODO: Batching should be implemented at the renderer level, not within
+// the reconciler.
+function flushSync(fn, a) {
+  invariant(
+    !isRendering,
+    "flushSync was called from inside a lifecycle method. It cannot be " +
+      "called when React is already rendering."
+  );
+  var previousIsBatchingUpdates = isBatchingUpdates;
+  isBatchingUpdates = true;
+  try {
+    return syncUpdates(fn, a);
+  } finally {
+    isBatchingUpdates = previousIsBatchingUpdates;
+    performSyncWork();
+  }
+}
+
 function interactiveUpdates$1(fn, a, b) {
+  if (isBatchingInteractiveUpdates) {
+    return fn(a, b);
+  }
   // If there are any pending interactive updates, synchronously flush them.
   // This needs to happen before we read any handlers, because the effect of
   // the previous event may influence which handlers are called during
@@ -18251,22 +13803,20 @@ function interactiveUpdates$1(fn, a, b) {
   if (
     !isBatchingUpdates &&
     !isRendering &&
-    lowestPriorityPendingInteractiveExpirationTime !== NoWork
+    lowestPendingInteractiveExpirationTime !== NoWork
   ) {
     // Synchronously flush pending interactive updates.
-    performWork(lowestPriorityPendingInteractiveExpirationTime, false);
-    lowestPriorityPendingInteractiveExpirationTime = NoWork;
+    performWork(lowestPendingInteractiveExpirationTime, null);
+    lowestPendingInteractiveExpirationTime = NoWork;
   }
+  var previousIsBatchingInteractiveUpdates = isBatchingInteractiveUpdates;
   var previousIsBatchingUpdates = isBatchingUpdates;
+  isBatchingInteractiveUpdates = true;
   isBatchingUpdates = true;
   try {
-    return scheduler.unstable_runWithPriority(
-      scheduler.unstable_UserBlockingPriority,
-      function() {
-        return fn(a, b);
-      }
-    );
+    return fn(a, b);
   } finally {
+    isBatchingInteractiveUpdates = previousIsBatchingInteractiveUpdates;
     isBatchingUpdates = previousIsBatchingUpdates;
     if (!isBatchingUpdates && !isRendering) {
       performSyncWork();
@@ -18275,13 +13825,23 @@ function interactiveUpdates$1(fn, a, b) {
 }
 
 function flushInteractiveUpdates$1() {
-  if (
-    !isRendering &&
-    lowestPriorityPendingInteractiveExpirationTime !== NoWork
-  ) {
+  if (!isRendering && lowestPendingInteractiveExpirationTime !== NoWork) {
     // Synchronously flush pending interactive updates.
-    performWork(lowestPriorityPendingInteractiveExpirationTime, false);
-    lowestPriorityPendingInteractiveExpirationTime = NoWork;
+    performWork(lowestPendingInteractiveExpirationTime, null);
+    lowestPendingInteractiveExpirationTime = NoWork;
+  }
+}
+
+function flushControlled(fn) {
+  var previousIsBatchingUpdates = isBatchingUpdates;
+  isBatchingUpdates = true;
+  try {
+    syncUpdates(fn);
+  } finally {
+    isBatchingUpdates = previousIsBatchingUpdates;
+    if (!isBatchingUpdates && !isRendering) {
+      performWork(Sync, null);
+    }
   }
 }
 
@@ -18289,42 +13849,38 @@ function flushInteractiveUpdates$1() {
 // Might add PROFILE later.
 
 var didWarnAboutNestedUpdates = void 0;
-var didWarnAboutFindNodeInStrictMode = void 0;
 
 {
   didWarnAboutNestedUpdates = false;
-  didWarnAboutFindNodeInStrictMode = {};
 }
 
 function getContextForSubtree(parentComponent) {
   if (!parentComponent) {
-    return emptyContextObject;
+    return emptyObject;
   }
 
   var fiber = get$1(parentComponent);
   var parentContext = findCurrentUnmaskedContext(fiber);
-
-  if (fiber.tag === ClassComponent) {
-    var Component = fiber.type;
-    if (isContextProvider(Component)) {
-      return processChildContext(fiber, Component, parentContext);
-    }
-  }
-
-  return parentContext;
+  return isContextProvider(fiber)
+    ? processChildContext(fiber, parentContext)
+    : parentContext;
 }
 
-function scheduleRootUpdate(current$$1, element, expirationTime, callback) {
+function scheduleRootUpdate(current, element, expirationTime, callback) {
   {
-    if (phase === "render" && current !== null && !didWarnAboutNestedUpdates) {
+    if (
+      ReactDebugCurrentFiber.phase === "render" &&
+      ReactDebugCurrentFiber.current !== null &&
+      !didWarnAboutNestedUpdates
+    ) {
       didWarnAboutNestedUpdates = true;
-      warningWithoutStack$1(
+      warning(
         false,
         "Render methods should be a pure function of props and state; " +
           "triggering nested component updates from render is not allowed. " +
           "If necessary, trigger nested updates in componentDidUpdate.\n\n" +
           "Check the render method of %s.",
-        getComponentName(current.type) || "Unknown"
+        getComponentName(ReactDebugCurrentFiber.current) || "Unknown"
       );
     }
   }
@@ -18337,7 +13893,7 @@ function scheduleRootUpdate(current$$1, element, expirationTime, callback) {
   callback = callback === undefined ? null : callback;
   if (callback !== null) {
     !(typeof callback === "function")
-      ? warningWithoutStack$1(
+      ? warning(
           false,
           "render(...): Expected the last optional `callback` argument to be a " +
             "function. Instead received: %s.",
@@ -18346,11 +13902,9 @@ function scheduleRootUpdate(current$$1, element, expirationTime, callback) {
       : void 0;
     update.callback = callback;
   }
+  enqueueUpdate(current, update, expirationTime);
 
-  flushPassiveEffects();
-  enqueueUpdate(current$$1, update);
-  scheduleWork(current$$1, expirationTime);
-
+  scheduleWork(current, expirationTime);
   return expirationTime;
 }
 
@@ -18362,11 +13916,11 @@ function updateContainerAtExpirationTime(
   callback
 ) {
   // TODO: If this is a nested container, this won't be the root.
-  var current$$1 = container.current;
+  var current = container.current;
 
   {
     if (ReactFiberInstrumentation_1.debugTool) {
-      if (current$$1.alternate === null) {
+      if (current.alternate === null) {
         ReactFiberInstrumentation_1.debugTool.onMountContainer(container);
       } else if (element === null) {
         ReactFiberInstrumentation_1.debugTool.onUnmountContainer(container);
@@ -18383,10 +13937,10 @@ function updateContainerAtExpirationTime(
     container.pendingContext = context;
   }
 
-  return scheduleRootUpdate(current$$1, element, expirationTime, callback);
+  return scheduleRootUpdate(current, element, expirationTime, callback);
 }
 
-function findHostInstance(component) {
+function findHostInstance$1(component) {
   var fiber = get$1(component);
   if (fiber === undefined) {
     if (typeof component.render === "function") {
@@ -18406,72 +13960,14 @@ function findHostInstance(component) {
   return hostFiber.stateNode;
 }
 
-function findHostInstanceWithWarning(component, methodName) {
-  {
-    var fiber = get$1(component);
-    if (fiber === undefined) {
-      if (typeof component.render === "function") {
-        invariant(false, "Unable to find node on an unmounted component.");
-      } else {
-        invariant(
-          false,
-          "Argument appears to not be a ReactComponent. Keys: %s",
-          Object.keys(component)
-        );
-      }
-    }
-    var hostFiber = findCurrentHostFiber(fiber);
-    if (hostFiber === null) {
-      return null;
-    }
-    if (hostFiber.mode & StrictMode) {
-      var componentName = getComponentName(fiber.type) || "Component";
-      if (!didWarnAboutFindNodeInStrictMode[componentName]) {
-        didWarnAboutFindNodeInStrictMode[componentName] = true;
-        if (fiber.mode & StrictMode) {
-          warningWithoutStack$1(
-            false,
-            "%s is deprecated in StrictMode. " +
-              "%s was passed an instance of %s which is inside StrictMode. " +
-              "Instead, add a ref directly to the element you want to reference." +
-              "\n%s" +
-              "\n\nLearn more about using refs safely here:" +
-              "\nhttps://fb.me/react-strict-mode-find-node",
-            methodName,
-            methodName,
-            componentName,
-            getStackByFiberInDevAndProd(hostFiber)
-          );
-        } else {
-          warningWithoutStack$1(
-            false,
-            "%s is deprecated in StrictMode. " +
-              "%s was passed an instance of %s which renders StrictMode children. " +
-              "Instead, add a ref directly to the element you want to reference." +
-              "\n%s" +
-              "\n\nLearn more about using refs safely here:" +
-              "\nhttps://fb.me/react-strict-mode-find-node",
-            methodName,
-            methodName,
-            componentName,
-            getStackByFiberInDevAndProd(hostFiber)
-          );
-        }
-      }
-    }
-    return hostFiber.stateNode;
-  }
-  return findHostInstance(component);
-}
-
-function createContainer(containerInfo, isConcurrent, hydrate) {
-  return createFiberRoot(containerInfo, isConcurrent, hydrate);
+function createContainer(containerInfo, isAsync, hydrate) {
+  return createFiberRoot(containerInfo, isAsync, hydrate);
 }
 
 function updateContainer(element, container, parentComponent, callback) {
-  var current$$1 = container.current;
-  var currentTime = requestCurrentTime();
-  var expirationTime = computeExpirationForFiber(currentTime, current$$1);
+  var current = container.current;
+  var currentTime = recalculateCurrentTime();
+  var expirationTime = computeExpirationForFiber(currentTime, current);
   return updateContainerAtExpirationTime(
     element,
     container,
@@ -18494,43 +13990,19 @@ function getPublicRootInstance(container) {
   }
 }
 
-var overrideProps = null;
-
-{
-  var copyWithSetImpl = function(obj, path, idx, value) {
-    if (idx >= path.length) {
-      return value;
-    }
-    var key = path[idx];
-    var updated = Array.isArray(obj) ? obj.slice() : Object.assign({}, obj);
-    // $FlowFixMe number or string is fine here
-    updated[key] = copyWithSetImpl(obj[key], path, idx + 1, value);
-    return updated;
-  };
-
-  var copyWithSet = function(obj, path, value) {
-    return copyWithSetImpl(obj, path, 0, value);
-  };
-
-  // Support DevTools props for function components, forwardRef, memo, host components, etc.
-  overrideProps = function(fiber, path, value) {
-    flushPassiveEffects();
-    fiber.pendingProps = copyWithSet(fiber.memoizedProps, path, value);
-    if (fiber.alternate) {
-      fiber.alternate.pendingProps = fiber.pendingProps;
-    }
-    scheduleWork(fiber, Sync);
-  };
+function findHostInstanceWithNoPortals(fiber) {
+  var hostFiber = findCurrentHostFiberWithNoPortals(fiber);
+  if (hostFiber === null) {
+    return null;
+  }
+  return hostFiber.stateNode;
 }
 
 function injectIntoDevTools(devToolsConfig) {
   var findFiberByHostInstance = devToolsConfig.findFiberByHostInstance;
-  var ReactCurrentDispatcher = ReactSharedInternals.ReactCurrentDispatcher;
 
   return injectInternals(
     Object.assign({}, devToolsConfig, {
-      overrideProps: overrideProps,
-      currentDispatcherRef: ReactCurrentDispatcher,
       findHostInstanceByFiber: function(fiber) {
         var hostFiber = findCurrentHostFiber(fiber);
         if (hostFiber === null) {
@@ -18551,6 +14023,27 @@ function injectIntoDevTools(devToolsConfig) {
 
 // This file intentionally does *not* have the Flow annotation.
 // Don't add it. See `./inline-typed.js` for an explanation.
+
+var ReactFabricRenderer = Object.freeze({
+  updateContainerAtExpirationTime: updateContainerAtExpirationTime,
+  createContainer: createContainer,
+  updateContainer: updateContainer,
+  flushRoot: flushRoot,
+  requestWork: requestWork,
+  computeUniqueAsyncExpiration: computeUniqueAsyncExpiration,
+  batchedUpdates: batchedUpdates$1,
+  unbatchedUpdates: unbatchedUpdates,
+  deferredUpdates: deferredUpdates,
+  syncUpdates: syncUpdates,
+  interactiveUpdates: interactiveUpdates$1,
+  flushInteractiveUpdates: flushInteractiveUpdates$1,
+  flushControlled: flushControlled,
+  flushSync: flushSync,
+  getPublicRootInstance: getPublicRootInstance,
+  findHostInstance: findHostInstance$1,
+  findHostInstanceWithNoPortals: findHostInstanceWithNoPortals,
+  injectIntoDevTools: injectIntoDevTools
+});
 
 function createPortal(
   children,
@@ -18573,7 +14066,7 @@ function createPortal(
 
 // TODO: this is special because it gets imported during build.
 
-var ReactVersion = "16.8.3";
+var ReactVersion = "16.4.1";
 
 // Modules provided by RN:
 var NativeMethodsMixin = function(findNodeHandle, findHostInstance) {
@@ -18613,7 +14106,7 @@ var NativeMethodsMixin = function(findNodeHandle, findHostInstance) {
     measure: function(callback) {
       UIManager.measure(
         findNodeHandle(this),
-        mountSafeCallback_NOT_REALLY_SAFE(this, callback)
+        mountSafeCallback(this, callback)
       );
     },
 
@@ -18635,7 +14128,7 @@ var NativeMethodsMixin = function(findNodeHandle, findHostInstance) {
     measureInWindow: function(callback) {
       UIManager.measureInWindow(
         findNodeHandle(this),
-        mountSafeCallback_NOT_REALLY_SAFE(this, callback)
+        mountSafeCallback(this, callback)
       );
     },
 
@@ -18655,8 +14148,8 @@ var NativeMethodsMixin = function(findNodeHandle, findHostInstance) {
       UIManager.measureLayout(
         findNodeHandle(this),
         relativeToNativeNode,
-        mountSafeCallback_NOT_REALLY_SAFE(this, onFail),
-        mountSafeCallback_NOT_REALLY_SAFE(this, onSuccess)
+        mountSafeCallback(this, onFail),
+        mountSafeCallback(this, onSuccess)
       );
     },
 
@@ -18667,17 +14160,6 @@ var NativeMethodsMixin = function(findNodeHandle, findHostInstance) {
      * Manipulation](docs/direct-manipulation.html)).
      */
     setNativeProps: function(nativeProps) {
-      {
-        if (warnAboutDeprecatedSetNativeProps) {
-          warningWithoutStack$1(
-            false,
-            "Warning: Calling ref.setNativeProps(nativeProps) " +
-              "is deprecated and will be removed in a future release. " +
-              "Use the setNativeProps export from the react-native package instead." +
-              "\n\timport {setNativeProps} from 'react-native';\n\tsetNativeProps(ref, nativeProps);\n"
-          );
-        }
-      }
       // Class components don't have viewConfig -> validateAttributes.
       // Nor does it make sense to set native props on a non-native component.
       // Instead, find the nearest host component and set props on it.
@@ -18699,10 +14181,7 @@ var NativeMethodsMixin = function(findNodeHandle, findHostInstance) {
         return;
       }
 
-      var nativeTag =
-        maybeInstance._nativeTag || maybeInstance.canonical._nativeTag;
-      var viewConfig =
-        maybeInstance.viewConfig || maybeInstance.canonical.viewConfig;
+      var viewConfig = maybeInstance.viewConfig;
 
       {
         warnForStyleProps(nativeProps, viewConfig.validAttributes);
@@ -18715,7 +14194,7 @@ var NativeMethodsMixin = function(findNodeHandle, findHostInstance) {
       // view invalidation for certain components (eg RCTTextInput) on iOS.
       if (updatePayload != null) {
         UIManager.updateView(
-          nativeTag,
+          maybeInstance._nativeTag,
           viewConfig.uiViewClassName,
           updatePayload
         );
@@ -18879,7 +14358,7 @@ var ReactNativeComponent = function(findNodeHandle, findHostInstance) {
     ReactNativeComponent.prototype.measure = function measure(callback) {
       UIManager.measure(
         findNodeHandle(this),
-        mountSafeCallback_NOT_REALLY_SAFE(this, callback)
+        mountSafeCallback(this, callback)
       );
     };
 
@@ -18902,7 +14381,7 @@ var ReactNativeComponent = function(findNodeHandle, findHostInstance) {
     ) {
       UIManager.measureInWindow(
         findNodeHandle(this),
-        mountSafeCallback_NOT_REALLY_SAFE(this, callback)
+        mountSafeCallback(this, callback)
       );
     };
 
@@ -18921,8 +14400,8 @@ var ReactNativeComponent = function(findNodeHandle, findHostInstance) {
       UIManager.measureLayout(
         findNodeHandle(this),
         relativeToNativeNode,
-        mountSafeCallback_NOT_REALLY_SAFE(this, onFail),
-        mountSafeCallback_NOT_REALLY_SAFE(this, onSuccess)
+        mountSafeCallback(this, onFail),
+        mountSafeCallback(this, onSuccess)
       );
     };
 
@@ -18936,18 +14415,6 @@ var ReactNativeComponent = function(findNodeHandle, findHostInstance) {
     ReactNativeComponent.prototype.setNativeProps = function setNativeProps(
       nativeProps
     ) {
-      {
-        if (warnAboutDeprecatedSetNativeProps) {
-          warningWithoutStack$1(
-            false,
-            "Warning: Calling ref.setNativeProps(nativeProps) " +
-              "is deprecated and will be removed in a future release. " +
-              "Use the setNativeProps export from the react-native package instead." +
-              "\n\timport {setNativeProps} from 'react-native';\n\tsetNativeProps(ref, nativeProps);\n"
-          );
-        }
-      }
-
       // Class components don't have viewConfig -> validateAttributes.
       // Nor does it make sense to set native props on a non-native component.
       // Instead, find the nearest host component and set props on it.
@@ -18969,8 +14436,6 @@ var ReactNativeComponent = function(findNodeHandle, findHostInstance) {
         return;
       }
 
-      var nativeTag =
-        maybeInstance._nativeTag || maybeInstance.canonical._nativeTag;
       var viewConfig =
         maybeInstance.viewConfig || maybeInstance.canonical.viewConfig;
 
@@ -18981,7 +14446,7 @@ var ReactNativeComponent = function(findNodeHandle, findHostInstance) {
       // view invalidation for certain components (eg RCTTextInput) on iOS.
       if (updatePayload != null) {
         UIManager.updateView(
-          nativeTag,
+          maybeInstance._nativeTag,
           viewConfig.uiViewClassName,
           updatePayload
         );
@@ -19003,11 +14468,6 @@ function getInstanceFromTag(tag) {
 }
 
 // Module provided by RN:
-var emptyObject$1 = {};
-{
-  Object.freeze(emptyObject$1);
-}
-
 var getInspectorDataForViewTag = void 0;
 
 {
@@ -19038,9 +14498,9 @@ var getInspectorDataForViewTag = void 0;
   var getHostProps = function(fiber) {
     var host = findCurrentHostFiber(fiber);
     if (host) {
-      return host.memoizedProps || emptyObject$1;
+      return host.memoizedProps || emptyObject;
     }
-    return emptyObject$1;
+    return emptyObject;
   };
 
   var getHostNode = function(fiber, findNodeHandle) {
@@ -19062,7 +14522,7 @@ var getInspectorDataForViewTag = void 0;
   var createHierarchy = function(fiberHierarchy) {
     return fiberHierarchy.map(function(fiber) {
       return {
-        name: getComponentName(fiber.type),
+        name: getComponentName(fiber),
         getInspectorData: function(findNodeHandle) {
           return {
             measure: function(callback) {
@@ -19086,7 +14546,7 @@ var getInspectorDataForViewTag = void 0;
     if (!closestInstance) {
       return {
         hierarchy: [],
-        props: emptyObject$1,
+        props: emptyObject,
         selection: null,
         source: null
       };
@@ -19109,51 +14569,21 @@ var getInspectorDataForViewTag = void 0;
   };
 }
 
-// Module provided by RN:
-function setNativeProps(handle, nativeProps) {
-  if (handle._nativeTag == null) {
-    !(handle._nativeTag != null)
-      ? warningWithoutStack$1(
-          false,
-          "setNativeProps was called with a ref that isn't a " +
-            "native component. Use React.forwardRef to get access to the underlying native component"
-        )
-      : void 0;
-    return;
-  }
-
-  {
-    warnForStyleProps(nativeProps, handle.viewConfig.validAttributes);
-  }
-
-  var updatePayload = create(nativeProps, handle.viewConfig.validAttributes);
-  // Avoid the overhead of bridge calls if there's no update.
-  // This is an expensive no-op for Android, and causes an unnecessary
-  // view invalidation for certain components (eg RCTTextInput) on iOS.
-  if (updatePayload != null) {
-    UIManager.updateView(
-      handle._nativeTag,
-      handle.viewConfig.uiViewClassName,
-      updatePayload
-    );
-  }
-}
-
-var ReactCurrentOwner = ReactSharedInternals.ReactCurrentOwner;
+var findHostInstance = findHostInstance$1;
 
 function findNodeHandle(componentOrHandle) {
   {
     var owner = ReactCurrentOwner.current;
     if (owner !== null && owner.stateNode !== null) {
       !owner.stateNode._warnedAboutRefsInRender
-        ? warningWithoutStack$1(
+        ? warning(
             false,
             "%s is accessing findNodeHandle inside its render(). " +
               "render() should be a pure function of props and state. It should " +
               "never access something that requires stale data from the previous " +
               "render, such as refs. Move this logic to componentDidMount and " +
               "componentDidUpdate instead.",
-            getComponentName(owner.type) || "A component"
+            getComponentName(owner) || "A component"
           )
         : void 0;
 
@@ -19173,14 +14603,7 @@ function findNodeHandle(componentOrHandle) {
   if (componentOrHandle.canonical && componentOrHandle.canonical._nativeTag) {
     return componentOrHandle.canonical._nativeTag;
   }
-  var hostInstance = void 0;
-  {
-    hostInstance = findHostInstanceWithWarning(
-      componentOrHandle,
-      "findNodeHandle"
-    );
-  }
-
+  var hostInstance = findHostInstance(componentOrHandle);
   if (hostInstance == null) {
     return hostInstance;
   }
@@ -19193,11 +14616,7 @@ function findNodeHandle(componentOrHandle) {
   return hostInstance._nativeTag;
 }
 
-setBatchingImplementation(
-  batchedUpdates$1,
-  interactiveUpdates$1,
-  flushInteractiveUpdates$1
-);
+injection$2.injectRenderer(ReactFabricRenderer);
 
 var roots = new Map();
 
@@ -19205,8 +14624,6 @@ var ReactFabric = {
   NativeComponent: ReactNativeComponent(findNodeHandle, findHostInstance),
 
   findNodeHandle: findNodeHandle,
-
-  setNativeProps: setNativeProps,
 
   render: function(element, containerTag, callback) {
     var root = roots.get(containerTag);
@@ -19259,7 +14676,7 @@ var ReactFabric$3 = (ReactFabric$2 && ReactFabric) || ReactFabric$2;
 
 // TODO: decide on the top-level export form.
 // This is hacky but makes it work with both Rollup and Jest.
-var fabric = ReactFabric$3.default || ReactFabric$3;
+var fabric = ReactFabric$3.default ? ReactFabric$3.default : ReactFabric$3;
 
 module.exports = fabric;
 

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -13,7 +13,7 @@ const AnimatedValue = require('./nodes/AnimatedValue');
 const NativeAnimatedHelper = require('./NativeAnimatedHelper');
 const ReactNative = require('ReactNative');
 
-const invariant = require('invariant');
+const invariant = require('fbjs/lib/invariant');
 const {shouldUseNativeDriver} = require('./NativeAnimatedHelper');
 
 export type Mapping = {[key: string]: Mapping} | AnimatedValue;
@@ -158,7 +158,7 @@ class AnimatedEvent {
     };
   }
 
-  _callListeners(...args: any) {
+  _callListeners(...args) {
     this._listeners.forEach(listener => listener(...args));
   }
 

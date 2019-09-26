@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,19 +9,22 @@
 
 'use strict';
 
-const React = require('react');
-const ReactNative = require('react-native');
-const {
+var React = require('react');
+var ReactNative = require('react-native');
+var {
   TimePickerAndroid,
   StyleSheet,
   Text,
   TouchableWithoutFeedback,
 } = ReactNative;
 
-const RNTesterBlock = require('./RNTesterBlock');
-const RNTesterPage = require('./RNTesterPage');
+var RNTesterBlock = require('./RNTesterBlock');
+var RNTesterPage = require('./RNTesterPage');
 
 class TimePickerAndroidExample extends React.Component {
+  static title = 'TimePickerAndroid';
+  static description = 'Standard Android time picker dialog';
+
   state = {
     isoFormatText: 'pick a time (24-hour format)',
     presetHour: 4,
@@ -36,7 +39,7 @@ class TimePickerAndroidExample extends React.Component {
   showPicker = async (stateKey, options) => {
     try {
       const {action, minute, hour} = await TimePickerAndroid.open(options);
-      const newState = {};
+      var newState = {};
       if (action === TimePickerAndroid.timeSetAction) {
         newState[stateKey + 'Text'] = _formatTime(hour, minute);
         newState[stateKey + 'Hour'] = hour;
@@ -108,19 +111,10 @@ function _formatTime(hour, minute) {
   return hour + ':' + (minute < 10 ? '0' + minute : minute);
 }
 
-const styles = StyleSheet.create({
+var styles = StyleSheet.create({
   text: {
     color: 'black',
   },
 });
 
-exports.title = 'TimePickerAndroid';
-exports.description = 'Standard Android time picker dialog';
-exports.examples = [
-  {
-    title: 'Simple time picker',
-    render: function(): React.Element<typeof TimePickerAndroidExample> {
-      return <TimePickerAndroidExample />;
-    },
-  },
-];
+module.exports = TimePickerAndroidExample;

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,12 +9,11 @@
  */
 'use strict';
 
-const Platform = require('Platform');
 const React = require('React');
 const View = require('View');
 const VirtualizedList = require('VirtualizedList');
 
-const invariant = require('invariant');
+const invariant = require('fbjs/lib/invariant');
 
 import type {ViewToken} from 'ViewabilityHelper';
 import type {Props as VirtualizedListProps} from 'VirtualizedList';
@@ -146,7 +145,7 @@ class VirtualizedSectionList<SectionT: SectionBase> extends React.PureComponent<
     sectionIndex: number,
     viewPosition?: number,
   }) {
-    let index = Platform.OS === 'ios' ? params.itemIndex : params.itemIndex + 1;
+    let index = params.itemIndex + 1;
     for (let ii = 0; ii < params.sectionIndex; ii++) {
       index += this.props.sections[ii].data.length + 2;
     }
@@ -221,9 +220,9 @@ class VirtualizedSectionList<SectionT: SectionBase> extends React.PureComponent<
     trailingSection?: ?SectionT,
   } {
     let itemIndex = index;
-    const {sections} = this.props;
-    for (let ii = 0; ii < sections.length; ii++) {
-      const section = sections[ii];
+    const defaultKeyExtractor = this.props.keyExtractor;
+    for (let ii = 0; ii < this.props.sections.length; ii++) {
+      const section = this.props.sections[ii];
       const key = section.key || String(ii);
       itemIndex -= 1; // The section adds an item for the header
       if (itemIndex >= section.data.length + 1) {
@@ -234,7 +233,7 @@ class VirtualizedSectionList<SectionT: SectionBase> extends React.PureComponent<
           key: key + ':header',
           index: null,
           header: true,
-          trailingSection: sections[ii + 1],
+          trailingSection: this.props.sections[ii + 1],
         };
       } else if (itemIndex === section.data.length) {
         return {
@@ -242,21 +241,18 @@ class VirtualizedSectionList<SectionT: SectionBase> extends React.PureComponent<
           key: key + ':footer',
           index: null,
           header: false,
-          trailingSection: sections[ii + 1],
+          trailingSection: this.props.sections[ii + 1],
         };
       } else {
-        const keyExtractor = section.keyExtractor || this.props.keyExtractor;
+        const keyExtractor = section.keyExtractor || defaultKeyExtractor;
         return {
           section,
           key: key + ':' + keyExtractor(section.data[itemIndex], itemIndex),
           index: itemIndex,
           leadingItem: section.data[itemIndex - 1],
-          leadingSection: sections[ii - 1],
-          trailingItem:
-            section.data.length > itemIndex + 1
-              ? section.data[itemIndex + 1]
-              : undefined,
-          trailingSection: sections[ii + 1],
+          leadingSection: this.props.sections[ii - 1],
+          trailingItem: section.data[itemIndex + 1],
+          trailingSection: this.props.sections[ii + 1],
         };
       }
     }
@@ -509,9 +505,6 @@ class ItemWithSeparator extends React.Component<
       <SeparatorComponent {...this.state.separatorProps} />
     );
     return leadingSeparator || separator ? (
-      /* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses an
-       * error found when Flow v0.89 was deployed. To see the error, delete
-       * this comment and run Flow. */
       <View>
         {leadingSeparator}
         {element}

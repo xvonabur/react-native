@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,27 +10,21 @@
 
 'use strict';
 
-const Platform = require('Platform');
-const RCTSliderNativeComponent = require('RCTSliderNativeComponent');
-const React = require('React');
 const ReactNative = require('ReactNative');
+const Platform = require('Platform');
+const React = require('React');
 const StyleSheet = require('StyleSheet');
+
+const requireNativeComponent = require('requireNativeComponent');
 
 import type {ImageSource} from 'ImageSource';
 import type {ViewStyleProp} from 'StyleSheet';
 import type {ColorValue} from 'StyleSheetTypes';
 import type {ViewProps} from 'ViewPropTypes';
-import type {SyntheticEvent} from 'CoreEventTypes';
 
-type Event = SyntheticEvent<
-  $ReadOnly<{|
-    value: number,
-    /**
-     * Android Only.
-     */
-    fromUser?: boolean,
-  |}>,
->;
+const RCTSlider = requireNativeComponent('RCTSlider');
+
+type Event = Object;
 
 type IOSProps = $ReadOnly<{|
   /**
@@ -57,13 +51,22 @@ type IOSProps = $ReadOnly<{|
   thumbImage?: ?ImageSource,
 |}>;
 
+type AndroidProps = $ReadOnly<{|
+  /**
+   * Color of the foreground switch grip.
+   * @platform android
+   */
+  thumbTintColor?: ?ColorValue,
+|}>;
+
 type Props = $ReadOnly<{|
   ...ViewProps,
   ...IOSProps,
+  ...AndroidProps,
 
   /**
    * Used to style and layout the `Slider`.  See `StyleSheet.js` and
-   * `DeprecatedViewStylePropTypes.js` for more info.
+   * `ViewStylePropTypes.js` for more info.
    */
   style?: ?ViewStyleProp,
 
@@ -105,11 +108,6 @@ type Props = $ReadOnly<{|
    * Overrides the default blue gradient image on iOS.
    */
   maximumTrackTintColor?: ?ColorValue,
-  /**
-   * The color used to tint the default thumb images on iOS, or the
-   * color of the foreground switch grip on Android.
-   */
-  thumbTintColor?: ?ColorValue,
 
   /**
    * If true the user won't be able to move the slider.
@@ -120,14 +118,14 @@ type Props = $ReadOnly<{|
   /**
    * Callback continuously called while the user is dragging the slider.
    */
-  onValueChange?: ?(value: number) => void,
+  onValueChange?: ?Function,
 
   /**
    * Callback that is called when the user releases the slider,
    * regardless if the value has changed. The current value is passed
    * as an argument to the callback handler.
    */
-  onSlidingComplete?: ?(value: number) => void,
+  onSlidingComplete?: ?Function,
 
   /**
    * Used to locate this view in UI automation tests.
@@ -197,43 +195,44 @@ type Props = $ReadOnly<{|
  */
 const Slider = (
   props: Props,
-  forwardedRef?: ?React.Ref<typeof RCTSliderNativeComponent>,
+  forwardedRef?: ?React.Ref<'RCTActivityIndicatorView'>,
 ) => {
   const style = StyleSheet.compose(
     styles.slider,
     props.style,
   );
 
-  const {onValueChange, onSlidingComplete, ...localProps} = props;
-
-  const onValueChangeEvent = onValueChange
-    ? (event: Event) => {
-        let userEvent = true;
-        if (Platform.OS === 'android') {
-          // On Android there's a special flag telling us the user is
-          // dragging the slider.
-          userEvent =
-            event.nativeEvent.fromUser != null && event.nativeEvent.fromUser;
-        }
-        userEvent && onValueChange(event.nativeEvent.value);
+  const onValueChange =
+    props.onValueChange &&
+    ((event: Event) => {
+      let userEvent = true;
+      if (Platform.OS === 'android') {
+        // On Android there's a special flag telling us the user is
+        // dragging the slider.
+        userEvent = event.nativeEvent.fromUser;
       }
-    : null;
+      props.onValueChange &&
+        userEvent &&
+        props.onValueChange(event.nativeEvent.value);
+    });
 
-  const onChangeEvent = onValueChangeEvent;
-  const onSlidingCompleteEvent = onSlidingComplete
-    ? (event: Event) => {
-        onSlidingComplete(event.nativeEvent.value);
-      }
-    : null;
+  const onChange = onValueChange;
+
+  const onSlidingComplete =
+    props.onSlidingComplete &&
+    ((event: Event) => {
+      props.onSlidingComplete &&
+        props.onSlidingComplete(event.nativeEvent.value);
+    });
 
   return (
-    <RCTSliderNativeComponent
-      {...localProps}
+    <RCTSlider
+      {...props}
       ref={forwardedRef}
       style={style}
-      onChange={onChangeEvent}
-      onSlidingComplete={onSlidingCompleteEvent}
-      onValueChange={onValueChangeEvent}
+      onChange={onChange}
+      onSlidingComplete={onSlidingComplete}
+      onValueChange={onValueChange}
       enabled={!props.disabled}
       onStartShouldSetResponder={() => true}
       onResponderTerminationRequest={() => false}
@@ -241,11 +240,9 @@ const Slider = (
   );
 };
 
+// $FlowFixMe - TODO T29156721 `React.forwardRef` is not defined in Flow, yet.
 const SliderWithRef = React.forwardRef(Slider);
 
-/* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses an error
- * found when Flow v0.89 was deployed. To see the error, delete this comment
- * and run Flow. */
 SliderWithRef.defaultProps = {
   disabled: false,
   value: 0,
@@ -253,6 +250,7 @@ SliderWithRef.defaultProps = {
   maximumValue: 1,
   step: 0,
 };
+SliderWithRef.displayName = 'Slider';
 
 let styles;
 if (Platform.OS === 'ios') {
@@ -267,7 +265,4 @@ if (Platform.OS === 'ios') {
   });
 }
 
-/* $FlowFixMe(>=0.89.0 site=react_native_fb) This comment suppresses an error
- * found when Flow v0.89 was deployed. To see the error, delete this comment
- * and run Flow. */
 module.exports = (SliderWithRef: Class<ReactNative.NativeComponent<Props>>);

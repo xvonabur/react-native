@@ -1,38 +1,212 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @flow strict-local
+ * @flow
  */
 
 'use strict';
 
-import type {PressEvent, Layout, LayoutEvent} from 'CoreEventTypes';
-import type {EdgeInsetsProp} from 'EdgeInsetsPropType';
-import type React from 'React';
-import type {ViewStyleProp} from 'StyleSheet';
-import type {TVViewProps} from 'TVViewPropTypes';
+const React = require('React');
+const EdgeInsetsPropType = require('EdgeInsetsPropType');
+const PlatformViewPropTypes = require('PlatformViewPropTypes');
+const PropTypes = require('prop-types');
+const StyleSheetPropType = require('StyleSheetPropType');
+const ViewStylePropTypes = require('ViewStylePropTypes');
+
+const {
+  AccessibilityComponentTypes,
+  AccessibilityTraits,
+} = require('ViewAccessibility');
+
 import type {
   AccessibilityComponentType,
   AccessibilityTrait,
-  AccessibilityRole,
-  AccessibilityStates,
 } from 'ViewAccessibility';
+import type {EdgeInsetsProp} from 'EdgeInsetsPropType';
+import type {TVViewProps} from 'TVViewPropTypes';
+import type {Layout, LayoutEvent} from 'CoreEventTypes';
+
+const stylePropType = StyleSheetPropType(ViewStylePropTypes);
 
 export type ViewLayout = Layout;
 export type ViewLayoutEvent = LayoutEvent;
 
 type DirectEventProps = $ReadOnly<{|
+  onAccessibilityAction?: Function,
+  onAccessibilityTap?: Function,
+  onLayout?: ?(event: LayoutEvent) => void,
+  onMagicTap?: Function,
+|}>;
+
+type TouchEventProps = $ReadOnly<{|
+  onTouchCancel?: ?Function,
+  onTouchCancelCapture?: ?Function,
+  onTouchEnd?: ?Function,
+  onTouchEndCapture?: ?Function,
+  onTouchMove?: ?Function,
+  onTouchMoveCapture?: ?Function,
+  onTouchStart?: ?Function,
+  onTouchStartCapture?: ?Function,
+|}>;
+
+type GestureResponderEventProps = $ReadOnly<{|
+  onMoveShouldSetResponder?: ?Function,
+  onMoveShouldSetResponderCapture?: ?Function,
+  onResponderGrant?: ?Function,
+  onResponderMove?: ?Function,
+  onResponderReject?: ?Function,
+  onResponderRelease?: ?Function,
+  onResponderStart?: ?Function,
+  onResponderTerminate?: ?Function,
+  onResponderTerminationRequest?: ?Function,
+  onStartShouldSetResponder?: ?Function,
+  onStartShouldSetResponderCapture?: ?Function,
+|}>;
+
+export type ViewProps = $ReadOnly<{|
+  ...DirectEventProps,
+  ...GestureResponderEventProps,
+  ...TouchEventProps,
+
+  // There's no easy way to create a different type if (Platform.isTV):
+  // so we must include TVViewProps
+  ...TVViewProps,
+
+  accessible?: boolean,
+  accessibilityLabel?:
+    | null
+    | React$PropType$Primitive<any>
+    | string
+    | Array<any>
+    | any,
+  accessibilityActions?: Array<string>,
+  accessibilityComponentType?: AccessibilityComponentType,
+  accessibilityLiveRegion?: 'none' | 'polite' | 'assertive',
+  importantForAccessibility?: 'auto' | 'yes' | 'no' | 'no-hide-descendants',
+  accessibilityTraits?: AccessibilityTrait | Array<AccessibilityTrait>,
+  accessibilityViewIsModal?: boolean,
+  accessibilityElementsHidden?: boolean,
+  children?: ?React.Node,
+  testID?: ?string,
+  nativeID?: string,
+  hitSlop?: ?EdgeInsetsProp,
+  pointerEvents?: null | 'box-none' | 'none' | 'box-only' | 'auto',
+  style?: stylePropType,
+  removeClippedSubviews?: boolean,
+  renderToHardwareTextureAndroid?: boolean,
+  shouldRasterizeIOS?: boolean,
+  collapsable?: boolean,
+  needsOffscreenAlphaCompositing?: boolean,
+|}>;
+
+module.exports = {
+  /**
+   * When `true`, indicates that the view is an accessibility element.
+   * By default, all the touchable elements are accessible.
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#accessible
+   */
+  accessible: PropTypes.bool,
+
+  /**
+   * Overrides the text that's read by the screen reader when the user interacts
+   * with the element. By default, the label is constructed by traversing all
+   * the children and accumulating all the `Text` nodes separated by space.
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#accessibilitylabel
+   */
+  accessibilityLabel: PropTypes.node,
+
+  /**
+   * Provides an array of custom actions available for accessibility.
+   *
+   * @platform ios
+   */
+  accessibilityActions: PropTypes.arrayOf(PropTypes.string),
+
+  /**
+   * Indicates to accessibility services to treat UI component like a
+   * native one. Works for Android only.
+   *
+   * @platform android
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#accessibilitycomponenttype
+   */
+  accessibilityComponentType: PropTypes.oneOf(AccessibilityComponentTypes),
+
+  /**
+   * Indicates to accessibility services whether the user should be notified
+   * when this view changes. Works for Android API >= 19 only.
+   *
+   * @platform android
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#accessibilityliveregion
+   */
+  accessibilityLiveRegion: PropTypes.oneOf(['none', 'polite', 'assertive']),
+
+  /**
+   * Controls how view is important for accessibility which is if it
+   * fires accessibility events and if it is reported to accessibility services
+   * that query the screen. Works for Android only.
+   *
+   * @platform android
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#importantforaccessibility
+   */
+  importantForAccessibility: PropTypes.oneOf([
+    'auto',
+    'yes',
+    'no',
+    'no-hide-descendants',
+  ]),
+
+  /**
+   * Provides additional traits to screen reader. By default no traits are
+   * provided unless specified otherwise in element.
+   *
+   * You can provide one trait or an array of many traits.
+   *
+   * @platform ios
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#accessibilitytraits
+   */
+  accessibilityTraits: PropTypes.oneOfType([
+    PropTypes.oneOf(AccessibilityTraits),
+    PropTypes.arrayOf(PropTypes.oneOf(AccessibilityTraits)),
+  ]),
+
+  /**
+   * A value indicating whether VoiceOver should ignore the elements
+   * within views that are siblings of the receiver.
+   * Default is `false`.
+   *
+   * @platform ios
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#accessibilityviewismodal
+   */
+  accessibilityViewIsModal: PropTypes.bool,
+
+  /**
+   * A value indicating whether the accessibility elements contained within
+   * this accessibility element are hidden.
+   *
+   * @platform ios
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#accessibilityElementsHidden
+   */
+  accessibilityElementsHidden: PropTypes.bool,
+
   /**
    * When `accessible` is true, the system will try to invoke this function
    * when the user performs an accessibility custom action.
    *
    * @platform ios
    */
-  onAccessibilityAction?: ?(string) => void,
+  onAccessibilityAction: PropTypes.func,
 
   /**
    * When `accessible` is true, the system will try to invoke this function
@@ -40,20 +214,7 @@ type DirectEventProps = $ReadOnly<{|
    *
    * See http://facebook.github.io/react-native/docs/view.html#onaccessibilitytap
    */
-  onAccessibilityTap?: ?() => void,
-
-  /**
-   * Invoked on mount and layout changes with:
-   *
-   * `{nativeEvent: { layout: {x, y, width, height}}}`
-   *
-   * This event is fired immediately once the layout has been calculated, but
-   * the new layout may not yet be reflected on the screen at the time the
-   * event is received, especially if a layout animation is in progress.
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#onlayout
-   */
-  onLayout?: ?(event: LayoutEvent) => mixed,
+  onAccessibilityTap: PropTypes.func,
 
   /**
    * When `accessible` is `true`, the system will invoke this function when the
@@ -61,55 +222,31 @@ type DirectEventProps = $ReadOnly<{|
    *
    * See http://facebook.github.io/react-native/docs/view.html#onmagictap
    */
-  onMagicTap?: ?() => void,
+  onMagicTap: PropTypes.func,
 
   /**
-   * When `accessible` is `true`, the system will invoke this function when the
-   * user performs the escape gesture.
+   * Used to locate this view in end-to-end tests.
    *
-   * See http://facebook.github.io/react-native/docs/view.html#onaccessibilityescape
+   * > This disables the 'layout-only view removal' optimization for this view!
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#testid
    */
-  onAccessibilityEscape?: ?() => void,
-|}>;
-
-type TouchEventProps = $ReadOnly<{|
-  onTouchCancel?: ?(e: PressEvent) => void,
-  onTouchCancelCapture?: ?(e: PressEvent) => void,
-  onTouchEnd?: ?(e: PressEvent) => void,
-  onTouchEndCapture?: ?(e: PressEvent) => void,
-  onTouchMove?: ?(e: PressEvent) => void,
-  onTouchMoveCapture?: ?(e: PressEvent) => void,
-  onTouchStart?: ?(e: PressEvent) => void,
-  onTouchStartCapture?: ?(e: PressEvent) => void,
-|}>;
-
-/**
- * For most touch interactions, you'll simply want to wrap your component in
- * `TouchableHighlight` or `TouchableOpacity`. Check out `Touchable.js`,
- * `ScrollResponder.js` and `ResponderEventPlugin.js` for more discussion.
- */
-type GestureResponderEventProps = $ReadOnly<{|
-  /**
-   * Does this view want to "claim" touch responsiveness? This is called for
-   * every touch move on the `View` when it is not the responder.
-   *
-   * `View.props.onMoveShouldSetResponder: (event) => [true | false]`, where
-   * `event` is a synthetic touch event as described above.
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#onmoveshouldsetresponder
-   */
-  onMoveShouldSetResponder?: ?(e: PressEvent) => boolean,
+  testID: PropTypes.string,
 
   /**
-   * If a parent `View` wants to prevent a child `View` from becoming responder
-   * on a move, it should have this handler which returns `true`.
+   * Used to locate this view from native classes.
    *
-   * `View.props.onMoveShouldSetResponderCapture: (event) => [true | false]`,
-   * where `event` is a synthetic touch event as described above.
+   * > This disables the 'layout-only view removal' optimization for this view!
    *
-   * See http://facebook.github.io/react-native/docs/view.html#onMoveShouldsetrespondercapture
+   * See http://facebook.github.io/react-native/docs/view.html#nativeid
    */
-  onMoveShouldSetResponderCapture?: ?(e: PressEvent) => boolean,
+  nativeID: PropTypes.string,
+
+  /**
+   * For most touch interactions, you'll simply want to wrap your component in
+   * `TouchableHighlight` or `TouchableOpacity`. Check out `Touchable.js`,
+   * `ScrollResponder.js` and `ResponderEventPlugin.js` for more discussion.
+   */
 
   /**
    * The View is now responding for touch events. This is the time to highlight
@@ -118,12 +255,9 @@ type GestureResponderEventProps = $ReadOnly<{|
    * `View.props.onResponderGrant: (event) => {}`, where `event` is a synthetic
    * touch event as described above.
    *
-   * PanResponder includes a note `// TODO: t7467124 investigate if this can be removed` that
-   * should help fixing this return type.
-   *
    * See http://facebook.github.io/react-native/docs/view.html#onrespondergrant
    */
-  onResponderGrant?: ?(e: PressEvent) => void | boolean,
+  onResponderGrant: PropTypes.func,
 
   /**
    * The user is moving their finger.
@@ -133,7 +267,7 @@ type GestureResponderEventProps = $ReadOnly<{|
    *
    * See http://facebook.github.io/react-native/docs/view.html#onrespondermove
    */
-  onResponderMove?: ?(e: PressEvent) => void,
+  onResponderMove: PropTypes.func,
 
   /**
    * Another responder is already active and will not release it to that `View`
@@ -144,7 +278,7 @@ type GestureResponderEventProps = $ReadOnly<{|
    *
    * See http://facebook.github.io/react-native/docs/view.html#onresponderreject
    */
-  onResponderReject?: ?(e: PressEvent) => void,
+  onResponderReject: PropTypes.func,
 
   /**
    * Fired at the end of the touch.
@@ -154,10 +288,7 @@ type GestureResponderEventProps = $ReadOnly<{|
    *
    * See http://facebook.github.io/react-native/docs/view.html#onresponderrelease
    */
-  onResponderRelease?: ?(e: PressEvent) => void,
-
-  onResponderStart?: ?(e: PressEvent) => void,
-  onResponderEnd?: ?(e: PressEvent) => void,
+  onResponderRelease: PropTypes.func,
 
   /**
    * The responder has been taken from the `View`. Might be taken by other
@@ -170,7 +301,7 @@ type GestureResponderEventProps = $ReadOnly<{|
    *
    * See http://facebook.github.io/react-native/docs/view.html#onresponderterminate
    */
-  onResponderTerminate?: ?(e: PressEvent) => void,
+  onResponderTerminate: PropTypes.func,
 
   /**
    * Some other `View` wants to become responder and is asking this `View` to
@@ -181,7 +312,7 @@ type GestureResponderEventProps = $ReadOnly<{|
    *
    * See http://facebook.github.io/react-native/docs/view.html#onresponderterminationrequest
    */
-  onResponderTerminationRequest?: ?(e: PressEvent) => boolean,
+  onResponderTerminationRequest: PropTypes.func,
 
   /**
    * Does this view want to become responder on the start of a touch?
@@ -191,7 +322,7 @@ type GestureResponderEventProps = $ReadOnly<{|
    *
    * See http://facebook.github.io/react-native/docs/view.html#onstartshouldsetresponder
    */
-  onStartShouldSetResponder?: ?(e: PressEvent) => boolean,
+  onStartShouldSetResponder: PropTypes.func,
 
   /**
    * If a parent `View` wants to prevent a child `View` from becoming responder
@@ -202,219 +333,29 @@ type GestureResponderEventProps = $ReadOnly<{|
    *
    * See http://facebook.github.io/react-native/docs/view.html#onstartshouldsetrespondercapture
    */
-  onStartShouldSetResponderCapture?: ?(e: PressEvent) => boolean,
-|}>;
-
-type AndroidDrawableThemeAttr = $ReadOnly<{|
-  type: 'ThemeAttrAndroid',
-  attribute: string,
-|}>;
-
-type AndroidDrawableRipple = $ReadOnly<{|
-  type: 'RippleAndroid',
-  color?: ?number,
-  borderless?: ?boolean,
-|}>;
-
-type AndroidDrawable = AndroidDrawableThemeAttr | AndroidDrawableRipple;
-
-type AndroidViewProps = $ReadOnly<{|
-  nativeBackgroundAndroid?: ?AndroidDrawable,
-  nativeForegroundAndroid?: ?AndroidDrawable,
+  onStartShouldSetResponderCapture: PropTypes.func,
 
   /**
-   * Whether this `View` should render itself (and all of its children) into a
-   * single hardware texture on the GPU.
+   * Does this view want to "claim" touch responsiveness? This is called for
+   * every touch move on the `View` when it is not the responder.
    *
-   * @platform android
+   * `View.props.onMoveShouldSetResponder: (event) => [true | false]`, where
+   * `event` is a synthetic touch event as described above.
    *
-   * See http://facebook.github.io/react-native/docs/view.html#rendertohardwaretextureandroid
+   * See http://facebook.github.io/react-native/docs/view.html#onmoveshouldsetresponder
    */
-  renderToHardwareTextureAndroid?: ?boolean,
+  onMoveShouldSetResponder: PropTypes.func,
 
   /**
-   * Views that are only used to layout their children or otherwise don't draw
-   * anything may be automatically removed from the native hierarchy as an
-   * optimization. Set this property to `false` to disable this optimization and
-   * ensure that this `View` exists in the native view hierarchy.
+   * If a parent `View` wants to prevent a child `View` from becoming responder
+   * on a move, it should have this handler which returns `true`.
    *
-   * @platform android
+   * `View.props.onMoveShouldSetResponderCapture: (event) => [true | false]`,
+   * where `event` is a synthetic touch event as described above.
    *
-   * See http://facebook.github.io/react-native/docs/view.html#collapsable
+   * See http://facebook.github.io/react-native/docs/view.html#onMoveShouldsetrespondercapture
    */
-  collapsable?: ?boolean,
-
-  /**
-   * Whether this `View` needs to rendered offscreen and composited with an
-   * alpha in order to preserve 100% correct colors and blending behavior.
-   *
-   * @platform android
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#needsoffscreenalphacompositing
-   */
-  needsOffscreenAlphaCompositing?: ?boolean,
-
-  /**
-   * Indicates to accessibility services to treat UI component like a
-   * native one. Works for Android only.
-   *
-   * @platform android
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#accessibilitycomponenttype
-   */
-  accessibilityComponentType?: ?AccessibilityComponentType,
-
-  /**
-   * Indicates to accessibility services whether the user should be notified
-   * when this view changes. Works for Android API >= 19 only.
-   *
-   * @platform android
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#accessibilityliveregion
-   */
-  accessibilityLiveRegion?: ?('none' | 'polite' | 'assertive'),
-
-  /**
-   * Controls how view is important for accessibility which is if it
-   * fires accessibility events and if it is reported to accessibility services
-   * that query the screen. Works for Android only.
-   *
-   * @platform android
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#importantforaccessibility
-   */
-  importantForAccessibility?: ?('auto' | 'yes' | 'no' | 'no-hide-descendants'),
-|}>;
-
-type IOSViewProps = $ReadOnly<{|
-  /**
-   * Provides an array of custom actions available for accessibility.
-   *
-   * @platform ios
-   */
-  accessibilityActions?: ?$ReadOnlyArray<string>,
-
-  /**
-   * Prevents view from being inverted if set to true and color inversion is turned on.
-   *
-   * @platform ios
-   */
-  accessibilityIgnoresInvertColors?: ?boolean,
-
-  /**
-   * Provides additional traits to screen reader. By default no traits are
-   * provided unless specified otherwise in element.
-   *
-   * You can provide one trait or an array of many traits.
-   *
-   * @platform ios
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#accessibilitytraits
-   */
-  accessibilityTraits?: ?(
-    | AccessibilityTrait
-    | $ReadOnlyArray<AccessibilityTrait>
-  ),
-
-  /**
-   * A value indicating whether VoiceOver should ignore the elements
-   * within views that are siblings of the receiver.
-   * Default is `false`.
-   *
-   * @platform ios
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#accessibilityviewismodal
-   */
-  accessibilityViewIsModal?: ?boolean,
-
-  /**
-   * A value indicating whether the accessibility elements contained within
-   * this accessibility element are hidden.
-   *
-   * @platform ios
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#accessibilityElementsHidden
-   */
-  accessibilityElementsHidden?: ?boolean,
-
-  /**
-   * Whether this `View` should be rendered as a bitmap before compositing.
-   *
-   * @platform ios
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#shouldrasterizeios
-   */
-  shouldRasterizeIOS?: ?boolean,
-|}>;
-
-export type ViewProps = $ReadOnly<{|
-  ...DirectEventProps,
-  ...GestureResponderEventProps,
-  ...TouchEventProps,
-  ...AndroidViewProps,
-  ...IOSViewProps,
-
-  // There's no easy way to create a different type if (Platform.isTV):
-  // so we must include TVViewProps
-  ...TVViewProps,
-
-  children?: React.Node,
-  style?: ?ViewStyleProp,
-
-  /**
-   * When `true`, indicates that the view is an accessibility element.
-   * By default, all the touchable elements are accessible.
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#accessible
-   */
-  accessible?: ?boolean,
-
-  /**
-   * Overrides the text that's read by the screen reader when the user interacts
-   * with the element. By default, the label is constructed by traversing all
-   * the children and accumulating all the `Text` nodes separated by space.
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#accessibilitylabel
-   */
-  accessibilityLabel?: ?Stringish,
-
-  /**
-   * An accessibility hint helps users understand what will happen when they perform
-   * an action on the accessibility element when that result is not obvious from the
-   * accessibility label.
-   *
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#accessibilityHint
-   */
-  accessibilityHint?: ?Stringish,
-
-  /**
-   * Indicates to accessibility services to treat UI component like a specific role.
-   */
-  accessibilityRole?: ?AccessibilityRole,
-
-  /**
-   * Indicates to accessibility services that UI Component is in a specific State.
-   */
-  accessibilityStates?: ?AccessibilityStates,
-
-  /**
-   * Used to locate this view in end-to-end tests.
-   *
-   * > This disables the 'layout-only view removal' optimization for this view!
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#testid
-   */
-  testID?: ?string,
-
-  /**
-   * Used to locate this view from native classes.
-   *
-   * > This disables the 'layout-only view removal' optimization for this view!
-   *
-   * See http://facebook.github.io/react-native/docs/view.html#nativeid
-   */
-  nativeID?: ?string,
+  onMoveShouldSetResponderCapture: PropTypes.func,
 
   /**
    * This defines how far a touch event can start away from the view.
@@ -427,14 +368,32 @@ export type ViewProps = $ReadOnly<{|
    *
    * See http://facebook.github.io/react-native/docs/view.html#hitslop
    */
-  hitSlop?: ?EdgeInsetsProp,
+  hitSlop: EdgeInsetsPropType,
+
+  /**
+   * Invoked on mount and layout changes with:
+   *
+   * `{nativeEvent: { layout: {x, y, width, height}}}`
+   *
+   * This event is fired immediately once the layout has been calculated, but
+   * the new layout may not yet be reflected on the screen at the time the
+   * event is received, especially if a layout animation is in progress.
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#onlayout
+   */
+  onLayout: PropTypes.func,
 
   /**
    * Controls whether the `View` can be the target of touch events.
    *
    * See http://facebook.github.io/react-native/docs/view.html#pointerevents
    */
-  pointerEvents?: ?('auto' | 'box-none' | 'box-only' | 'none'),
+  pointerEvents: PropTypes.oneOf(['box-none', 'none', 'box-only', 'auto']),
+
+  /**
+   * See http://facebook.github.io/react-native/docs/style.html
+   */
+  style: stylePropType,
 
   /**
    * This is a special performance property exposed by `RCTView` and is useful
@@ -446,5 +405,51 @@ export type ViewProps = $ReadOnly<{|
    *
    * See http://facebook.github.io/react-native/docs/view.html#removeclippedsubviews
    */
-  removeClippedSubviews?: ?boolean,
-|}>;
+  removeClippedSubviews: PropTypes.bool,
+
+  /**
+   * Whether this `View` should render itself (and all of its children) into a
+   * single hardware texture on the GPU.
+   *
+   * @platform android
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#rendertohardwaretextureandroid
+   */
+  renderToHardwareTextureAndroid: PropTypes.bool,
+
+  /**
+   * Whether this `View` should be rendered as a bitmap before compositing.
+   *
+   * @platform ios
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#shouldrasterizeios
+   */
+  shouldRasterizeIOS: PropTypes.bool,
+
+  /**
+   * Views that are only used to layout their children or otherwise don't draw
+   * anything may be automatically removed from the native hierarchy as an
+   * optimization. Set this property to `false` to disable this optimization and
+   * ensure that this `View` exists in the native view hierarchy.
+   *
+   * @platform android
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#collapsable
+   */
+  collapsable: PropTypes.bool,
+
+  /**
+   * Whether this `View` needs to rendered offscreen and composited with an
+   * alpha in order to preserve 100% correct colors and blending behavior.
+   *
+   * @platform android
+   *
+   * See http://facebook.github.io/react-native/docs/view.html#needsoffscreenalphacompositing
+   */
+  needsOffscreenAlphaCompositing: PropTypes.bool,
+
+  /**
+   * Any additional platform-specific view prop types, or prop type overrides.
+   */
+  ...PlatformViewPropTypes,
+};

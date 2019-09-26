@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -33,13 +33,6 @@
   }
 
   return self;
-}
-
-- (void)didSetProps:(NSArray<NSString *> *)changedProps
-{
-  [super didSetProps:changedProps];
-
-  self.textAttributes.opacity = NAN;
 }
 
 - (BOOL)isYogaLeafNode
@@ -140,7 +133,7 @@
     return;
   }
 
-  __block CGFloat maximumFontLineHeight = 0;
+  [attributedText beginEditing];
 
   [attributedText enumerateAttribute:NSFontAttributeName
                              inRange:NSMakeRange(0, attributedText.length)
@@ -151,21 +144,19 @@
         return;
       }
 
-      if (maximumFontLineHeight <= font.lineHeight) {
-        maximumFontLineHeight = font.lineHeight;
+      if (maximumLineHeight <= font.lineHeight) {
+        return;
       }
-    }
-  ];
 
-  if (maximumLineHeight < maximumFontLineHeight) {
-    return;
-  }
+      CGFloat baseLineOffset = maximumLineHeight / 2.0 - font.lineHeight / 2.0;
 
-  CGFloat baseLineOffset = maximumLineHeight / 2.0 - maximumFontLineHeight / 2.0;
+      [attributedText addAttribute:NSBaselineOffsetAttributeName
+                             value:@(baseLineOffset)
+                             range:range];
+     }
+   ];
 
-  [attributedText addAttribute:NSBaselineOffsetAttributeName
-                         value:@(baseLineOffset)
-                         range:NSMakeRange(0, attributedText.length)];
+   [attributedText endEditing];
 }
 
 - (NSAttributedString *)attributedTextWithMeasuredAttachmentsThatFitSize:(CGSize)size
@@ -297,9 +288,6 @@
         RCTRoundPixelValue(attachmentSize.width),
         RCTRoundPixelValue(attachmentSize.height)
       }};
-      
-      NSRange truncatedGlyphRange = [layoutManager truncatedGlyphRangeInLineFragmentForGlyphAtIndex:range.location];
-      BOOL viewIsTruncated = NSIntersectionRange(range, truncatedGlyphRange).length != 0;
 
       RCTLayoutContext localLayoutContext = layoutContext;
       localLayoutContext.absolutePosition.x += frame.origin.x;
@@ -310,43 +298,12 @@
                         layoutDirection:self.layoutMetrics.layoutDirection
                           layoutContext:localLayoutContext];
 
+      // Reinforcing a proper frame origin for the Shadow View.
       RCTLayoutMetrics localLayoutMetrics = shadowView.layoutMetrics;
-      localLayoutMetrics.frame.origin = frame.origin; // Reinforcing a proper frame origin for the Shadow View.
-      if (viewIsTruncated) {
-        localLayoutMetrics.displayType = RCTDisplayTypeNone;
-      }
+      localLayoutMetrics.frame.origin = frame.origin;
       [shadowView layoutWithMetrics:localLayoutMetrics layoutContext:localLayoutContext];
     }
   ];
-
-
-  if (_onTextLayout) {
-    NSMutableArray *lineData = [NSMutableArray new];
-    [layoutManager
-     enumerateLineFragmentsForGlyphRange:glyphRange
-     usingBlock:^(CGRect overallRect, CGRect usedRect, NSTextContainer * _Nonnull usedTextContainer, NSRange lineGlyphRange, BOOL * _Nonnull stop) {
-       NSRange range = [layoutManager characterRangeForGlyphRange:lineGlyphRange actualGlyphRange:nil];
-       NSString *renderedString = [textStorage.string substringWithRange:range];
-       UIFont *font = [[textStorage attributedSubstringFromRange:range] attribute:NSFontAttributeName atIndex:0 effectiveRange:nil];
-       [lineData addObject:
-        @{
-          @"text": renderedString,
-          @"x": @(usedRect.origin.x),
-          @"y": @(usedRect.origin.y),
-          @"width": @(usedRect.size.width),
-          @"height": @(usedRect.size.height),
-          @"descender": @(-font.descender),
-          @"capHeight": @(font.capHeight),
-          @"ascender": @(font.ascender),
-          @"xHeight": @(font.xHeight),
-          }];
-     }];
-    NSDictionary *payload =
-    @{
-      @"lines": lineData,
-      };
-    _onTextLayout(payload);
-  }
 }
 
 - (CGFloat)lastBaselineForSize:(CGSize)size

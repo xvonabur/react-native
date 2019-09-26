@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,7 +10,11 @@
 
 'use strict';
 
-import type {RNTesterExample} from 'RNTesterTypes';
+export type RNTesterExample = {
+  key: string,
+  module: Object,
+  supportsTVOS: boolean,
+};
 
 const ComponentExamples: Array<RNTesterExample> = [
   {
@@ -89,6 +93,21 @@ const ComponentExamples: Array<RNTesterExample> = [
     supportsTVOS: true,
   },
   {
+    key: 'NavigatorIOSColorsExample',
+    module: require('./NavigatorIOSColorsExample'),
+    supportsTVOS: false,
+  },
+  {
+    key: 'NavigatorIOSBarStyleExample',
+    module: require('./NavigatorIOSBarStyleExample'),
+    supportsTVOS: false,
+  },
+  {
+    key: 'NavigatorIOSExample',
+    module: require('./NavigatorIOSExample'),
+    supportsTVOS: true,
+  },
+  {
     key: 'PickerExample',
     module: require('./PickerExample'),
     supportsTVOS: false,
@@ -107,11 +126,6 @@ const ComponentExamples: Array<RNTesterExample> = [
     key: 'RefreshControlExample',
     module: require('./RefreshControlExample'),
     supportsTVOS: false,
-  },
-  {
-    key: 'ScrollViewSimpleExample',
-    module: require('./ScrollViewSimpleExample'),
-    supportsTVOS: true,
   },
   {
     key: 'SafeAreaViewExample',
@@ -159,6 +173,16 @@ const ComponentExamples: Array<RNTesterExample> = [
     supportsTVOS: false,
   },
   {
+    key: 'TabBarIOSExample',
+    module: require('./TabBarIOSExample'),
+    supportsTVOS: true,
+  },
+  {
+    key: 'TabBarIOSBarStyleExample',
+    module: require('./TabBarIOSBarStyleExample'),
+    supportsTVOS: false,
+  },
+  {
     key: 'TextExample',
     module: require('./TextExample.ios'),
     supportsTVOS: true,
@@ -199,6 +223,11 @@ const APIExamples: Array<RNTesterExample> = [
   {
     key: 'ActionSheetIOSExample',
     module: require('./ActionSheetIOSExample'),
+    supportsTVOS: true,
+  },
+  {
+    key: 'AlertExample',
+    module: require('./AlertExample').AlertExample,
     supportsTVOS: true,
   },
   {

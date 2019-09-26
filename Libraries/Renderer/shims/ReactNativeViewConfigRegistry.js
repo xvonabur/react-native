@@ -1,11 +1,11 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @flow strict-local
+ * @flow
  */
 
 'use strict';
@@ -15,7 +15,7 @@ import type {
   ViewConfigGetter,
 } from './ReactNativeTypes';
 
-const invariant = require('invariant');
+const invariant = require('fbjs/lib/invariant');
 
 // Event configs
 const customBubblingEventTypes = {};
@@ -30,7 +30,7 @@ const viewConfigCallbacks = new Map();
 const viewConfigs = new Map();
 
 function processEventTypes(
-  viewConfig: ReactNativeBaseComponentViewConfig<>,
+  viewConfig: ReactNativeBaseComponentViewConfig,
 ): void {
   const {bubblingEventTypes, directEventTypes} = viewConfig;
 
@@ -86,20 +86,15 @@ exports.register = function(name: string, callback: ViewConfigGetter): string {
  * If this is the first time the view has been used,
  * This configuration will be lazy-loaded from UIManager.
  */
-exports.get = function(name: string): ReactNativeBaseComponentViewConfig<> {
+exports.get = function(name: string): ReactNativeBaseComponentViewConfig {
   let viewConfig;
   if (!viewConfigs.has(name)) {
     const callback = viewConfigCallbacks.get(name);
-    if (typeof callback !== 'function') {
-      invariant(
-        false,
-        'View config not found for name %s.%s',
-        name,
-        typeof name[0] === 'string' && /[a-z]/.test(name[0])
-          ? ' Make sure to start component names with a capital letter.'
-          : '',
-      );
-    }
+    invariant(
+      typeof callback === 'function',
+      'View config not found for name %s',
+      name,
+    );
     viewConfigCallbacks.set(name, null);
     viewConfig = callback();
     processEventTypes(viewConfig);

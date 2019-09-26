@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,15 +9,13 @@
 
 #import <React/RCTBridgeModule.h>
 
-NS_ASSUME_NONNULL_BEGIN
-
 @protocol RCTExceptionsManagerDelegate <NSObject>
 
-- (void)handleSoftJSExceptionWithMessage:(nullable NSString *)message stack:(nullable NSArray *)stack exceptionId:(NSNumber *)exceptionId;
-- (void)handleFatalJSExceptionWithMessage:(nullable NSString *)message stack:(nullable NSArray *)stack exceptionId:(NSNumber *)exceptionId;
+- (void)handleSoftJSExceptionWithMessage:(NSString *)message stack:(NSArray *)stack exceptionId:(NSNumber *)exceptionId;
+- (void)handleFatalJSExceptionWithMessage:(NSString *)message stack:(NSArray *)stack exceptionId:(NSNumber *)exceptionId;
 
 @optional
-- (void)updateJSExceptionWithMessage:(nullable NSString *)message stack:(nullable NSArray *)stack exceptionId:(NSNumber *)exceptionId;
+- (void)updateJSExceptionWithMessage:(NSString *)message stack:(NSArray *)stack exceptionId:(NSNumber *)exceptionId;
 
 @end
 
@@ -25,13 +23,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype)initWithDelegate:(id<RCTExceptionsManagerDelegate>)delegate;
 
-- (void)reportSoftException:(nullable NSString *)message stack:(nullable NSArray<NSDictionary *> *)stack exceptionId:(NSNumber *)exceptionId;
-- (void)reportFatalException:(nullable NSString *)message stack:(nullable NSArray<NSDictionary *> *)stack exceptionId:(NSNumber *)exceptionId;
+- (void)reportSoftException:(NSString *)message stack:(NSArray<NSDictionary *> *)stack exceptionId:(nonnull NSNumber *)exceptionId;
+- (void)reportFatalException:(NSString *)message stack:(NSArray<NSDictionary *> *)stack exceptionId:(nonnull NSNumber *)exceptionId;
 
 @property (nonatomic, weak) id<RCTExceptionsManagerDelegate> delegate;
 
 @property (nonatomic, assign) NSUInteger maxReloadAttempts;
 
 @end
-
-NS_ASSUME_NONNULL_END

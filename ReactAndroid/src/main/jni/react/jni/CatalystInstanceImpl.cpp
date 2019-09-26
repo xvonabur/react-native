@@ -1,4 +1,4 @@
-// Copyright (c) Facebook, Inc. and its affiliates.
+// Copyright (c) 2004-present, Facebook, Inc.
 
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
@@ -42,6 +42,7 @@ namespace {
 
 class Exception : public jni::JavaClass<Exception> {
  public:
+  static auto constexpr kJavaDescriptor = "Ljava/lang/Exception;";
 };
 
 class JInstanceCallback : public InstanceCallback {
@@ -153,7 +154,7 @@ void CatalystInstanceImpl::initializeBridge(
        moduleMessageQueue_));
 
   instance_->initializeBridge(
-    std::make_unique<JInstanceCallback>(
+    folly::make_unique<JInstanceCallback>(
     callback,
     moduleMessageQueue_),
     jseh->getExecutorFactory(),
@@ -197,8 +198,6 @@ void CatalystInstanceImpl::jniLoadScriptFromAssets(
       sourceURL,
       loadSynchronously);
     return;
-  } else if (Instance::isIndexedRAMBundle(&script)) {
-    instance_->loadRAMBundleFromString(std::move(script), sourceURL);
   } else {
     instance_->loadScriptFromString(std::move(script), sourceURL, loadSynchronously);
   }

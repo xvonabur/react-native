@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -18,7 +18,7 @@ const ReactNative = require('ReactNative');
 const StyleSheet = require('StyleSheet');
 const View = require('View');
 const processColor = require('processColor');
-const RCTPickerNativeComponent = require('RCTPickerNativeComponent');
+const requireNativeComponent = require('requireNativeComponent');
 
 import type {SyntheticEvent} from 'CoreEventTypes';
 import type {ColorValue} from 'StyleSheetTypes';
@@ -27,14 +27,14 @@ import type {TextStyleProp} from 'StyleSheet';
 
 type PickerIOSChangeEvent = SyntheticEvent<
   $ReadOnly<{|
-    newValue: number | string,
+    newValue: any,
     newIndex: number,
   |}>,
 >;
 
 type RCTPickerIOSItemType = $ReadOnly<{|
   label: ?Label,
-  value: ?(number | string),
+  value: ?any,
   textColor: ?number,
 |}>;
 
@@ -47,10 +47,13 @@ type RCTPickerIOSType = Class<
       onStartShouldSetResponder: () => boolean,
       selectedIndex: number,
       style?: ?TextStyleProp,
-      testID?: ?string,
     |}>,
   >,
 >;
+
+const RCTPickerIOS: RCTPickerIOSType = (requireNativeComponent(
+  'RCTPicker',
+): any);
 
 type Label = Stringish | number;
 
@@ -59,8 +62,8 @@ type Props = $ReadOnly<{|
   children: React.ChildrenArray<React.Element<typeof PickerIOSItem>>,
   itemStyle?: ?TextStyleProp,
   onChange?: ?(event: PickerIOSChangeEvent) => mixed,
-  onValueChange?: ?(itemValue: string | number, itemIndex: number) => mixed,
-  selectedValue: ?(number | string),
+  onValueChange?: ?(newValue: any, newIndex: number) => mixed,
+  selectedValue: any,
 |}>;
 
 type State = {|
@@ -70,7 +73,7 @@ type State = {|
 
 type ItemProps = $ReadOnly<{|
   label: ?Label,
-  value?: ?(number | string),
+  value?: ?any,
   color?: ?ColorValue,
 |}>;
 
@@ -107,11 +110,10 @@ class PickerIOS extends React.Component<Props, State> {
   render() {
     return (
       <View style={this.props.style}>
-        <RCTPickerNativeComponent
+        <RCTPickerIOS
           ref={picker => {
             this._picker = picker;
           }}
-          testID={this.props.testID}
           style={[styles.pickerIOS, this.props.itemStyle]}
           items={this.state.items}
           selectedIndex={this.state.selectedIndex}

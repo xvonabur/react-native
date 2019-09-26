@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,9 +10,6 @@ package com.facebook.react.bridge;
 import com.facebook.infer.annotation.Assertions;
 import com.facebook.jni.HybridData;
 import com.facebook.proguard.annotations.DoNotStrip;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 
 /**
  * Implementation of a write-only array stored in native memory. Use
@@ -38,11 +35,11 @@ public class WritableNativeArray extends ReadableNativeArray implements Writable
   @Override
   public native void pushInt(int value);
   @Override
-  public native void pushString(@Nullable String value);
+  public native void pushString(String value);
 
   // Note: this consumes the map so do not reuse it.
   @Override
-  public void pushArray(@Nullable WritableArray array) {
+  public void pushArray(WritableArray array) {
     Assertions.assertCondition(
         array == null || array instanceof WritableNativeArray, "Illegal type provided");
     pushNativeArray((WritableNativeArray) array);
@@ -50,7 +47,7 @@ public class WritableNativeArray extends ReadableNativeArray implements Writable
 
   // Note: this consumes the map so do not reuse it.
   @Override
-  public void pushMap(@Nullable WritableMap map) {
+  public void pushMap(WritableMap map) {
     Assertions.assertCondition(
         map == null || map instanceof WritableNativeMap, "Illegal type provided");
     pushNativeMap((WritableNativeMap) map);

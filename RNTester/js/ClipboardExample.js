@@ -1,25 +1,20 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @flow strict-local
+ * @flow
  */
 
 'use strict';
 
-const React = require('react');
-const ReactNative = require('react-native');
-const {Clipboard, View, Text, StyleSheet} = ReactNative;
+var React = require('react');
+var ReactNative = require('react-native');
+var {Clipboard, View, Text} = ReactNative;
 
-type Props = $ReadOnly<{||}>;
-type State = {|
-  content: string,
-|};
-
-class ClipboardExample extends React.Component<Props, State> {
+class ClipboardExample extends React.Component<{}, $FlowFixMeState> {
   state = {
     content: 'Content will appear here',
   };
@@ -27,7 +22,7 @@ class ClipboardExample extends React.Component<Props, State> {
   _setClipboardContent = async () => {
     Clipboard.setString('Hello World');
     try {
-      const content = await Clipboard.getString();
+      var content = await Clipboard.getString();
       this.setState({content});
     } catch (e) {
       this.setState({content: e.message});
@@ -37,24 +32,14 @@ class ClipboardExample extends React.Component<Props, State> {
   render() {
     return (
       <View>
-        <Text onPress={this._setClipboardContent} style={styles.label}>
+        <Text onPress={this._setClipboardContent} style={{color: 'blue'}}>
           Tap to put "Hello World" in the clipboard
         </Text>
-        <Text style={styles.content}>{this.state.content}</Text>
+        <Text style={{color: 'red', marginTop: 20}}>{this.state.content}</Text>
       </View>
     );
   }
 }
-
-const styles = StyleSheet.create({
-  label: {
-    color: 'blue',
-  },
-  content: {
-    color: 'red',
-    marginTop: 20,
-  },
-});
 
 exports.title = 'Clipboard';
 exports.description = 'Show Clipboard contents.';

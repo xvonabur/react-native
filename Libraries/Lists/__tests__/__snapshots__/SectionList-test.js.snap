@@ -341,6 +341,7 @@ exports[`SectionList renders all the bells and whistles 1`] = `
   <View>
     <View
       onLayout={[Function]}
+      style={null}
     >
       <header
         v=""
@@ -483,6 +484,7 @@ exports[`SectionList renders all the bells and whistles 1`] = `
     </View>
     <View
       onLayout={[Function]}
+      style={null}
     >
       <footer
         v=""

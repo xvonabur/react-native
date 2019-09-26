@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -8,8 +8,6 @@
 package com.facebook.react.bridge;
 
 import com.facebook.proguard.annotations.DoNotStrip;
-
-import javax.annotation.Nonnull;
 
 
 /**
@@ -22,7 +20,7 @@ import javax.annotation.Nonnull;
 @DoNotStrip
 public interface NativeModule {
   interface NativeMethod {
-    void invoke(JSInstance jsInstance, ReadableArray parameters);
+    void invoke(JSInstance jsInstance, ReadableNativeArray parameters);
     String getType();
   }
 
@@ -30,7 +28,7 @@ public interface NativeModule {
    * @return the name of this module. This will be the name used to {@code require()} this module
    * from javascript.
    */
-  @Nonnull String getName();
+  String getName();
 
   /**
    * This is called at the end of {@link CatalystApplicationFragment#createCatalystInstance()}

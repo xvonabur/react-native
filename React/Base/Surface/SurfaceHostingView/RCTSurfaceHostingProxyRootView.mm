@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -57,9 +57,6 @@ static RCTRootViewSizeFlexibility convertToRootViewSizeFlexibility(RCTSurfaceSiz
   RCTAssert(moduleName, @"A moduleName is required to create an RCTSurfaceHostingProxyRootView");
 
   RCT_PROFILE_BEGIN_EVENT(RCTProfileTagAlways, @"-[RCTSurfaceHostingProxyRootView init]", nil);
-
-  _bridge = bridge;
-
   if (!bridge.isLoading) {
     [bridge.performanceLogger markStartForTag:RCTPLTTI];
   }
@@ -69,7 +66,6 @@ static RCTRootViewSizeFlexibility convertToRootViewSizeFlexibility(RCTSurfaceSiz
 
   if (self = [super initWithBridge:bridge moduleName:moduleName initialProperties:initialProperties sizeMeasureMode:sizeMeasureMode]) {
     self.backgroundColor = [UIColor whiteColor];
-    [super.surface start];
   }
 
   RCT_PROFILE_END_EVENT(RCTProfileTagAlways, @"");
@@ -97,6 +93,11 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
 - (NSString *)moduleName
 {
   return super.surface.moduleName;
+}
+
+- (RCTBridge *)bridge
+{
+  return super.surface.bridge;
 }
 
 - (UIView *)contentView
@@ -147,7 +148,7 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
 {
   [super surface:surface didChangeStage:stage];
   if (RCTSurfaceStageIsRunning(stage)) {
-    [_bridge.performanceLogger markStopForTag:RCTPLTTI];
+    [super.surface.bridge.performanceLogger markStopForTag:RCTPLTTI];
     dispatch_async(dispatch_get_main_queue(), ^{
       [[NSNotificationCenter defaultCenter] postNotificationName:RCTContentDidAppearNotification
                                                           object:self];

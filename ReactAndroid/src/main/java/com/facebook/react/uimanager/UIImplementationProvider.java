@@ -13,9 +13,7 @@ import java.util.List;
 /**
  * Provides UIImplementation to use in {@link UIManagerModule}.
  */
-@Deprecated
 public class UIImplementationProvider {
-
   public UIImplementation createUIImplementation(
       ReactApplicationContext reactContext,
       UIManagerModule.ViewManagerResolver viewManagerResolver,
@@ -27,7 +25,7 @@ public class UIImplementationProvider {
         eventDispatcher,
         minTimeLeftInFrameForNonBatchedOperationMs);
   }
-
+  
   public UIImplementation createUIImplementation(
       ReactApplicationContext reactContext,
       List<ViewManager> viewManagerList,
@@ -38,17 +36,5 @@ public class UIImplementationProvider {
         viewManagerList,
         eventDispatcher,
         minTimeLeftInFrameForNonBatchedOperationMs);
-  }
-
-  UIImplementation createUIImplementation(
-    ReactApplicationContext reactContext,
-    ViewManagerRegistry viewManagerRegistry,
-    EventDispatcher eventDispatcher,
-    int minTimeLeftInFrameForNonBatchedOperationMs) {
-    return new UIImplementation(
-      reactContext,
-      viewManagerRegistry,
-      eventDispatcher,
-      minTimeLeftInFrameForNonBatchedOperationMs);
   }
 }

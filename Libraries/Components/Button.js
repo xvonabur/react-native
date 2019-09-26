@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,54 +10,17 @@
 
 'use strict';
 
+const ColorPropType = require('ColorPropType');
 const Platform = require('Platform');
 const React = require('React');
+const PropTypes = require('prop-types');
 const StyleSheet = require('StyleSheet');
 const Text = require('Text');
 const TouchableNativeFeedback = require('TouchableNativeFeedback');
 const TouchableOpacity = require('TouchableOpacity');
 const View = require('View');
 
-const invariant = require('invariant');
-
-import type {PressEvent} from 'CoreEventTypes';
-
-type ButtonProps = $ReadOnly<{|
-  /**
-   * Text to display inside the button
-   */
-  title: string,
-
-  /**
-   * Handler to be called when the user taps the button
-   */
-  onPress: (event?: PressEvent) => mixed,
-
-  /**
-   * Color of the text (iOS), or background color of the button (Android)
-   */
-  color?: ?string,
-
-  /**
-   * TV preferred focus (see documentation for the View component).
-   */
-  hasTVPreferredFocus?: ?boolean,
-
-  /**
-   * Text to display for blindness accessibility features
-   */
-  accessibilityLabel?: ?string,
-
-  /**
-   * If true, disable all interactions for this component.
-   */
-  disabled?: ?boolean,
-
-  /**
-   * Used to locate this view in end-to-end tests.
-   */
-  testID?: ?string,
-|}>;
+const invariant = require('fbjs/lib/invariant');
 
 /**
  * A basic button component that should render nicely on any platform. Supports
@@ -87,7 +50,46 @@ type ButtonProps = $ReadOnly<{|
  *
  */
 
-class Button extends React.Component<ButtonProps> {
+class Button extends React.Component<{
+  title: string,
+  onPress: () => any,
+  color?: ?string,
+  hasTVPreferredFocus?: ?boolean,
+  accessibilityLabel?: ?string,
+  disabled?: ?boolean,
+  testID?: ?string,
+}> {
+  static propTypes = {
+    /**
+     * Text to display inside the button
+     */
+    title: PropTypes.string.isRequired,
+    /**
+     * Text to display for blindness accessibility features
+     */
+    accessibilityLabel: PropTypes.string,
+    /**
+     * Color of the text (iOS), or background color of the button (Android)
+     */
+    color: ColorPropType,
+    /**
+     * If true, disable all interactions for this component.
+     */
+    disabled: PropTypes.bool,
+    /**
+     * TV preferred focus (see documentation for the View component).
+     */
+    hasTVPreferredFocus: PropTypes.bool,
+    /**
+     * Handler to be called when the user taps the button
+     */
+    onPress: PropTypes.func.isRequired,
+    /**
+     * Used to locate this view in end-to-end tests.
+     */
+    testID: PropTypes.string,
+  };
+
   render() {
     const {
       accessibilityLabel,
@@ -107,11 +109,11 @@ class Button extends React.Component<ButtonProps> {
         buttonStyles.push({backgroundColor: color});
       }
     }
-    const accessibilityStates = [];
+    const accessibilityTraits = ['button'];
     if (disabled) {
       buttonStyles.push(styles.buttonDisabled);
       textStyles.push(styles.textDisabled);
-      accessibilityStates.push('disabled');
+      accessibilityTraits.push('disabled');
     }
     invariant(
       typeof title === 'string',
@@ -123,9 +125,9 @@ class Button extends React.Component<ButtonProps> {
       Platform.OS === 'android' ? TouchableNativeFeedback : TouchableOpacity;
     return (
       <Touchable
+        accessibilityComponentType="button"
         accessibilityLabel={accessibilityLabel}
-        accessibilityRole="button"
-        accessibilityStates={accessibilityStates}
+        accessibilityTraits={accessibilityTraits}
         hasTVPreferredFocus={hasTVPreferredFocus}
         testID={testID}
         disabled={disabled}
@@ -150,21 +152,21 @@ const styles = StyleSheet.create({
       borderRadius: 2,
     },
   }),
-  text: {
-    textAlign: 'center',
-    padding: 8,
-    ...Platform.select({
-      ios: {
-        // iOS blue from https://developer.apple.com/ios/human-interface-guidelines/visual-design/color/
-        color: '#007AFF',
-        fontSize: 18,
-      },
-      android: {
-        color: 'white',
-        fontWeight: '500',
-      },
-    }),
-  },
+  text: Platform.select({
+    ios: {
+      // iOS blue from https://developer.apple.com/ios/human-interface-guidelines/visual-design/color/
+      color: '#007AFF',
+      textAlign: 'center',
+      padding: 8,
+      fontSize: 18,
+    },
+    android: {
+      color: 'white',
+      textAlign: 'center',
+      padding: 8,
+      fontWeight: '500',
+    },
+  }),
   buttonDisabled: Platform.select({
     ios: {},
     android: {

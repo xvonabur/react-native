@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,7 +9,6 @@ package com.facebook.react.modules.dialog;
 
 import javax.annotation.Nullable;
 
-import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
@@ -35,7 +34,6 @@ public class AlertFragment extends DialogFragment implements DialogInterface.OnC
       mListener = null;
   }
 
-  @SuppressLint("ValidFragment")
   public AlertFragment(@Nullable DialogModule.AlertFragmentListener listener, Bundle arguments) {
     mListener = listener;
     setArguments(arguments);

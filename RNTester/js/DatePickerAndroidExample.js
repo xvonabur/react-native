@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,37 +9,22 @@
 
 'use strict';
 
-const React = require('react');
-const ReactNative = require('react-native');
-const {
+var React = require('react');
+var ReactNative = require('react-native');
+var {
   DatePickerAndroid,
   StyleSheet,
   Text,
   TouchableWithoutFeedback,
 } = ReactNative;
 
-const RNTesterBlock = require('./RNTesterBlock');
-const RNTesterPage = require('./RNTesterPage');
+var RNTesterBlock = require('./RNTesterBlock');
+var RNTesterPage = require('./RNTesterPage');
 
-type Props = $ReadOnly<{||}>;
-type State = {|
-  presetDate: Date,
-  simpleDate: Date,
-  spinnerDate: Date,
-  calendarDate: Date,
-  defaultDate: Date,
-  allDate: Date,
-  simpleText: string,
-  spinnerText: string,
-  calendarText: string,
-  defaultText: string,
-  minText: string,
-  maxText: string,
-  presetText: string,
-  allText: string,
-|};
+class DatePickerAndroidExample extends React.Component {
+  static title = 'DatePickerAndroid';
+  static description = 'Standard Android date picker dialog';
 
-class DatePickerAndroidExample extends React.Component<Props, State> {
   state = {
     presetDate: new Date(2020, 4, 5),
     simpleDate: new Date(2020, 4, 5),
@@ -59,12 +44,12 @@ class DatePickerAndroidExample extends React.Component<Props, State> {
 
   showPicker = async (stateKey, options) => {
     try {
-      const newState = {};
+      var newState = {};
       const {action, year, month, day} = await DatePickerAndroid.open(options);
       if (action === DatePickerAndroid.dismissedAction) {
         newState[stateKey + 'Text'] = 'dismissed';
       } else {
-        const date = new Date(year, month, day);
+        var date = new Date(year, month, day);
         newState[stateKey + 'Text'] = date.toLocaleDateString();
         newState[stateKey + 'Date'] = date;
       }
@@ -153,19 +138,10 @@ class DatePickerAndroidExample extends React.Component<Props, State> {
   }
 }
 
-const styles = StyleSheet.create({
+var styles = StyleSheet.create({
   text: {
     color: 'black',
   },
 });
 
-exports.title = 'DatePickerAndroid';
-exports.description = 'Standard Android date picker dialog';
-exports.examples = [
-  {
-    title: 'Simple date picker',
-    render: function(): React.Element<typeof DatePickerAndroidExample> {
-      return <DatePickerAndroidExample />;
-    },
-  },
-];
+module.exports = DatePickerAndroidExample;
