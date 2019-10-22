@@ -1,9 +1,10 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * <p>This source code is licensed under the MIT license found in the LICENSE file in the root
- * directory of this source tree.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
+
 package com.facebook.react.fabric;
 
 import java.util.HashMap;
@@ -33,6 +34,7 @@ public class FabricComponents {
     sComponentNames.put("ShimmeringView", "RKShimmeringView");
     sComponentNames.put("TemplateView", "RCTTemplateView");
     sComponentNames.put("AxialGradientView", "RCTAxialGradientView");
+    sComponentNames.put("Video", "RCTVideo");
   }
 
   /** @return the name of component in the Fabric environment */

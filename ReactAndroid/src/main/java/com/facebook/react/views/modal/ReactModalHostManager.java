@@ -1,9 +1,10 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * <p>This source code is licensed under the MIT license found in the LICENSE file in the root
- * directory of this source tree.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
+
 package com.facebook.react.views.modal;
 
 import android.content.DialogInterface;
@@ -79,6 +80,12 @@ public class ReactModalHostManager extends ViewGroupManager<ReactModalHostView>
   }
 
   @Override
+  @ReactProp(name = "statusBarTranslucent")
+  public void setStatusBarTranslucent(ReactModalHostView view, boolean statusBarTranslucent) {
+    view.setStatusBarTranslucent(statusBarTranslucent);
+  }
+
+  @Override
   @ReactProp(name = "hardwareAccelerated")
   public void setHardwareAccelerated(ReactModalHostView view, boolean hardwareAccelerated) {
     view.setHardwareAccelerated(hardwareAccelerated);
@@ -132,7 +139,8 @@ public class ReactModalHostManager extends ViewGroupManager<ReactModalHostView>
 
   @Override
   public Object updateState(
-      ReactModalHostView view, ReactStylesDiffMap props, StateWrapper stateWrapper) {
+      ReactModalHostView view, ReactStylesDiffMap props, @Nullable StateWrapper stateWrapper) {
+    // TODO T55794595: Add support for updating state with null stateWrapper
     Point modalSize = ModalHostHelper.getModalHostSize(view.getContext());
     view.updateState(stateWrapper, modalSize.x, modalSize.y);
     return null;

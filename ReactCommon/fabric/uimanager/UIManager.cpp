@@ -1,4 +1,9 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
 
 #include "UIManager.h"
 
@@ -41,6 +46,19 @@ SharedShadowNode UIManager::createNode(
       /* .localData = */ ShadowNodeFragment::localDataPlaceholder(),
       /* .state = */ state,
   });
+
+  // state->commit(x) associates a ShadowNode with the State object.
+  // state->commit(x) must be called before calling updateState; updateState
+  // fails silently otherwise. In between "now", when this node is created, and
+  // when this node is actually committed, the State object would otherwise not
+  // have any reference back to the ShadowNode that owns it. On platforms that
+  // do view preallocation (like Android), this State would be sent to the
+  // mounting layer with valid data but without an update mechanism. We
+  // explicitly associate the ShadowNode with the State here so that updateState
+  // is always safe and effectful.
+  if (state) {
+    state->commit(shadowNode);
+  }
 
   if (delegate_) {
     delegate_->uiManagerDidCreateShadowNode(shadowNode);
@@ -107,22 +125,22 @@ void UIManager::clearJSResponder() const {
 }
 
 void UIManager::setNativeProps(
-    const SharedShadowNode &shadowNode,
-    const RawProps &rawProps) const {
+    ShadowNode const &shadowNode,
+    RawProps const &rawProps) const {
   SystraceSection s("UIManager::setNativeProps");
 
-  auto &componentDescriptor = shadowNode->getComponentDescriptor();
-  auto props = componentDescriptor.cloneProps(shadowNode->getProps(), rawProps);
-  auto newShadowNode = shadowNode->clone({
+  auto &componentDescriptor = shadowNode.getComponentDescriptor();
+  auto props = componentDescriptor.cloneProps(shadowNode.getProps(), rawProps);
+  auto newShadowNode = shadowNode.clone({
       /* .tag = */ ShadowNodeFragment::tagPlaceholder(),
       /* .surfaceId = */ ShadowNodeFragment::surfaceIdPlaceholder(),
       /* .props = */ props,
   });
 
   shadowTreeRegistry_.visit(
-      shadowNode->getSurfaceId(), [&](const ShadowTree &shadowTree) {
+      shadowNode.getSurfaceId(), [&](ShadowTree const &shadowTree) {
         shadowTree.tryCommit(
-            [&](const SharedRootShadowNode &oldRootShadowNode) {
+            [&](RootShadowNode::Shared const &oldRootShadowNode) {
               return oldRootShadowNode->clone(shadowNode, newShadowNode);
             });
       });
@@ -137,7 +155,7 @@ LayoutMetrics UIManager::getRelativeLayoutMetrics(
     shadowTreeRegistry_.visit(
         shadowNode.getSurfaceId(), [&](const ShadowTree &shadowTree) {
           shadowTree.tryCommit(
-              [&](const SharedRootShadowNode &oldRootShadowNode) {
+              [&](RootShadowNode::Shared const &oldRootShadowNode) {
                 ancestorShadowNode = oldRootShadowNode.get();
                 return nullptr;
               });
@@ -158,12 +176,12 @@ LayoutMetrics UIManager::getRelativeLayoutMetrics(
 }
 
 void UIManager::updateState(
-    const SharedShadowNode &shadowNode,
-    const StateData::Shared &rawStateData) const {
-  auto &componentDescriptor = shadowNode->getComponentDescriptor();
+    ShadowNode const &shadowNode,
+    StateData::Shared const &rawStateData) const {
+  auto &componentDescriptor = shadowNode.getComponentDescriptor();
   auto state =
-      componentDescriptor.createState(shadowNode->getState(), rawStateData);
-  auto newShadowNode = shadowNode->clone({
+      componentDescriptor.createState(shadowNode.getState(), rawStateData);
+  auto newShadowNode = shadowNode.clone({
       /* .tag = */ ShadowNodeFragment::tagPlaceholder(),
       /* .surfaceId = */ ShadowNodeFragment::surfaceIdPlaceholder(),
       /* .props = */ ShadowNodeFragment::propsPlaceholder(),
@@ -174,9 +192,9 @@ void UIManager::updateState(
   });
 
   shadowTreeRegistry_.visit(
-      shadowNode->getSurfaceId(), [&](const ShadowTree &shadowTree) {
+      shadowNode.getSurfaceId(), [&](const ShadowTree &shadowTree) {
         shadowTree.tryCommit(
-            [&](const SharedRootShadowNode &oldRootShadowNode) {
+            [&](RootShadowNode::Shared const &oldRootShadowNode) {
               return oldRootShadowNode->clone(shadowNode, newShadowNode);
             });
       });
@@ -218,7 +236,7 @@ ShadowNode::Shared UIManager::findShadowNodeByTag_DEPRECATED(Tag tag) const {
     // pointer to a root node because of the possible data race.
     // To work around this, we ask for a commit and immediately cancel it
     // returning `nullptr` instead of a new shadow tree.
-    shadowTree.tryCommit([&](SharedRootShadowNode const &oldRootShadowNode) {
+    shadowTree.tryCommit([&](RootShadowNode::Shared const &oldRootShadowNode) {
       rootShadowNode = oldRootShadowNode;
       return nullptr;
     });

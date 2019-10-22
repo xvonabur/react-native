@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -267,6 +267,9 @@ using namespace facebook::react;
   // * `ReactNativeConfig` should be set by outside product code.
   _contextContainer->erase("ReactNativeConfig");
   _contextContainer->insert("ReactNativeConfig", _reactNativeConfig);
+
+  _contextContainer->erase("Bridge");
+  _contextContainer->insert("Bridge", wrapManagedObjectWeakly(_bridge));
 
   // TODO T47869586 petetheheat: Delete else case when TM rollout 100%
   _contextContainer->erase("RCTImageLoader");

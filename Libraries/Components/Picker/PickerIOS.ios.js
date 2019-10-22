@@ -4,18 +4,16 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- *
- * This is a controlled component version of RCTPickerIOS
- *
  * @format
  * @flow
  */
+
+// This is a controlled component version of RCTPickerIOS.
 
 'use strict';
 
 const RCTPickerNativeComponent = require('./RCTPickerNativeComponent');
 const React = require('react');
-const ReactNative = require('../../Renderer/shims/ReactNative');
 const StyleSheet = require('../../StyleSheet/StyleSheet');
 const View = require('../View/View');
 
@@ -38,20 +36,6 @@ type RCTPickerIOSItemType = $ReadOnly<{|
   value: ?(number | string),
   textColor: ?number,
 |}>;
-
-type RCTPickerIOSType = Class<
-  ReactNative.NativeComponent<
-    $ReadOnly<{|
-      items: $ReadOnlyArray<RCTPickerIOSItemType>,
-      onChange: (event: PickerIOSChangeEvent) => void,
-      onResponderTerminationRequest: () => boolean,
-      onStartShouldSetResponder: () => boolean,
-      selectedIndex: number,
-      style?: ?TextStyleProp,
-      testID?: ?string,
-    |}>,
-  >,
->;
 
 type Label = Stringish | number;
 
@@ -80,7 +64,7 @@ const PickerIOSItem = (props: ItemProps): null => {
 };
 
 class PickerIOS extends React.Component<Props, State> {
-  _picker: ?React.ElementRef<RCTPickerIOSType> = null;
+  _picker: ?React.ElementRef<typeof RCTPickerNativeComponent> = null;
 
   state: State = {
     selectedIndex: 0,
@@ -119,8 +103,6 @@ class PickerIOS extends React.Component<Props, State> {
           items={this.state.items}
           selectedIndex={this.state.selectedIndex}
           onChange={this._onChange}
-          onStartShouldSetResponder={() => true}
-          onResponderTerminationRequest={() => false}
         />
       </View>
     );

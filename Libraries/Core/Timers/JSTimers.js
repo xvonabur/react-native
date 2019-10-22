@@ -7,6 +7,7 @@
  * @format
  * @flow
  */
+
 'use strict';
 
 const BatchedBridge = require('../../BatchedBridge/BatchedBridge');
@@ -15,7 +16,6 @@ const Systrace = require('../../Performance/Systrace');
 
 const invariant = require('invariant');
 
-import type {ExtendedError} from '../Devtools/parseErrorStack';
 import NativeTiming from './NativeTiming';
 
 let _performanceNow = null;
@@ -83,11 +83,10 @@ function _allocateCallback(func: Function, type: JSTimerType): number {
   types[freeIndex] = type;
   if (__DEV__) {
     const parseErrorStack = require('../Devtools/parseErrorStack');
-    const error: ExtendedError = new Error();
-    error.framesToPop = 1;
-    const stack = parseErrorStack(error);
+    // TODO: (moti) T55685778 Use Error.captureStackTrace on Hermes
+    const stack = parseErrorStack(new Error());
     if (stack) {
-      identifiers[freeIndex] = stack.shift();
+      identifiers[freeIndex] = stack[1]; // skip _allocateCallback's own stack frame
     }
   }
   return id;

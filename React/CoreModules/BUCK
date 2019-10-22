@@ -31,6 +31,7 @@ rn_apple_library(
         "UIKit",
     ],
     header_path_prefix = "React",
+    labels = ["supermodule:ios/isolation/infra.react_native"],
     lang_compiler_flags = get_fbobjc_enable_exception_lang_compiler_flags_DEPRECATED(),
     link_whole = True,
     platform_preprocessor_flags = [(
@@ -51,9 +52,6 @@ rn_apple_library(
             name = "ExceptionsManager",
             native_class_func = "RCTExceptionsManagerCls",
         ) + react_module_plugin_providers(
-            name = "ImageLoader",
-            native_class_func = "RCTImageLoaderCls",
-        ) + react_module_plugin_providers(
             name = "PlatformConstants",
             native_class_func = "RCTPlatformCls",
         ) + react_module_plugin_providers(
@@ -65,14 +63,26 @@ rn_apple_library(
         ) + react_module_plugin_providers(
             name = "SourceCode",
             native_class_func = "RCTSourceCodeCls",
+        ) + react_module_plugin_providers(
+            name = "ActionSheetManager",
+            native_class_func = "RCTActionSheetManagerCls",
+        ) + react_module_plugin_providers(
+            name = "AlertManager",
+            native_class_func = "RCTAlertManagerCls",
+        ) + react_module_plugin_providers(
+            name = "AsyncLocalStorage",
+            native_class_func = "RCTAsyncLocalStorageCls",
+        ) + react_module_plugin_providers(
+            name = "Timing",
+            native_class_func = "RCTTimingCls",
         ),
+    plugins_header = "FBCoreModulesPlugins.h",
     preprocessor_flags = OBJC_ARC_PREPROCESSOR_FLAGS + get_debug_preprocessor_flags() + rn_extra_build_flags() + [
         "-DRN_DISABLE_OSS_PLUGIN_HEADER",
     ],
     reexport_all_header_dependencies = True,
     visibility = ["PUBLIC"],
     exported_deps = [
-        "fbsource//xplat/js:RCTImageApple",
         "fbsource//xplat/js/react-native-github:ReactInternalApple",
         "fbsource//xplat/js/react-native-github/Libraries/FBReactNativeSpec:FBReactNativeSpecApple",
     ],

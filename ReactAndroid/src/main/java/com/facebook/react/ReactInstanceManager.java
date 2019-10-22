@@ -1,9 +1,10 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * <p>This source code is licensed under the MIT license found in the LICENSE file in the root
- * directory of this source tree.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
+
 package com.facebook.react;
 
 import static com.facebook.infer.annotation.ThreadConfined.UI;
@@ -36,6 +37,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.net.Uri;
+import android.nfc.NfcAdapter;
 import android.os.Bundle;
 import android.os.Process;
 import android.util.Log;
@@ -462,7 +464,9 @@ public class ReactInstanceManager {
       String action = intent.getAction();
       Uri uri = intent.getData();
 
-      if (Intent.ACTION_VIEW.equals(action) && uri != null) {
+      if (uri != null
+          && (Intent.ACTION_VIEW.equals(action)
+              || NfcAdapter.ACTION_NDEF_DISCOVERED.equals(action))) {
         DeviceEventManagerModule deviceEventManagerModule =
             currentContext.getNativeModule(DeviceEventManagerModule.class);
         deviceEventManagerModule.emitNewIntentReceived(uri);
@@ -1122,9 +1126,12 @@ public class ReactInstanceManager {
       }
     }
 
+    // Remove memory pressure listener before tearing down react context
+    // We cannot access the CatalystInstance after destroying the ReactContext.
+    mMemoryPressureRouter.removeMemoryPressureListener(reactContext.getCatalystInstance());
+
     reactContext.destroy();
     mDevSupportManager.onReactInstanceDestroyed(reactContext);
-    mMemoryPressureRouter.removeMemoryPressureListener(reactContext.getCatalystInstance());
   }
 
   /** @return instance of {@link ReactContext} configured a {@link CatalystInstance} set */

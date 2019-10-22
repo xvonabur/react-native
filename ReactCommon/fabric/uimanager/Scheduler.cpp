@@ -1,7 +1,9 @@
-// Copyright (c) Facebook, Inc. and its affiliates.
-
-// This source code is licensed under the MIT license found in the
-// LICENSE file in the root directory of this source tree.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
 
 #include "Scheduler.h"
 
@@ -30,7 +32,8 @@ Scheduler::Scheduler(
   auto uiManager = std::make_shared<UIManager>();
   auto eventOwnerBox = std::make_shared<EventBeat::OwnerBox>();
 
-  auto eventPipe = [=](jsi::Runtime &runtime,
+  auto eventPipe = [uiManager](
+                       jsi::Runtime &runtime,
                        const EventTarget *eventTarget,
                        const std::string &type,
                        const ValueFactory &payloadFactory) {
@@ -40,10 +43,10 @@ Scheduler::Scheduler(
     });
   };
 
-  auto statePipe = [=](const StateData::Shared &data,
+  auto statePipe = [uiManager](
+                       const StateData::Shared &data,
                        const StateTarget &stateTarget) {
-    uiManager->updateState(
-        stateTarget.getShadowNode().shared_from_this(), data);
+    uiManager->updateState(stateTarget.getShadowNode(), data);
   };
 
   eventDispatcher_ = std::make_shared<EventDispatcher>(
@@ -125,7 +128,7 @@ void Scheduler::renderTemplateToSurface(
 
     uiManager_->getShadowTreeRegistry().visit(
         surfaceId, [=](const ShadowTree &shadowTree) {
-          return shadowTree.tryCommit([&](const SharedRootShadowNode
+          return shadowTree.tryCommit([&](RootShadowNode::Shared const
                                               &oldRootShadowNode) {
             return std::make_shared<RootShadowNode>(
                 *oldRootShadowNode,
@@ -187,7 +190,7 @@ Size Scheduler::measureSurface(
   uiManager_->getShadowTreeRegistry().visit(
       surfaceId, [&](const ShadowTree &shadowTree) {
         shadowTree.tryCommit(
-            [&](const SharedRootShadowNode &oldRootShadowNode) {
+            [&](RootShadowNode::Shared const &oldRootShadowNode) {
               auto rootShadowNode =
                   oldRootShadowNode->clone(layoutConstraints, layoutContext);
               rootShadowNode->layout();
@@ -205,8 +208,8 @@ void Scheduler::constraintSurfaceLayout(
   SystraceSection s("Scheduler::constraintSurfaceLayout");
 
   uiManager_->getShadowTreeRegistry().visit(
-      surfaceId, [&](const ShadowTree &shadowTree) {
-        shadowTree.commit([&](const SharedRootShadowNode &oldRootShadowNode) {
+      surfaceId, [&](ShadowTree const &shadowTree) {
+        shadowTree.commit([&](RootShadowNode::Shared const &oldRootShadowNode) {
           return oldRootShadowNode->clone(layoutConstraints, layoutContext);
         });
       });
@@ -248,7 +251,7 @@ void Scheduler::uiManagerDidFinishTransaction(
 
   uiManager_->getShadowTreeRegistry().visit(
       surfaceId, [&](const ShadowTree &shadowTree) {
-        shadowTree.commit([&](const SharedRootShadowNode &oldRootShadowNode) {
+        shadowTree.commit([&](RootShadowNode::Shared const &oldRootShadowNode) {
           return std::make_shared<RootShadowNode>(
               *oldRootShadowNode,
               ShadowNodeFragment{

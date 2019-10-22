@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -93,7 +93,7 @@ ImageSource SliderShadowNode::getThumbImageSource() const {
 
 Size SliderShadowNode::measure(LayoutConstraints layoutConstraints) const {
   if (SliderMeasurementsManager::shouldMeasureSlider()) {
-    return measurementsManager_->measure(layoutConstraints);
+    return measurementsManager_->measure(getSurfaceId(), layoutConstraints);
   }
 
   return {};

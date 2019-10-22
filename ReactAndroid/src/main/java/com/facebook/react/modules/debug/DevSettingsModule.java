@@ -1,9 +1,10 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * <p>This source code is licensed under the MIT license found in the LICENSE file in the root
- * directory of this source tree.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
+
 package com.facebook.react.modules.debug;
 
 import com.facebook.react.bridge.Arguments;
@@ -53,6 +54,16 @@ public class DevSettingsModule extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
+  public void reloadWithReason(String reason) {
+    this.reload();
+  }
+
+  @ReactMethod
+  public void onFastRefresh() {
+    // noop
+  }
+
+  @ReactMethod
   public void setHotLoadingEnabled(boolean isHotLoadingEnabled) {
     mDevSupportManager.setHotModuleReplacementEnabled(isHotLoadingEnabled);
   }
@@ -81,9 +92,15 @@ public class DevSettingsModule extends ReactContextBaseJavaModule {
           public void onOptionSelected() {
             WritableMap data = Arguments.createMap();
             data.putString("title", title);
-            getReactApplicationContext()
-                .getJSModule(RCTDeviceEventEmitter.class)
-                .emit("didPressMenuItem", data);
+
+            ReactApplicationContext reactApplicationContext =
+                getReactApplicationContextIfActiveOrWarn(NAME, "onOptionSelected");
+
+            if (reactApplicationContext != null) {
+              reactApplicationContext
+                  .getJSModule(RCTDeviceEventEmitter.class)
+                  .emit("didPressMenuItem", data);
+            }
           }
         });
   }

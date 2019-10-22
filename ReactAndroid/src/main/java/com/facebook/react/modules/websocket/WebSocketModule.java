@@ -1,16 +1,16 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * <p>This source code is licensed under the MIT license found in the LICENSE file in the root
- * directory of this source tree.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
+
 package com.facebook.react.modules.websocket;
 
 import androidx.annotation.Nullable;
 import com.facebook.common.logging.FLog;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
@@ -39,6 +39,8 @@ import okio.ByteString;
 
 @ReactModule(name = WebSocketModule.NAME, hasConstants = false)
 public final class WebSocketModule extends ReactContextBaseJavaModule {
+  public static final String TAG = WebSocketModule.class.getSimpleName();
+
   public static final String NAME = "WebSocketModule";
 
   public interface ContentHandler {
@@ -50,19 +52,23 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
   private final Map<Integer, WebSocket> mWebSocketConnections = new ConcurrentHashMap<>();
   private final Map<Integer, ContentHandler> mContentHandlers = new ConcurrentHashMap<>();
 
-  private ReactContext mReactContext;
   private ForwardingCookieHandler mCookieHandler;
 
   public WebSocketModule(ReactApplicationContext context) {
     super(context);
-    mReactContext = context;
     mCookieHandler = new ForwardingCookieHandler(context);
   }
 
   private void sendEvent(String eventName, WritableMap params) {
-    mReactContext
-        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-        .emit(eventName, params);
+    ReactApplicationContext reactApplicationContext =
+        getReactApplicationContextIfActiveOrWarn(
+            TAG, "sendAppStateChangeEvent: trying to update app state");
+
+    if (reactApplicationContext != null) {
+      reactApplicationContext
+          .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+          .emit(eventName, params);
+    }
   }
 
   @Override

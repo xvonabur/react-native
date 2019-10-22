@@ -1,6 +1,9 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
-// This source code is licensed under the MIT license found in the
-// LICENSE file in the root directory of this source tree.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
 
 #include "Binding.h"
 #include "AsyncEventBeat.h"
@@ -234,6 +237,8 @@ void Binding::installFabricUIManager(
   // Keep reference to config object and cache some feature flags here
   reactNativeConfig_ = config;
   shouldCollateRemovesAndDeletes_ = reactNativeConfig_->getBool("react_fabric:enable_removedelete_collation_android");
+
+  disablePreallocateViews_ = reactNativeConfig_->getBool("react_fabric:disabled_view_preallocation_android");
 
   auto toolbox = SchedulerToolbox{};
   toolbox.contextContainer = contextContainer;
@@ -599,7 +604,7 @@ void Binding::schedulerDidFinishTransaction(
 
     switch (mutation.type) {
       case ShadowViewMutation::Create: {
-        if (mutation.newChildShadowView.props->revision > 1 ||
+        if (disablePreallocateViews_ || mutation.newChildShadowView.props->revision > 1 ||
             deletedViewTags.find(mutation.newChildShadowView.tag) !=
                 deletedViewTags.end()) {
           mountItems[position++] =
@@ -680,7 +685,7 @@ void Binding::schedulerDidFinishTransaction(
           mountItems[position++] =
               createInsertMountItem(localJavaUIManager, mutation);
 
-          if (mutation.newChildShadowView.props->revision > 1 ||
+          if (disablePreallocateViews_ || mutation.newChildShadowView.props->revision > 1 ||
               deletedViewTags.find(mutation.newChildShadowView.tag) !=
                   deletedViewTags.end()) {
             mountItems[position++] =
@@ -776,6 +781,10 @@ void Binding::setPixelDensity(float pointScaleFactor) {
 void Binding::schedulerDidRequestPreliminaryViewAllocation(
     const SurfaceId surfaceId,
     const ShadowView &shadowView) {
+
+  if (disablePreallocateViews_) {
+    return;
+  }
 
   jni::global_ref<jobject> localJavaUIManager = getJavaUIManager();
   if (!localJavaUIManager) {

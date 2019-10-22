@@ -1,9 +1,10 @@
-/**
- * Copyright (c) 2014-present, Facebook, Inc.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * <p>This source code is licensed under the MIT license found in the LICENSE file in the root
- * directory of this source tree.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
+
 package com.facebook.react.fabric.mounting;
 
 import android.content.Context;
@@ -307,7 +308,13 @@ public class MountingManager {
       throw new IllegalStateException("Unable to find View for tag: " + reactTag);
     }
 
-    viewToUpdate.setPadding(left, top, right, bottom);
+    ViewManager viewManager = viewState.mViewManager;
+    if (viewManager == null) {
+      throw new IllegalStateException("Unable to find ViewManager for view: " + viewState);
+    }
+
+    //noinspection unchecked
+    viewManager.setPadding(viewToUpdate, left, top, right, bottom);
   }
 
   @UiThread
@@ -363,11 +370,12 @@ public class MountingManager {
   }
 
   @UiThread
-  public void updateState(final int reactTag, StateWrapper stateWrapper) {
+  public void updateState(final int reactTag, @Nullable StateWrapper stateWrapper) {
     UiThreadUtil.assertOnUiThread();
     ViewState viewState = getViewState(reactTag);
-    ReadableNativeMap newState = stateWrapper.getState();
-    if (viewState.mCurrentState != null && viewState.mCurrentState.equals(newState)) {
+    @Nullable ReadableNativeMap newState = stateWrapper == null ? null : stateWrapper.getState();
+    if ((viewState.mCurrentState != null && viewState.mCurrentState.equals(newState))
+        || (viewState.mCurrentState == null && stateWrapper == null)) {
       return;
     }
     viewState.mCurrentState = newState;

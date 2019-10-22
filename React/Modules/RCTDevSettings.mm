@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -36,6 +36,16 @@ static NSString *const kRCTDevSettingsUserDefaultsKey = @"RCTDevMenu";
 #if RCT_ENABLE_INSPECTOR
 #import "RCTInspectorDevServerHelper.h"
 #endif
+
+#if RCT_DEV
+static BOOL devSettingsMenuEnabled = YES;
+#else
+static BOOL devSettingsMenuEnabled = NO;
+#endif
+
+void RCTDevSettingsSetEnabled(BOOL enabled) {
+  devSettingsMenuEnabled = enabled;
+}
 
 #if RCT_DEV_MENU
 
@@ -161,7 +171,7 @@ RCT_EXPORT_MODULE()
         if (params != (id)kCFNull && [params[@"debug"] boolValue]) {
           weakBridge.executorClass = objc_lookUpClass("RCTWebSocketExecutor");
         }
-        [weakBridge reload];
+        [weakBridge reloadWithReason:@"Global hotkey"];
       }
                        queue:dispatch_get_main_queue()
                    forMethod:@"reload"];
@@ -236,7 +246,18 @@ RCT_EXPORT_MODULE()
 
 RCT_EXPORT_METHOD(reload)
 {
-  [self.bridge reload];
+  [self.bridge reloadWithReason:@"Unknown From JS"];
+}
+
+RCT_EXPORT_METHOD(reloadWithReason : (NSString *) reason)
+{
+  [self.bridge reloadWithReason:reason];
+
+}
+
+RCT_EXPORT_METHOD(onFastRefresh)
+{
+    [self.bridge onFastRefresh];
 }
 
 RCT_EXPORT_METHOD(setIsShakeToShowDevMenuEnabled : (BOOL)enabled)
@@ -369,7 +390,7 @@ RCT_EXPORT_METHOD(addMenuItem:(NSString *)title)
     }
 
     self.bridge.executorClass = executorClass;
-    [self.bridge reload];
+    [self.bridge reloadWithReason:@"Custom executor class reset"];
   }
 }
 
@@ -442,6 +463,9 @@ RCT_EXPORT_METHOD(addMenuItem:(NSString *)title)
 - (void)reload
 {
 }
+- (void)reloadWithReason
+{
+}
 - (void)toggleElementInspector
 {
 }
@@ -454,8 +478,8 @@ RCT_EXPORT_METHOD(addMenuItem:(NSString *)title)
 
 - (RCTDevSettings *)devSettings
 {
-#if RCT_DEV
-  return [self moduleForClass:[RCTDevSettings class]];
+#if RCT_DEV_MENU
+  return devSettingsMenuEnabled ? [self moduleForClass:[RCTDevSettings class]] : nil;
 #else
   return nil;
 #endif

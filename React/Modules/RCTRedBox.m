@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -16,9 +16,60 @@
 #import "RCTRedBoxExtraDataViewController.h"
 #import "RCTUtils.h"
 
-#if RCT_DEBUG
+#import <objc/runtime.h>
+
+#if RCT_DEV
+static BOOL redBoxEnabled = YES;
+#else
+static BOOL redBoxEnabled = NO;
+#endif
+
+void RCTRedBoxSetEnabled(BOOL enabled) {
+  redBoxEnabled = enabled;
+}
+
+BOOL RCTRedBoxGetEnabled() {
+  return redBoxEnabled;
+}
+
+#if RCT_DEV_MENU
 
 @class RCTRedBoxWindow;
+
+@interface UIButton (RCTRedBox)
+
+@property (nonatomic) RCTRedBoxButtonPressHandler rct_handler;
+
+- (void)rct_addBlock:(RCTRedBoxButtonPressHandler)handler forControlEvents:(UIControlEvents)controlEvents;
+
+@end
+
+@implementation UIButton (RCTRedBox)
+
+- (RCTRedBoxButtonPressHandler)rct_handler
+{
+  return objc_getAssociatedObject(self, @selector(rct_handler));
+}
+
+- (void)setRct_handler:(RCTRedBoxButtonPressHandler)rct_handler
+{
+  objc_setAssociatedObject(self, @selector(rct_handler), rct_handler, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (void)rct_callBlock
+{
+  if (self.rct_handler) {
+    self.rct_handler();
+  }
+}
+
+- (void)rct_addBlock:(RCTRedBoxButtonPressHandler)handler forControlEvents:(UIControlEvents)controlEvents
+{
+  self.rct_handler = handler;
+  [self addTarget:self action:@selector(rct_callBlock) forControlEvents:controlEvents];
+}
+
+@end
 
 @protocol RCTRedBoxWindowActionDelegate <NSObject>
 
@@ -40,7 +91,7 @@
     int _lastErrorCookie;
 }
 
-- (instancetype)initWithFrame:(CGRect)frame
+- (instancetype)initWithFrame:(CGRect)frame customButtonTitles:(NSArray<NSString *>*)customButtonTitles customButtonHandlers:(NSArray<RCTRedBoxButtonPressHandler> *)customButtonHandlers
 {
     _lastErrorCookie = -1;
     if ((self = [super initWithFrame:frame])) {
@@ -86,69 +137,32 @@
         NSString *extraText = @"Extra Info";
 #endif
 
-        UIButton *dismissButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        dismissButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleRightMargin;
-        dismissButton.accessibilityIdentifier = @"redbox-dismiss";
-        dismissButton.titleLabel.font = [UIFont systemFontOfSize:13];
-        dismissButton.titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
-        dismissButton.titleLabel.textAlignment = NSTextAlignmentCenter;
-        dismissButton.backgroundColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1];
-        [dismissButton setTitle:dismissText forState:UIControlStateNormal];
-        [dismissButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        [dismissButton setTitleColor:[UIColor colorWithWhite:1 alpha:0.5] forState:UIControlStateHighlighted];
-        [dismissButton addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
+        UIButton *dismissButton = [self redBoxButton:dismissText accessibilityIdentifier:@"redbox-dismiss" selector:@selector(dismiss) block:nil];
+        UIButton *reloadButton = [self redBoxButton:reloadText accessibilityIdentifier:@"redbox-reload" selector:@selector(reload) block:nil];
+        UIButton *copyButton = [self redBoxButton:copyText accessibilityIdentifier:@"redbox-copy" selector:@selector(copyStack) block:nil];
+        UIButton *extraButton = [self redBoxButton:extraText accessibilityIdentifier:@"redbox-extra" selector:@selector(showExtraDataViewController) block:nil];
 
-        UIButton *reloadButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        reloadButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleLeftMargin;
-        reloadButton.accessibilityIdentifier = @"redbox-reload";
-        reloadButton.titleLabel.font = [UIFont systemFontOfSize:13];
-        reloadButton.titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
-        reloadButton.titleLabel.textAlignment = NSTextAlignmentCenter;
-        reloadButton.backgroundColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1];
-        [reloadButton setTitle:reloadText forState:UIControlStateNormal];
-        [reloadButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        [reloadButton setTitleColor:[UIColor colorWithWhite:1 alpha:0.5] forState:UIControlStateHighlighted];
-        [reloadButton addTarget:self action:@selector(reload) forControlEvents:UIControlEventTouchUpInside];
-
-        UIButton *copyButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        copyButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleLeftMargin;
-        copyButton.accessibilityIdentifier = @"redbox-copy";
-        copyButton.titleLabel.font = [UIFont systemFontOfSize:13];
-        copyButton.titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
-        copyButton.titleLabel.textAlignment = NSTextAlignmentCenter;
-        copyButton.backgroundColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1];
-        [copyButton setTitle:copyText forState:UIControlStateNormal];
-        [copyButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        [copyButton setTitleColor:[UIColor colorWithWhite:1 alpha:0.5] forState:UIControlStateHighlighted];
-        [copyButton addTarget:self action:@selector(copyStack) forControlEvents:UIControlEventTouchUpInside];
-
-        UIButton *extraButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        extraButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleLeftMargin;
-        extraButton.accessibilityIdentifier = @"redbox-extra";
-        extraButton.titleLabel.font = [UIFont systemFontOfSize:13];
-        extraButton.titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
-        extraButton.titleLabel.textAlignment = NSTextAlignmentCenter;
-        extraButton.backgroundColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1];
-        [extraButton setTitle:extraText forState:UIControlStateNormal];
-        [extraButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        [extraButton setTitleColor:[UIColor colorWithWhite:1 alpha:0.5] forState:UIControlStateHighlighted];
-        [extraButton addTarget:self action:@selector(showExtraDataViewController) forControlEvents:UIControlEventTouchUpInside];
-
-        CGFloat buttonWidth = self.bounds.size.width / 4;
+        CGFloat buttonWidth = self.bounds.size.width / (4 + [customButtonTitles count]);
         CGFloat bottomButtonHeight = self.bounds.size.height - buttonHeight - [self bottomSafeViewHeight];
-
         dismissButton.frame = CGRectMake(0, bottomButtonHeight, buttonWidth, buttonHeight);
         reloadButton.frame = CGRectMake(buttonWidth, bottomButtonHeight, buttonWidth, buttonHeight);
         copyButton.frame = CGRectMake(buttonWidth * 2, bottomButtonHeight, buttonWidth, buttonHeight);
         extraButton.frame = CGRectMake(buttonWidth * 3, bottomButtonHeight, buttonWidth, buttonHeight);
 
-        UIView *topBorder = [[UIView alloc] initWithFrame:CGRectMake(0, bottomButtonHeight + 1, rootView.frame.size.width, 1)];
-        topBorder.backgroundColor = [UIColor colorWithRed:0.70 green:0.70 blue:0.70 alpha:1.0];
-
         [rootView addSubview:dismissButton];
         [rootView addSubview:reloadButton];
         [rootView addSubview:copyButton];
         [rootView addSubview:extraButton];
+
+        for (NSUInteger i = 0; i < [customButtonTitles count]; i++) {
+          UIButton *button = [self redBoxButton:customButtonTitles[i] accessibilityIdentifier:@"" selector:nil block:customButtonHandlers[i]];
+          button.frame = CGRectMake(buttonWidth * (4 + i), bottomButtonHeight, buttonWidth, buttonHeight);
+          [rootView addSubview:button];
+        }
+
+        UIView *topBorder = [[UIView alloc] initWithFrame:CGRectMake(0, bottomButtonHeight + 1, rootView.frame.size.width, 1)];
+        topBorder.backgroundColor = [UIColor colorWithRed:0.70 green:0.70 blue:0.70 alpha:1.0];
+
         [rootView addSubview:topBorder];
 
         UIView *bottomSafeView = [UIView new];
@@ -158,6 +172,26 @@
         [rootView addSubview:bottomSafeView];
     }
     return self;
+}
+
+- (UIButton *)redBoxButton:(NSString *)title accessibilityIdentifier:(NSString *)accessibilityIdentifier selector:(SEL)selector block:(RCTRedBoxButtonPressHandler)block
+{
+  UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+  button.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleRightMargin;
+  button.accessibilityIdentifier = accessibilityIdentifier;
+  button.titleLabel.font = [UIFont systemFontOfSize:13];
+  button.titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
+  button.titleLabel.textAlignment = NSTextAlignmentCenter;
+  button.backgroundColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1];
+  [button setTitle:title forState:UIControlStateNormal];
+  [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+  [button setTitleColor:[UIColor colorWithWhite:1 alpha:0.5] forState:UIControlStateHighlighted];
+  if (selector) {
+    [button addTarget:self action:selector forControlEvents:UIControlEventTouchUpInside];
+  } else if (block) {
+    [button rct_addBlock:block forControlEvents:UIControlEventTouchUpInside];
+  }
+  return button;
 }
 
 - (NSInteger)bottomSafeViewHeight
@@ -412,6 +446,8 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
     RCTRedBoxWindow *_window;
     NSMutableArray<id<RCTErrorCustomizer>> *_errorCustomizers;
     RCTRedBoxExtraDataViewController *_extraDataViewController;
+    NSMutableArray<NSString *> *_customButtonTitles;
+    NSMutableArray<RCTRedBoxButtonPressHandler> *_customButtonHandlers;
 }
 
 @synthesize bridge = _bridge;
@@ -537,7 +573,7 @@ RCT_EXPORT_MODULE()
 #pragma clang diagnostic pop
 
         if (!self->_window) {
-            self->_window = [[RCTRedBoxWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+            self->_window = [[RCTRedBoxWindow alloc] initWithFrame:[UIScreen mainScreen].bounds customButtonTitles:self->_customButtonTitles customButtonHandlers:self->_customButtonHandlers];
             self->_window.actionDelegate = self;
         }
 
@@ -607,9 +643,20 @@ RCT_EXPORT_METHOD(dismiss)
     if (_overrideReloadAction) {
         _overrideReloadAction();
     } else {
-        [_bridge reload];
+        [_bridge reloadWithReason:@"Redbox"];
     }
     [self dismiss];
+}
+
+- (void)addCustomButton:(NSString *)title onPressHandler:(RCTRedBoxButtonPressHandler)handler
+{
+  if (!_customButtonTitles) {
+    _customButtonTitles = [NSMutableArray new];
+    _customButtonHandlers = [NSMutableArray new];
+  }
+
+  [_customButtonTitles addObject:title];
+  [_customButtonHandlers addObject:handler];
 }
 
 @end
@@ -618,7 +665,7 @@ RCT_EXPORT_METHOD(dismiss)
 
 - (RCTRedBox *)redBox
 {
-    return [self moduleForClass:[RCTRedBox class]];
+  return redBoxEnabled ? [self moduleForClass:[RCTRedBox class]] : nil;
 }
 
 @end
@@ -644,6 +691,8 @@ RCT_EXPORT_METHOD(dismiss)
 - (void)updateErrorMessage:(NSString *)message withParsedStack:(NSArray<RCTJSStackFrame *> *)stack errorCookie:(int)errorCookie {}
 
 - (void)dismiss {}
+
+- (void)addCustomButton:(NSString *)title onPressHandler:(RCTRedBoxButtonPressHandler)handler {}
 
 @end
 

@@ -1,4 +1,3 @@
-# coding: utf-8
 # Copyright (c) Facebook, Inc. and its affiliates.
 #
 # This source code is licensed under the MIT license found in the
@@ -65,8 +64,7 @@ Pod::Spec.new do |s|
                                 "React/Views/RCTPicker*",
                                 "React/Views/RCTRefreshControl*",
                                 "React/Views/RCTSlider*",
-                                "React/Views/RCTSwitch*",
-    ss.private_header_files   = "React/Cxx*/*.h"
+                                "React/Views/RCTSwitch*"
   end
 
   s.subspec "DevSupport" do |ss|

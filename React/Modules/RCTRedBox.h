@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -12,6 +12,8 @@
 #import <React/RCTErrorCustomizer.h>
 
 @class RCTJSStackFrame;
+
+typedef void (^RCTRedBoxButtonPressHandler)(void);
 
 @interface RCTRedBox : NSObject <RCTBridgeModule>
 
@@ -32,6 +34,8 @@
 
 - (void)dismiss;
 
+- (void)addCustomButton:(NSString *)title onPressHandler:(RCTRedBoxButtonPressHandler)handler;
+
 /** Overrides bridge.bundleURL. Modify on main thread only. You shouldn't need to use this. */
 @property (nonatomic, strong) NSURL *overrideBundleURL;
 
@@ -49,3 +53,8 @@
 @property (nonatomic, readonly) RCTRedBox *redBox;
 
 @end
+
+// In debug builds, the red box is enabled by default but it is further customizable using this method.
+// However, this method only has an effect in builds where RCTRedBox is actually compiled in.
+RCT_EXTERN void RCTRedBoxSetEnabled(BOOL enabled);
+RCT_EXTERN BOOL RCTRedBoxGetEnabled(void);

@@ -20,7 +20,6 @@ const View = require('../Components/View/View');
 
 import type {ViewProps} from '../Components/View/ViewPropTypes';
 import type {DirectEventHandler} from '../Types/CodegenTypes';
-import type {SyntheticEvent} from '../Types/CoreEventTypes';
 import type EmitterSubscription from '../vendor/emitter/EmitterSubscription';
 import RCTModalHostView from './RCTModalHostViewNativeComponent';
 /**
@@ -70,8 +69,18 @@ export type Props = $ReadOnly<{|
   transparent?: ?boolean,
 
   /**
+   * The `statusBarTranslucent` prop determines whether your modal should go under
+   * the system statusbar.
+   *
+   * See https://facebook.github.io/react-native/docs/modal.html#transparent
+   */
+  statusBarTranslucent?: ?boolean,
+
+  /**
    * The `hardwareAccelerated` prop controls whether to force hardware
    * acceleration for the underlying window.
+   *
+   * This prop works inly on Android.
    *
    * See https://facebook.github.io/react-native/docs/modal.html#hardwareaccelerated
    */
@@ -235,6 +244,7 @@ class Modal extends React.Component<Props> {
         hardwareAccelerated={this.props.hardwareAccelerated}
         onRequestClose={this.props.onRequestClose}
         onShow={this.props.onShow}
+        statusBarTranslucent={this.props.statusBarTranslucent}
         identifier={this._identifier}
         style={styles.modal}
         onStartShouldSetResponder={this._shouldSetResponder}

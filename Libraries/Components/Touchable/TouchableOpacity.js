@@ -40,7 +40,7 @@ type TVProps = $ReadOnly<{|
   tvParallaxProperties?: ?TVParallaxPropertiesType,
 |}>;
 
-type Props = $ReadOnly<{|
+export type Props = $ReadOnly<{|
   ...TouchableWithoutFeedbackProps,
   ...TVProps,
   activeOpacity?: ?number,
@@ -313,6 +313,7 @@ const TouchableOpacity = ((createReactClass({
         accessibilityState={this.props.accessibilityState}
         accessibilityActions={this.props.accessibilityActions}
         onAccessibilityAction={this.props.onAccessibilityAction}
+        accessibilityValue={this.props.accessibilityValue}
         style={[this.props.style, {opacity: this.state.anim}]}
         nativeID={this.props.nativeID}
         testID={this.props.testID}

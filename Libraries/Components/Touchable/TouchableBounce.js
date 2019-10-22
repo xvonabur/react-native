@@ -7,6 +7,7 @@
  * @flow
  * @format
  */
+
 'use strict';
 
 const Animated = require('../../Animated/src/Animated');
@@ -183,6 +184,7 @@ const TouchableBounce = ((createReactClass({
         accessibilityState={this.props.accessibilityState}
         accessibilityActions={this.props.accessibilityActions}
         onAccessibilityAction={this.props.onAccessibilityAction}
+        accessibilityValue={this.props.accessibilityValue}
         nativeID={this.props.nativeID}
         testID={this.props.testID}
         hitSlop={this.props.hitSlop}

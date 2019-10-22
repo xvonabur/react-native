@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -40,13 +40,15 @@ private:
   std::shared_ptr<CallInvoker> nativeCallInvoker_;
   jni::global_ref<TurboModuleManagerDelegate::javaobject> delegate_;
 
+  using TurboModuleCache = std::unordered_map<std::string, std::shared_ptr<react::TurboModule>>;
+
   /**
    * TODO(T48018690):
    * All modules are currently long-lived.
    * We need to come up with a mechanism to allow modules to specify whether
    * they want to be long-lived or short-lived.
    */
-  std::unordered_map<std::string, std::shared_ptr<react::TurboModule>> turboModuleCache_;
+  std::shared_ptr<TurboModuleCache> turboModuleCache_;
 
   void installJSIBindings();
   explicit TurboModuleManager(

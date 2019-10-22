@@ -92,12 +92,15 @@ import typeof RCTNativeAppEventEmitter from './Libraries/EventEmitter/RCTNativeA
 import typeof NativeModules from './Libraries/BatchedBridge/NativeModules';
 import typeof Platform from './Libraries/Utilities/Platform';
 import typeof processColor from './Libraries/StyleSheet/processColor';
-import typeof requireNativeComponent from './Libraries/ReactNative/requireNativeComponent';
 import typeof RootTagContext from './Libraries/ReactNative/RootTagContext';
 import typeof DeprecatedColorPropType from './Libraries/DeprecatedPropTypes/DeprecatedColorPropType';
 import typeof DeprecatedEdgeInsetsPropType from './Libraries/DeprecatedPropTypes/DeprecatedEdgeInsetsPropType';
 import typeof DeprecatedPointPropType from './Libraries/DeprecatedPropTypes/DeprecatedPointPropType';
 import typeof DeprecatedViewPropTypes from './Libraries/DeprecatedPropTypes/DeprecatedViewPropTypes';
+
+import type {HostComponent as _HostComponentInternal} from './Libraries/Renderer/shims/ReactNativeTypes';
+
+export type HostComponent<T> = _HostComponentInternal<T>;
 
 const invariant = require('invariant');
 const warnOnce = require('./Libraries/Utilities/warnOnce');
@@ -427,7 +430,9 @@ module.exports = {
   get processColor(): processColor {
     return require('./Libraries/StyleSheet/processColor');
   },
-  get requireNativeComponent(): requireNativeComponent {
+  get requireNativeComponent(): <T>(
+    uiViewClassName: string,
+  ) => HostComponent<T> {
     return require('./Libraries/ReactNative/requireNativeComponent');
   },
   get unstable_RootTagContext(): RootTagContext {

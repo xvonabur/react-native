@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -18,7 +18,7 @@ namespace react {
 
 class RCTImageResponseObserverProxy final : public ImageResponseObserver {
  public:
-  RCTImageResponseObserverProxy(void *delegate);
+  RCTImageResponseObserverProxy(id<RCTImageResponseDelegate> delegate = nil);
 
   void didReceiveImage(ImageResponse const &imageResponse) const override;
   void didReceiveProgress(float progress) const override;

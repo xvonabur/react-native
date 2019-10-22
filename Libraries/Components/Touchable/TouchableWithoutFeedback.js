@@ -10,6 +10,8 @@
 
 'use strict';
 
+import TouchableWithoutFeedbackInjection from './TouchableWithoutFeedbackInjection';
+
 const DeprecatedEdgeInsetsPropType = require('../../DeprecatedPropTypes/DeprecatedEdgeInsetsPropType');
 const React = require('react');
 const PropTypes = require('prop-types');
@@ -23,27 +25,15 @@ const {
   DeprecatedAccessibilityRoles,
 } = require('../../DeprecatedPropTypes/DeprecatedViewAccessibility');
 
-import type {
-  SyntheticEvent,
-  LayoutEvent,
-  PressEvent,
-} from '../../Types/CoreEventTypes';
+import type {LayoutEvent, PressEvent} from '../../Types/CoreEventTypes';
 import type {EdgeInsetsProp} from '../../StyleSheet/EdgeInsetsPropType';
 import type {
   AccessibilityRole,
   AccessibilityState,
   AccessibilityActionInfo,
   AccessibilityActionEvent,
+  AccessibilityValue,
 } from '../View/ViewAccessibility';
-
-type TargetEvent = SyntheticEvent<
-  $ReadOnly<{|
-    target: number,
-  |}>,
->;
-
-type BlurEvent = TargetEvent;
-type FocusEvent = TargetEvent;
 
 const PRESS_RETENTION_OFFSET = {top: 20, left: 20, right: 20, bottom: 30};
 
@@ -55,6 +45,7 @@ const OVERRIDE_PROPS = [
   'accessibilityState',
   'accessibilityActions',
   'onAccessibilityAction',
+  'accessibilityValue',
   'hitSlop',
   'nativeID',
   'onBlur',
@@ -63,33 +54,44 @@ const OVERRIDE_PROPS = [
   'testID',
 ];
 
+type TVEvent = {
+  dispatchConfig: {},
+  tag: number,
+};
+
+type TVTouchableProps = $ReadOnly<{|
+  onBlur?: ?(event: TVEvent) => mixed,
+  onFocus?: ?(event: TVEvent) => mixed,
+|}>;
+
 export type Props = $ReadOnly<{|
-  accessible?: ?boolean,
-  accessibilityLabel?: ?Stringish,
+  ...TVTouchableProps,
+  accessibilityActions?: ?$ReadOnlyArray<AccessibilityActionInfo>,
   accessibilityHint?: ?Stringish,
   accessibilityIgnoresInvertColors?: ?boolean,
+  accessibilityLabel?: ?Stringish,
   accessibilityRole?: ?AccessibilityRole,
   accessibilityState?: ?AccessibilityState,
-  accessibilityActions?: ?$ReadOnlyArray<AccessibilityActionInfo>,
+  accessibilityValue?: ?AccessibilityValue,
+  accessible?: ?boolean,
   children?: ?React.Node,
   delayLongPress?: ?number,
   delayPressIn?: ?number,
   delayPressOut?: ?number,
   disabled?: ?boolean,
+  focusable?: ?boolean,
   hitSlop?: ?EdgeInsetsProp,
   nativeID?: ?string,
-  touchSoundDisabled?: ?boolean,
-  onBlur?: ?(e: BlurEvent) => void,
-  onFocus?: ?(e: FocusEvent) => void,
+  onAccessibilityAction?: ?(event: AccessibilityActionEvent) => mixed,
   onLayout?: ?(event: LayoutEvent) => mixed,
   onLongPress?: ?(event: PressEvent) => mixed,
   onPress?: ?(event: PressEvent) => mixed,
   onPressIn?: ?(event: PressEvent) => mixed,
   onPressOut?: ?(event: PressEvent) => mixed,
-  onAccessibilityAction?: ?(event: AccessibilityActionEvent) => void,
   pressRetentionOffset?: ?EdgeInsetsProp,
   rejectResponderTermination?: ?boolean,
   testID?: ?string,
+  touchSoundDisabled?: ?boolean,
 |}>;
 
 /**
@@ -99,7 +101,7 @@ export type Props = $ReadOnly<{|
  * TouchableWithoutFeedback supports only one child.
  * If you wish to have several child components, wrap them in a View.
  */
-const TouchableWithoutFeedback = ((createReactClass({
+const TouchableWithoutFeedbackImpl = ((createReactClass({
   displayName: 'TouchableWithoutFeedback',
   mixins: [Touchable.Mixin],
 
@@ -112,6 +114,7 @@ const TouchableWithoutFeedback = ((createReactClass({
     accessibilityState: PropTypes.object,
     accessibilityActions: PropTypes.array,
     onAccessibilityAction: PropTypes.func,
+    accessibilityValue: PropTypes.object,
     /**
      * When `accessible` is true (which is the default) this may be called when
      * the OS-specific concept of "focus" occurs. Some platforms may not have
@@ -280,5 +283,10 @@ const TouchableWithoutFeedback = ((createReactClass({
     });
   },
 }): any): React.ComponentType<Props>);
+
+const TouchableWithoutFeedback: React.ComponentType<Props> =
+  TouchableWithoutFeedbackInjection.unstable_Override == null
+    ? TouchableWithoutFeedbackImpl
+    : TouchableWithoutFeedbackInjection.unstable_Override;
 
 module.exports = TouchableWithoutFeedback;

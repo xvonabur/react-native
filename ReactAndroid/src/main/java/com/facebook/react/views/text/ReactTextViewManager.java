@@ -1,9 +1,10 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * <p>This source code is licensed under the MIT license found in the LICENSE file in the root
- * directory of this source tree.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
+
 package com.facebook.react.views.text;
 
 import android.content.Context;
@@ -74,7 +75,8 @@ public class ReactTextViewManager
 
   @Override
   public Object updateState(
-      ReactTextView view, ReactStylesDiffMap props, StateWrapper stateWrapper) {
+      ReactTextView view, ReactStylesDiffMap props, @Nullable StateWrapper stateWrapper) {
+    // TODO T55794595: Add support for updating state with null stateWrapper
     ReadableMap attributedString = stateWrapper.getState().getMap("attributedString");
 
     Spannable spanned =
@@ -122,5 +124,10 @@ public class ReactTextViewManager
 
     return TextLayoutManager.measureText(
         context, localData, props, width, widthMode, height, heightMode);
+  }
+
+  @Override
+  public void setPadding(ReactTextView view, int left, int top, int right, int bottom) {
+    view.setPadding(left, top, right, bottom);
   }
 }

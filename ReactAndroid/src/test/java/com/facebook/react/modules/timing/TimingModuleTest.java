@@ -1,9 +1,10 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * <p>This source code is licensed under the MIT license found in the LICENSE file in the root
- * directory of this source tree.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
+
 package com.facebook.react.modules.timing;
 
 import static org.mockito.Mockito.*;
@@ -73,6 +74,7 @@ public class TimingModuleTest {
     CatalystInstance reactInstance = mock(CatalystInstance.class);
     ReactApplicationContext reactContext = mock(ReactApplicationContext.class);
     when(reactContext.getCatalystInstance()).thenReturn(reactInstance);
+    when(reactContext.hasActiveCatalystInstance()).thenReturn(true);
 
     mCurrentTimeNs = 0;
     mPostFrameCallbackHandler = new PostFrameCallbackHandler();

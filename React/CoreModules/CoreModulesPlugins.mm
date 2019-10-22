@@ -16,19 +16,22 @@
 #import <string>
 #import <unordered_map>
 
-static std::unordered_map<std::string, Class (*)(void)> sCoreModuleClassMap = {
-  {"AccessibilityManager", RCTAccessibilityManagerCls},
-{"Appearance", RCTAppearanceCls},
-{"DeviceInfo", RCTDeviceInfoCls},
-{"ExceptionsManager", RCTExceptionsManagerCls},
-{"ImageLoader", RCTImageLoaderCls},
-{"PlatformConstants", RCTPlatformCls},
-{"Clipboard", RCTClipboardCls},
-{"I18nManager", RCTI18nManagerCls},
-{"SourceCode", RCTSourceCodeCls},
-};
-
 Class RCTCoreModulesClassProvider(const char *name) {
+  static std::unordered_map<std::string, Class (*)(void)> sCoreModuleClassMap = {
+    {"AccessibilityManager", RCTAccessibilityManagerCls},
+    {"Appearance", RCTAppearanceCls},
+    {"DeviceInfo", RCTDeviceInfoCls},
+    {"ExceptionsManager", RCTExceptionsManagerCls},
+    {"PlatformConstants", RCTPlatformCls},
+    {"Clipboard", RCTClipboardCls},
+    {"I18nManager", RCTI18nManagerCls},
+    {"SourceCode", RCTSourceCodeCls},
+    {"ActionSheetManager", RCTActionSheetManagerCls},
+    {"AlertManager", RCTAlertManagerCls},
+    {"AsyncLocalStorage", RCTAsyncLocalStorageCls},
+    {"Timing", RCTTimingCls},
+  };
+
   auto p = sCoreModuleClassMap.find(name);
   if (p != sCoreModuleClassMap.end()) {
     auto classFunc = p->second;

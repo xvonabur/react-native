@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -40,17 +40,13 @@ class State {
   virtual void updateState(folly::dynamic data) const;
 #endif
 
+  void commit(std::shared_ptr<ShadowNode const> const &shadowNode) const;
+
  protected:
   StateCoordinator::Shared stateCoordinator_;
 
  private:
-  friend class ShadowNode;
   friend class StateCoordinator;
-
-  /*
-   * Must be used by `ShadowNode` *only*.
-   */
-  void commit(const ShadowNode &shadowNode) const;
 
   /*
    * Indicates that the state was committed once and then was replaced by a

@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -27,8 +27,12 @@ class ParagraphComponentDescriptor final
  public:
   ParagraphComponentDescriptor(
       EventDispatcher::Weak eventDispatcher,
-      ContextContainer::Shared const &contextContainer)
-      : ConcreteComponentDescriptor<ParagraphShadowNode>(eventDispatcher) {
+      ContextContainer::Shared const &contextContainer,
+      ComponentDescriptor::Flavor const &flavor = {})
+      : ConcreteComponentDescriptor<ParagraphShadowNode>(
+            eventDispatcher,
+            contextContainer,
+            flavor) {
     // Every single `ParagraphShadowNode` will have a reference to
     // a shared `TextLayoutManager`.
     textLayoutManager_ = std::make_shared<TextLayoutManager>(contextContainer);

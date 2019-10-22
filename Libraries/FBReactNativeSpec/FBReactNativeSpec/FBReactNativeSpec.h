@@ -113,7 +113,7 @@ namespace JS {
       NSString *title() const;
       NSString *message() const;
       folly::Optional<facebook::react::LazyVector<NSString *>> options() const;
-      folly::Optional<double> destructiveButtonIndex() const;
+      folly::Optional<facebook::react::LazyVector<double>> destructiveButtonIndices() const;
       folly::Optional<double> cancelButtonIndex() const;
       folly::Optional<double> anchor() const;
       folly::Optional<double> tintColor() const;
@@ -196,7 +196,7 @@ namespace JS {
     struct Args {
       NSString *title() const;
       NSString *message() const;
-      id<NSObject> _Nullable buttons() const;
+      folly::Optional<facebook::react::LazyVector<id<NSObject>>> buttons() const;
       NSString *type() const;
       NSString *defaultValue() const;
       NSString *cancelButtonKey() const;
@@ -235,38 +235,6 @@ namespace facebook {
 
 namespace JS {
   namespace NativeAnimatedModule {
-    struct AnimatedNodeConfig {
-      NSString *type() const;
-
-      AnimatedNodeConfig(NSDictionary *const v) : _v(v) {}
-    private:
-      NSDictionary *_v;
-    };
-  }
-}
-
-@interface RCTCxxConvert (NativeAnimatedModule_AnimatedNodeConfig)
-+ (RCTManagedPointer *)JS_NativeAnimatedModule_AnimatedNodeConfig:(id)json;
-@end
-
-namespace JS {
-  namespace NativeAnimatedModule {
-    struct AnimatingNodeConfig {
-      NSString *type() const;
-
-      AnimatingNodeConfig(NSDictionary *const v) : _v(v) {}
-    private:
-      NSDictionary *_v;
-    };
-  }
-}
-
-@interface RCTCxxConvert (NativeAnimatedModule_AnimatingNodeConfig)
-+ (RCTManagedPointer *)JS_NativeAnimatedModule_AnimatingNodeConfig:(id)json;
-@end
-
-namespace JS {
-  namespace NativeAnimatedModule {
     struct EndResult {
       bool finished() const;
 
@@ -299,36 +267,36 @@ namespace JS {
 @end
 @protocol NativeAnimatedModuleSpec <RCTBridgeModule, RCTTurboModule>
 
-- (void)createAnimatedNode:(NSNumber *)tag
-                    config:(JS::NativeAnimatedModule::AnimatedNodeConfig &)config;
-- (void)startListeningToAnimatedNodeValue:(NSNumber *)tag;
-- (void)stopListeningToAnimatedNodeValue:(NSNumber *)tag;
-- (void)connectAnimatedNodes:(NSNumber *)parentTag
-                    childTag:(NSNumber *)childTag;
-- (void)disconnectAnimatedNodes:(NSNumber *)parentTag
-                       childTag:(NSNumber *)childTag;
-- (void)startAnimatingNode:(NSNumber *)animationId
-                   nodeTag:(NSNumber *)nodeTag
-                    config:(JS::NativeAnimatedModule::AnimatingNodeConfig &)config
+- (void)createAnimatedNode:(double)tag
+                    config:(NSDictionary *)config;
+- (void)startListeningToAnimatedNodeValue:(double)tag;
+- (void)stopListeningToAnimatedNodeValue:(double)tag;
+- (void)connectAnimatedNodes:(double)parentTag
+                    childTag:(double)childTag;
+- (void)disconnectAnimatedNodes:(double)parentTag
+                       childTag:(double)childTag;
+- (void)startAnimatingNode:(double)animationId
+                   nodeTag:(double)nodeTag
+                    config:(NSDictionary *)config
                endCallback:(RCTResponseSenderBlock)endCallback;
-- (void)stopAnimation:(NSNumber *)animationId;
-- (void)setAnimatedNodeValue:(NSNumber *)nodeTag
-                       value:(NSNumber *)value;
-- (void)setAnimatedNodeOffset:(NSNumber *)nodeTag
-                       offset:(NSNumber *)offset;
-- (void)flattenAnimatedNodeOffset:(NSNumber *)nodeTag;
-- (void)extractAnimatedNodeOffset:(NSNumber *)nodeTag;
-- (void)connectAnimatedNodeToView:(NSNumber *)nodeTag
-                          viewTag:(NSNumber *)viewTag;
-- (void)disconnectAnimatedNodeFromView:(NSNumber *)nodeTag
-                               viewTag:(NSNumber *)viewTag;
-- (void)dropAnimatedNode:(NSNumber *)tag;
-- (void)addAnimatedEventToView:(NSNumber *)viewTag
+- (void)stopAnimation:(double)animationId;
+- (void)setAnimatedNodeValue:(double)nodeTag
+                       value:(double)value;
+- (void)setAnimatedNodeOffset:(double)nodeTag
+                       offset:(double)offset;
+- (void)flattenAnimatedNodeOffset:(double)nodeTag;
+- (void)extractAnimatedNodeOffset:(double)nodeTag;
+- (void)connectAnimatedNodeToView:(double)nodeTag
+                          viewTag:(double)viewTag;
+- (void)disconnectAnimatedNodeFromView:(double)nodeTag
+                               viewTag:(double)viewTag;
+- (void)dropAnimatedNode:(double)tag;
+- (void)addAnimatedEventToView:(double)viewTag
                      eventName:(NSString *)eventName
                   eventMapping:(JS::NativeAnimatedModule::EventMapping &)eventMapping;
-- (void)removeAnimatedEventFromView:(NSNumber *)viewTag
+- (void)removeAnimatedEventFromView:(double)viewTag
                           eventName:(NSString *)eventName
-                    animatedNodeTag:(NSNumber *)animatedNodeTag;
+                    animatedNodeTag:(double)animatedNodeTag;
 - (void)addListener:(NSString *)eventName;
 - (void)removeListeners:(double)count;
 
@@ -633,9 +601,9 @@ namespace JS {
 - (void)addWebSocketHandler:(double)id;
 - (void)removeWebSocketHandler:(double)id;
 - (void)sendOverSocket:(NSDictionary *)blob
-                    id:(double)id;
+              socketID:(double)socketID;
 - (void)createFromParts:(NSArray *)parts
-                 blobId:(NSString *)blobId;
+                 withId:(NSString *)withId;
 - (void)release:(NSString *)blobId;
 - (facebook::react::ModuleConstants<JS::NativeBlobModule::Constants::Builder>)constantsToExport;
 - (facebook::react::ModuleConstants<JS::NativeBlobModule::Constants::Builder>)getConstants;
@@ -739,6 +707,8 @@ namespace facebook {
 @protocol NativeDevSettingsSpec <RCTBridgeModule, RCTTurboModule>
 
 - (void)reload;
+- (void)reloadWithReason:(NSString *)reason;
+- (void)onFastRefresh;
 - (void)setHotLoadingEnabled:(BOOL)isHotLoadingEnabled;
 - (void)setIsDebuggingRemotely:(BOOL)isDebuggingRemotelyEnabled;
 - (void)setProfilingEnabled:(BOOL)isProfilingEnabled;
@@ -781,11 +751,105 @@ namespace facebook {
 
 namespace JS {
   namespace NativeDeviceInfo {
+    struct DisplayMetrics {
+
+      struct Builder {
+        struct Input {
+          RCTRequired<double> width;
+          RCTRequired<double> height;
+          RCTRequired<double> scale;
+          RCTRequired<double> fontScale;
+        };
+
+        /** Initialize with a set of values */
+        Builder(const Input i);
+        /** Initialize with an existing DisplayMetrics */
+        Builder(DisplayMetrics i);
+        /** Builds the object. Generally used only by the infrastructure. */
+        NSDictionary *buildUnsafeRawValue() const { return _factory(); };
+      private:
+        NSDictionary *(^_factory)(void);
+      };
+
+      static DisplayMetrics fromUnsafeRawValue(NSDictionary *const v) { return {v}; }
+      NSDictionary *unsafeRawValue() const { return _v; }
+    private:
+      DisplayMetrics(NSDictionary *const v) : _v(v) {}
+      NSDictionary *_v;
+    };
+  }
+}
+
+namespace JS {
+  namespace NativeDeviceInfo {
+    struct DisplayMetricsAndroid {
+
+      struct Builder {
+        struct Input {
+          RCTRequired<double> width;
+          RCTRequired<double> height;
+          RCTRequired<double> scale;
+          RCTRequired<double> fontScale;
+          RCTRequired<double> densityDpi;
+        };
+
+        /** Initialize with a set of values */
+        Builder(const Input i);
+        /** Initialize with an existing DisplayMetricsAndroid */
+        Builder(DisplayMetricsAndroid i);
+        /** Builds the object. Generally used only by the infrastructure. */
+        NSDictionary *buildUnsafeRawValue() const { return _factory(); };
+      private:
+        NSDictionary *(^_factory)(void);
+      };
+
+      static DisplayMetricsAndroid fromUnsafeRawValue(NSDictionary *const v) { return {v}; }
+      NSDictionary *unsafeRawValue() const { return _v; }
+    private:
+      DisplayMetricsAndroid(NSDictionary *const v) : _v(v) {}
+      NSDictionary *_v;
+    };
+  }
+}
+
+namespace JS {
+  namespace NativeDeviceInfo {
+    struct DimensionsPayload {
+
+      struct Builder {
+        struct Input {
+          folly::Optional<JS::NativeDeviceInfo::DisplayMetrics::Builder> window;
+          folly::Optional<JS::NativeDeviceInfo::DisplayMetrics::Builder> screen;
+          folly::Optional<JS::NativeDeviceInfo::DisplayMetricsAndroid::Builder> windowPhysicalPixels;
+          folly::Optional<JS::NativeDeviceInfo::DisplayMetricsAndroid::Builder> screenPhysicalPixels;
+        };
+
+        /** Initialize with a set of values */
+        Builder(const Input i);
+        /** Initialize with an existing DimensionsPayload */
+        Builder(DimensionsPayload i);
+        /** Builds the object. Generally used only by the infrastructure. */
+        NSDictionary *buildUnsafeRawValue() const { return _factory(); };
+      private:
+        NSDictionary *(^_factory)(void);
+      };
+
+      static DimensionsPayload fromUnsafeRawValue(NSDictionary *const v) { return {v}; }
+      NSDictionary *unsafeRawValue() const { return _v; }
+    private:
+      DimensionsPayload(NSDictionary *const v) : _v(v) {}
+      NSDictionary *_v;
+    };
+  }
+}
+
+namespace JS {
+  namespace NativeDeviceInfo {
     struct Constants {
 
       struct Builder {
         struct Input {
-          RCTRequired<id<NSObject>> Dimensions;
+          RCTRequired<JS::NativeDeviceInfo::DimensionsPayload::Builder> Dimensions;
           folly::Optional<bool> isIPhoneX_deprecated;
         };
 
@@ -1127,7 +1191,113 @@ namespace facebook {
     };
   } // namespace react
 } // namespace facebook
+
+namespace JS {
+  namespace NativeImageEditor {
+    struct OptionsOffset {
+      double x() const;
+      double y() const;
+
+      OptionsOffset(NSDictionary *const v) : _v(v) {}
+    private:
+      NSDictionary *_v;
+    };
+  }
+}
+
+@interface RCTCxxConvert (NativeImageEditor_OptionsOffset)
++ (RCTManagedPointer *)JS_NativeImageEditor_OptionsOffset:(id)json;
+@end
+
+namespace JS {
+  namespace NativeImageEditor {
+    struct OptionsSize {
+      double width() const;
+      double height() const;
+
+      OptionsSize(NSDictionary *const v) : _v(v) {}
+    private:
+      NSDictionary *_v;
+    };
+  }
+}
+
+@interface RCTCxxConvert (NativeImageEditor_OptionsSize)
++ (RCTManagedPointer *)JS_NativeImageEditor_OptionsSize:(id)json;
+@end
+
+namespace JS {
+  namespace NativeImageEditor {
+    struct OptionsDisplaySize {
+      double width() const;
+      double height() const;
+
+      OptionsDisplaySize(NSDictionary *const v) : _v(v) {}
+    private:
+      NSDictionary *_v;
+    };
+  }
+}
+
+@interface RCTCxxConvert (NativeImageEditor_OptionsDisplaySize)
++ (RCTManagedPointer *)JS_NativeImageEditor_OptionsDisplaySize:(id)json;
+@end
+
+namespace JS {
+  namespace NativeImageEditor {
+    struct Options {
+      JS::NativeImageEditor::OptionsOffset offset() const;
+      JS::NativeImageEditor::OptionsSize size() const;
+      folly::Optional<JS::NativeImageEditor::OptionsDisplaySize> displaySize() const;
+      NSString *resizeMode() const;
+
+      Options(NSDictionary *const v) : _v(v) {}
+    private:
+      NSDictionary *_v;
+    };
+  }
+}
+
+@interface RCTCxxConvert (NativeImageEditor_Options)
++ (RCTManagedPointer *)JS_NativeImageEditor_Options:(id)json;
+@end
+@protocol NativeImageEditorSpec <RCTBridgeModule, RCTTurboModule>
+
+- (void)cropImage:(NSString *)uri
+         cropData:(JS::NativeImageEditor::Options &)cropData
+  successCallback:(RCTResponseSenderBlock)successCallback
+    errorCallback:(RCTResponseSenderBlock)errorCallback;
+
+@end
+namespace facebook {
+  namespace react {
+    /**
+     * ObjC++ class for module 'ImageEditor'
+     */
+
+    class JSI_EXPORT NativeImageEditorSpecJSI : public ObjCTurboModule {
+    public:
+      NativeImageEditorSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker);
+
+    };
+  } // namespace react
+} // namespace facebook
 @protocol NativeImageLoaderSpec <RCTBridgeModule, RCTTurboModule>
+
+- (void)getSize:(NSString *)uri
+        resolve:(RCTPromiseResolveBlock)resolve
+         reject:(RCTPromiseRejectBlock)reject;
+- (void)getSizeWithHeaders:(NSString *)uri
+                   headers:(NSDictionary *)headers
+                   resolve:(RCTPromiseResolveBlock)resolve
+                    reject:(RCTPromiseRejectBlock)reject;
+- (void)prefetchImage:(NSString *)uri
+              resolve:(RCTPromiseResolveBlock)resolve
+               reject:(RCTPromiseRejectBlock)reject;
+- (void)queryCache:(NSArray *)uris
+           resolve:(RCTPromiseResolveBlock)resolve
+            reject:(RCTPromiseRejectBlock)reject;
+
 @end
 namespace facebook {
   namespace react {
@@ -1186,6 +1356,8 @@ namespace JS {
 - (void)openSelectDialog:(JS::NativeImagePickerIOS::SpecOpenSelectDialogConfig &)config
          successCallback:(RCTResponseSenderBlock)successCallback
           cancelCallback:(RCTResponseSenderBlock)cancelCallback;
+- (void)clearAllPendingVideos;
+- (void)removePendingVideo:(NSString *)url;
 
 @end
 namespace facebook {
@@ -1197,6 +1369,48 @@ namespace facebook {
     class JSI_EXPORT NativeImagePickerIOSSpecJSI : public ObjCTurboModule {
     public:
       NativeImagePickerIOSSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker);
+
+    };
+  } // namespace react
+} // namespace facebook
+
+namespace JS {
+  namespace NativeImageStore {
+    struct SpecAddImageFromBase64ErrorCallbackError {
+      NSString *message() const;
+
+      SpecAddImageFromBase64ErrorCallbackError(NSDictionary *const v) : _v(v) {}
+    private:
+      NSDictionary *_v;
+    };
+  }
+}
+
+@interface RCTCxxConvert (NativeImageStore_SpecAddImageFromBase64ErrorCallbackError)
++ (RCTManagedPointer *)JS_NativeImageStore_SpecAddImageFromBase64ErrorCallbackError:(id)json;
+@end
+@protocol NativeImageStoreSpec <RCTBridgeModule, RCTTurboModule>
+
+- (void)getBase64ForTag:(NSString *)uri
+        successCallback:(RCTResponseSenderBlock)successCallback
+          errorCallback:(RCTResponseSenderBlock)errorCallback;
+- (void)hasImageForTag:(NSString *)uri
+              callback:(RCTResponseSenderBlock)callback;
+- (void)removeImageForTag:(NSString *)uri;
+- (void)addImageFromBase64:(NSString *)base64ImageData
+           successCallback:(RCTResponseSenderBlock)successCallback
+             errorCallback:(RCTResponseSenderBlock)errorCallback;
+
+@end
+namespace facebook {
+  namespace react {
+    /**
+     * ObjC++ class for module 'ImageStore'
+     */
+
+    class JSI_EXPORT NativeImageStoreSpecJSI : public ObjCTurboModule {
+    public:
+      NativeImageStoreSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker);
 
     };
   } // namespace react
@@ -2229,7 +2443,7 @@ namespace facebook {
 } // namespace facebook
 @protocol NativeVibrationSpec <RCTBridgeModule, RCTTurboModule>
 
-- (void)vibrate:(double)pattern;
+- (void)vibrate:(NSNumber *)pattern;
 - (void)vibrateByPattern:(NSArray *)pattern
                   repeat:(double)repeat;
 - (void)cancel;
@@ -2390,10 +2604,10 @@ inline folly::Optional<facebook::react::LazyVector<NSString *>> JS::NativeAction
   id const p = _v[@"options"];
   return RCTBridgingToOptionalVec(p, ^NSString *(id itemValue_0) { return RCTBridgingToString(itemValue_0); });
 }
-inline folly::Optional<double> JS::NativeActionSheetManager::SpecShowActionSheetWithOptionsOptions::destructiveButtonIndex() const
+inline folly::Optional<facebook::react::LazyVector<double>> JS::NativeActionSheetManager::SpecShowActionSheetWithOptionsOptions::destructiveButtonIndices() const
 {
-  id const p = _v[@"destructiveButtonIndex"];
-  return RCTBridgingToOptionalDouble(p);
+  id const p = _v[@"destructiveButtonIndices"];
+  return RCTBridgingToOptionalVec(p, ^double(id itemValue_0) { return RCTBridgingToDouble(itemValue_0); });
 }
 inline folly::Optional<double> JS::NativeActionSheetManager::SpecShowActionSheetWithOptionsOptions::cancelButtonIndex() const
 {
@@ -2470,10 +2684,10 @@ inline NSString *JS::NativeAlertManager::Args::message() const
   id const p = _v[@"message"];
   return RCTBridgingToString(p);
 }
-inline id<NSObject> _Nullable JS::NativeAlertManager::Args::buttons() const
+inline folly::Optional<facebook::react::LazyVector<id<NSObject>>> JS::NativeAlertManager::Args::buttons() const
 {
   id const p = _v[@"buttons"];
-  return p;
+  return RCTBridgingToOptionalVec(p, ^id<NSObject>(id itemValue_0) { return itemValue_0; });
 }
 inline NSString *JS::NativeAlertManager::Args::type() const
 {
@@ -2498,16 +2712,6 @@ inline NSString *JS::NativeAlertManager::Args::destructiveButtonKey() const
 inline NSString *JS::NativeAlertManager::Args::keyboardType() const
 {
   id const p = _v[@"keyboardType"];
-  return RCTBridgingToString(p);
-}
-inline NSString *JS::NativeAnimatedModule::AnimatedNodeConfig::type() const
-{
-  id const p = _v[@"type"];
-  return RCTBridgingToString(p);
-}
-inline NSString *JS::NativeAnimatedModule::AnimatingNodeConfig::type() const
-{
-  id const p = _v[@"type"];
   return RCTBridgingToString(p);
 }
 inline bool JS::NativeAnimatedModule::EndResult::finished() const
@@ -2585,10 +2789,57 @@ inline JS::NativeBlobModule::Constants::Builder::Builder(const Input i) : _facto
 inline JS::NativeBlobModule::Constants::Builder::Builder(Constants i) : _factory(^{
   return i.unsafeRawValue();
 }) {}
+inline JS::NativeDeviceInfo::DisplayMetrics::Builder::Builder(const Input i) : _factory(^{
+  NSMutableDictionary *d = [NSMutableDictionary new];
+  auto width = i.width.get();
+  d[@"width"] = @(width);
+  auto height = i.height.get();
+  d[@"height"] = @(height);
+  auto scale = i.scale.get();
+  d[@"scale"] = @(scale);
+  auto fontScale = i.fontScale.get();
+  d[@"fontScale"] = @(fontScale);
+  return d;
+}) {}
+inline JS::NativeDeviceInfo::DisplayMetrics::Builder::Builder(DisplayMetrics i) : _factory(^{
+  return i.unsafeRawValue();
+}) {}
+inline JS::NativeDeviceInfo::DisplayMetricsAndroid::Builder::Builder(const Input i) : _factory(^{
+  NSMutableDictionary *d = [NSMutableDictionary new];
+  auto width = i.width.get();
+  d[@"width"] = @(width);
+  auto height = i.height.get();
+  d[@"height"] = @(height);
+  auto scale = i.scale.get();
+  d[@"scale"] = @(scale);
+  auto fontScale = i.fontScale.get();
+  d[@"fontScale"] = @(fontScale);
+  auto densityDpi = i.densityDpi.get();
+  d[@"densityDpi"] = @(densityDpi);
+  return d;
+}) {}
+inline JS::NativeDeviceInfo::DisplayMetricsAndroid::Builder::Builder(DisplayMetricsAndroid i) : _factory(^{
+  return i.unsafeRawValue();
+}) {}
+inline JS::NativeDeviceInfo::DimensionsPayload::Builder::Builder(const Input i) : _factory(^{
+  NSMutableDictionary *d = [NSMutableDictionary new];
+  auto window = i.window;
+  d[@"window"] = window.hasValue() ? window.value().buildUnsafeRawValue() : nil;
+  auto screen = i.screen;
+  d[@"screen"] = screen.hasValue() ? screen.value().buildUnsafeRawValue() : nil;
+  auto windowPhysicalPixels = i.windowPhysicalPixels;
+  d[@"windowPhysicalPixels"] = windowPhysicalPixels.hasValue() ? windowPhysicalPixels.value().buildUnsafeRawValue() : nil;
+  auto screenPhysicalPixels = i.screenPhysicalPixels;
+  d[@"screenPhysicalPixels"] = screenPhysicalPixels.hasValue() ? screenPhysicalPixels.value().buildUnsafeRawValue() : nil;
+  return d;
+}) {}
+inline JS::NativeDeviceInfo::DimensionsPayload::Builder::Builder(DimensionsPayload i) : _factory(^{
+  return i.unsafeRawValue();
+}) {}
 inline JS::NativeDeviceInfo::Constants::Builder::Builder(const Input i) : _factory(^{
   NSMutableDictionary *d = [NSMutableDictionary new];
   auto Dimensions = i.Dimensions.get();
-  d[@"Dimensions"] = Dimensions;
+  d[@"Dimensions"] = Dimensions.buildUnsafeRawValue();
   auto isIPhoneX_deprecated = i.isIPhoneX_deprecated;
   d[@"isIPhoneX_deprecated"] = isIPhoneX_deprecated.hasValue() ? @((BOOL)isIPhoneX_deprecated.value()) : nil;
   return d;
@@ -2734,6 +2985,56 @@ inline JS::NativeI18nManager::Constants::Builder::Builder(const Input i) : _fact
 inline JS::NativeI18nManager::Constants::Builder::Builder(Constants i) : _factory(^{
   return i.unsafeRawValue();
 }) {}
+inline double JS::NativeImageEditor::OptionsOffset::x() const
+{
+  id const p = _v[@"x"];
+  return RCTBridgingToDouble(p);
+}
+inline double JS::NativeImageEditor::OptionsOffset::y() const
+{
+  id const p = _v[@"y"];
+  return RCTBridgingToDouble(p);
+}
+inline double JS::NativeImageEditor::OptionsSize::width() const
+{
+  id const p = _v[@"width"];
+  return RCTBridgingToDouble(p);
+}
+inline double JS::NativeImageEditor::OptionsSize::height() const
+{
+  id const p = _v[@"height"];
+  return RCTBridgingToDouble(p);
+}
+inline double JS::NativeImageEditor::OptionsDisplaySize::width() const
+{
+  id const p = _v[@"width"];
+  return RCTBridgingToDouble(p);
+}
+inline double JS::NativeImageEditor::OptionsDisplaySize::height() const
+{
+  id const p = _v[@"height"];
+  return RCTBridgingToDouble(p);
+}
+inline JS::NativeImageEditor::OptionsOffset JS::NativeImageEditor::Options::offset() const
+{
+  id const p = _v[@"offset"];
+  return JS::NativeImageEditor::OptionsOffset(p);
+}
+inline JS::NativeImageEditor::OptionsSize JS::NativeImageEditor::Options::size() const
+{
+  id const p = _v[@"size"];
+  return JS::NativeImageEditor::OptionsSize(p);
+}
+inline folly::Optional<JS::NativeImageEditor::OptionsDisplaySize> JS::NativeImageEditor::Options::displaySize() const
+{
+  id const p = _v[@"displaySize"];
+  return (p == nil ? folly::none : folly::make_optional(JS::NativeImageEditor::OptionsDisplaySize(p)));
+}
+inline NSString *JS::NativeImageEditor::Options::resizeMode() const
+{
+  id const p = _v[@"resizeMode"];
+  return RCTBridgingToString(p);
+}
 inline bool JS::NativeImagePickerIOS::SpecOpenCameraDialogConfig::unmirrorFrontFacingCamera() const
 {
   id const p = _v[@"unmirrorFrontFacingCamera"];
@@ -2753,6 +3054,11 @@ inline bool JS::NativeImagePickerIOS::SpecOpenSelectDialogConfig::showVideos() c
 {
   id const p = _v[@"showVideos"];
   return RCTBridgingToBool(p);
+}
+inline NSString *JS::NativeImageStore::SpecAddImageFromBase64ErrorCallbackError::message() const
+{
+  id const p = _v[@"message"];
+  return RCTBridgingToString(p);
 }
 inline JS::NativeJSDevSupport::Constants::Builder::Builder(const Input i) : _factory(^{
   NSMutableDictionary *d = [NSMutableDictionary new];

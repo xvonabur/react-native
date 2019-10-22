@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -21,10 +21,12 @@ class AndroidTextInputComponentDescriptor final
  public:
   AndroidTextInputComponentDescriptor(
       EventDispatcher::Weak eventDispatcher,
-      const ContextContainer::Shared &contextContainer)
+      const ContextContainer::Shared &contextContainer,
+      ComponentDescriptor::Flavor const &flavor = {})
       : ConcreteComponentDescriptor<AndroidTextInputShadowNode>(
             eventDispatcher,
-            contextContainer) {}
+            contextContainer,
+            flavor) {}
 
  protected:
   void adopt(UnsharedShadowNode shadowNode) const override {

@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -445,6 +445,10 @@ jsi::Value JavaTurboModule::invokeJavaMethod(
   jclass cls = env->GetObjectClass(instance);
   jmethodID methodID =
       env->GetMethodID(cls, methodName.c_str(), methodSignature.c_str());
+
+  // If the method signature doesn't match, show a redbox here instead of
+  // crashing later.
+  FACEBOOK_JNI_THROW_PENDING_EXCEPTION();
 
   // TODO(T43933641): Refactor to remove this special-casing
   if (methodName == "getConstants") {

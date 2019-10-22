@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -7,6 +7,7 @@
 
 #import "RCTImageComponentView.h"
 
+#import <React/RCTImageResponseDelegate.h>
 #import <React/RCTImageResponseObserverProxy.h>
 #import <react/components/image/ImageComponentDescriptor.h>
 #import <react/components/image/ImageEventEmitter.h>
@@ -17,11 +18,14 @@
 
 #import "RCTConversions.h"
 
+@interface RCTImageComponentView () <RCTImageResponseDelegate>
+@end
+
 @implementation RCTImageComponentView {
   UIImageView *_imageView;
   SharedImageLocalData _imageLocalData;
   ImageResponseObserverCoordinator const *_coordinator;
-  std::unique_ptr<RCTImageResponseObserverProxy> _imageResponseObserverProxy;
+  RCTImageResponseObserverProxy _imageResponseObserverProxy;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -32,10 +36,9 @@
 
     _imageView = [[UIImageView alloc] initWithFrame:self.bounds];
     _imageView.clipsToBounds = YES;
-
     _imageView.contentMode = (UIViewContentMode)RCTResizeModeFromImageResizeMode(defaultProps->resizeMode);
 
-    _imageResponseObserverProxy = std::make_unique<RCTImageResponseObserverProxy>((__bridge void *)self);
+    _imageResponseObserverProxy = RCTImageResponseObserverProxy(self);
 
     self.contentView = _imageView;
   }
@@ -103,11 +106,11 @@
 - (void)setCoordinator:(ImageResponseObserverCoordinator const *)coordinator
 {
   if (_coordinator) {
-    _coordinator->removeObserver(*_imageResponseObserverProxy);
+    _coordinator->removeObserver(_imageResponseObserverProxy);
   }
   _coordinator = coordinator;
   if (_coordinator != nullptr) {
-    _coordinator->addObserver(*_imageResponseObserverProxy);
+    _coordinator->addObserver(_imageResponseObserverProxy);
   }
 }
 
@@ -122,7 +125,6 @@
 - (void)dealloc
 {
   self.coordinator = nullptr;
-  _imageResponseObserverProxy.reset();
 }
 
 #pragma mark - RCTImageResponseDelegate

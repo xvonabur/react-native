@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -8,6 +8,8 @@
 #import "RCTScrollViewComponentView.h"
 
 #import <React/RCTAssert.h>
+#import <React/RCTBridge+Private.h>
+#import <React/RCTScrollEvent.h>
 
 #import <react/components/scrollview/ScrollViewComponentDescriptor.h>
 #import <react/components/scrollview/ScrollViewEventEmitter.h>
@@ -19,6 +21,21 @@
 #import "RCTEnhancedScrollView.h"
 
 using namespace facebook::react;
+
+static void RCTSendPaperScrollEvent_DEPRECATED(UIScrollView *scrollView, NSInteger tag)
+{
+  static uint16_t coalescingKey = 0;
+  RCTScrollEvent *scrollEvent = [[RCTScrollEvent alloc] initWithEventName:@"onScroll"
+                                                                 reactTag:[NSNumber numberWithInt:tag]
+                                                  scrollViewContentOffset:scrollView.contentOffset
+                                                   scrollViewContentInset:scrollView.contentInset
+                                                    scrollViewContentSize:scrollView.contentSize
+                                                          scrollViewFrame:scrollView.frame
+                                                      scrollViewZoomScale:scrollView.zoomScale
+                                                                 userData:nil
+                                                            coalescingKey:coalescingKey];
+  [[RCTBridge currentBridge].eventDispatcher sendEvent:scrollEvent];
+}
 
 @interface RCTScrollViewComponentView () <UIScrollViewDelegate>
 
@@ -64,6 +81,12 @@ using namespace facebook::react;
   }
 
   return self;
+}
+
+- (void)dealloc
+{
+  // This is not strictly necessary but that prevents a crash caused by a bug in UIKit.
+  _scrollView.delegate = nil;
 }
 
 #pragma mark - RCTComponentViewProtocol
@@ -114,10 +137,15 @@ using namespace facebook::react;
     // Zero means "send value only once per significant logical event".
     // Prop value is in milliseconds.
     // iOS implementation uses `NSTimeInterval` (in seconds).
-    // 16 ms is the minimum allowed value.
-    _scrollEventThrottle = newScrollViewProps.scrollEventThrottle <= 0
-        ? INFINITY
-        : std::max(newScrollViewProps.scrollEventThrottle / 1000.0, 1.0 / 60.0);
+    CGFloat throttleInSeconds = newScrollViewProps.scrollEventThrottle / 1000.0;
+    CGFloat msPerFrame = 1.0 / 60.0;
+    if (throttleInSeconds < 0) {
+      _scrollEventThrottle = INFINITY;
+    } else if (throttleInSeconds <= msPerFrame) {
+      _scrollEventThrottle = 0;
+    } else {
+      _scrollEventThrottle = throttleInSeconds;
+    }
   }
 
   MAP_SCROLL_VIEW_PROP(zoomScale);
@@ -185,6 +213,7 @@ using namespace facebook::react;
 - (void)prepareForRecycle
 {
   _scrollView.contentOffset = CGPointZero;
+  _state.reset();
   [super prepareForRecycle];
 }
 
@@ -200,6 +229,9 @@ using namespace facebook::react;
   if ((_lastScrollEventDispatchTime == 0) || (now - _lastScrollEventDispatchTime > _scrollEventThrottle)) {
     _lastScrollEventDispatchTime = now;
     std::static_pointer_cast<ScrollViewEventEmitter const>(_eventEmitter)->onScroll([self _scrollViewMetrics]);
+    // Once Fabric implements proper NativeAnimationDriver, this should be removed.
+    // This is just a workaround to allow animations based on onScroll event.
+    RCTSendPaperScrollEvent_DEPRECATED(scrollView, self.tag);
   }
 }
 

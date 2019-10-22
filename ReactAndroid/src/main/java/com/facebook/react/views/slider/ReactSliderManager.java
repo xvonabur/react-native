@@ -1,23 +1,29 @@
-/**
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * <p>This source code is licensed under the MIT license found in the LICENSE file in the root
- * directory of this source tree.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
+
 package com.facebook.react.views.slider;
 
 import android.content.Context;
 import android.graphics.PorterDuff;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
+import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.SeekBar;
 import androidx.annotation.Nullable;
+import androidx.core.view.AccessibilityDelegateCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.common.MapBuilder;
 import com.facebook.react.uimanager.LayoutShadowNode;
+import com.facebook.react.uimanager.PixelUtil;
 import com.facebook.react.uimanager.SimpleViewManager;
 import com.facebook.react.uimanager.ThemedReactContext;
 import com.facebook.react.uimanager.UIManagerModule;
@@ -132,7 +138,9 @@ public class ReactSliderManager extends SimpleViewManager<ReactSlider>
 
   @Override
   protected ReactSlider createViewInstance(ThemedReactContext context) {
-    return new ReactSlider(context, null, STYLE);
+    final ReactSlider slider = new ReactSlider(context, null, STYLE);
+    ViewCompat.setAccessibilityDelegate(slider, sAccessibilityDelegate);
+    return slider;
   }
 
   @Override
@@ -249,11 +257,36 @@ public class ReactSliderManager extends SimpleViewManager<ReactSlider>
             ViewGroup.LayoutParams.WRAP_CONTENT, View.MeasureSpec.UNSPECIFIED);
     reactSlider.measure(spec, spec);
 
-    return YogaMeasureOutput.make(reactSlider.getMeasuredWidth(), reactSlider.getMeasuredHeight());
+    return YogaMeasureOutput.make(
+        PixelUtil.toDIPFromPixel(reactSlider.getMeasuredWidth()),
+        PixelUtil.toDIPFromPixel(reactSlider.getMeasuredHeight()));
   }
 
   @Override
   protected ViewManagerDelegate<ReactSlider> getDelegate() {
     return mDelegate;
   }
+
+  protected static class ReactSliderAccessibilityDelegate extends AccessibilityDelegateCompat {
+    private static boolean isSliderAction(int action) {
+      return (action == AccessibilityActionCompat.ACTION_SCROLL_FORWARD.getId())
+          || (action == AccessibilityActionCompat.ACTION_SCROLL_BACKWARD.getId())
+          || (action == AccessibilityActionCompat.ACTION_SET_PROGRESS.getId());
+    }
+
+    @Override
+    public boolean performAccessibilityAction(View host, int action, Bundle args) {
+      if (isSliderAction(action)) {
+        ON_CHANGE_LISTENER.onStartTrackingTouch((SeekBar) host);
+      }
+      final boolean rv = super.performAccessibilityAction(host, action, args);
+      if (isSliderAction(action)) {
+        ON_CHANGE_LISTENER.onStopTrackingTouch((SeekBar) host);
+      }
+      return rv;
+    }
+  };
+
+  protected static ReactSliderAccessibilityDelegate sAccessibilityDelegate =
+      new ReactSliderAccessibilityDelegate();
 }
