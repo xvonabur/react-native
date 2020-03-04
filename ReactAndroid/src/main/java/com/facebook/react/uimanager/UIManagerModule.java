@@ -308,7 +308,7 @@ public class UIManagerModule extends ReactContextBaseJavaModule
   }
 
   @ReactMethod(isBlockingSynchronousMethod = true)
-  public @Nullable WritableMap getConstantsForViewManager(final String viewManagerName) {
+  public @Nullable WritableMap getConstantsForViewManager(@Nullable String viewManagerName) {
     if (mViewManagerConstantsCache != null
         && mViewManagerConstantsCache.containsKey(viewManagerName)) {
       WritableMap constants = mViewManagerConstantsCache.get(viewManagerName);
@@ -322,7 +322,7 @@ public class UIManagerModule extends ReactContextBaseJavaModule
     }
   }
 
-  private @Nullable WritableMap computeConstantsForViewManager(final String viewManagerName) {
+  private @Nullable WritableMap computeConstantsForViewManager(@Nullable String viewManagerName) {
     ViewManager targetView =
         viewManagerName != null ? mUIImplementation.resolveViewManager(viewManagerName) : null;
     if (targetView == null) {
@@ -393,7 +393,9 @@ public class UIManagerModule extends ReactContextBaseJavaModule
     if (uiManagerType == FABRIC) {
       UIManager fabricUIManager =
           UIManagerHelper.getUIManager(getReactApplicationContext(), uiManagerType);
-      fabricUIManager.synchronouslyUpdateViewOnUIThread(tag, props);
+      if (fabricUIManager != null) {
+        fabricUIManager.synchronouslyUpdateViewOnUIThread(tag, props);
+      }
     } else {
       mUIImplementation.synchronouslyUpdateViewOnUIThread(tag, new ReactStylesDiffMap(props));
     }
@@ -415,7 +417,8 @@ public class UIManagerModule extends ReactContextBaseJavaModule
     final int tag = ReactRootViewTagGenerator.getNextRootViewTag();
     final ReactApplicationContext reactApplicationContext = getReactApplicationContext();
     final ThemedReactContext themedRootContext =
-        new ThemedReactContext(reactApplicationContext, rootView.getContext());
+        new ThemedReactContext(
+            reactApplicationContext, rootView.getContext(), ((ReactRoot) rootView).getSurfaceID());
 
     mUIImplementation.registerRootView(rootView, tag, themedRootContext);
     Systrace.endSection(Systrace.TRACE_TAG_REACT_JAVA_BRIDGE);
@@ -467,7 +470,7 @@ public class UIManagerModule extends ReactContextBaseJavaModule
   }
 
   @ReactMethod
-  public void updateView(int tag, String className, ReadableMap props) {
+  public void updateView(final int tag, final String className, final ReadableMap props) {
     if (DEBUG) {
       String message =
           "(UIManager.updateView) tag: " + tag + ", class: " + className + ", props: " + props;
@@ -476,9 +479,20 @@ public class UIManagerModule extends ReactContextBaseJavaModule
     }
     int uiManagerType = ViewUtil.getUIManagerType(tag);
     if (uiManagerType == FABRIC) {
-      UIManager fabricUIManager =
-          UIManagerHelper.getUIManager(getReactApplicationContext(), uiManagerType);
-      fabricUIManager.synchronouslyUpdateViewOnUIThread(tag, props);
+      ReactApplicationContext reactApplicationContext = getReactApplicationContext();
+      if (reactApplicationContext.hasActiveCatalystInstance()) {
+        final UIManager fabricUIManager =
+            UIManagerHelper.getUIManager(reactApplicationContext, uiManagerType);
+        if (fabricUIManager != null) {
+          reactApplicationContext.runOnUiQueueThread(
+              new Runnable() {
+                @Override
+                public void run() {
+                  fabricUIManager.synchronouslyUpdateViewOnUIThread(tag, props);
+                }
+              });
+        }
+      }
     } else {
       mUIImplementation.updateView(tag, className, props);
     }
@@ -666,16 +680,18 @@ public class UIManagerModule extends ReactContextBaseJavaModule
       int reactTag, Dynamic commandId, @Nullable ReadableArray commandArgs) {
     // TODO: this is a temporary approach to support ViewManagerCommands in Fabric until
     // the dispatchViewManagerCommand() method is supported by Fabric JS API.
+    @Nullable
+    UIManager uiManager =
+        UIManagerHelper.getUIManager(
+            getReactApplicationContext(), ViewUtil.getUIManagerType(reactTag));
+    if (uiManager == null) {
+      return;
+    }
+
     if (commandId.getType() == ReadableType.Number) {
-      final int commandIdNum = commandId.asInt();
-      UIManagerHelper.getUIManager(
-              getReactApplicationContext(), ViewUtil.getUIManagerType(reactTag))
-          .dispatchCommand(reactTag, commandIdNum, commandArgs);
+      uiManager.dispatchCommand(reactTag, commandId.asInt(), commandArgs);
     } else if (commandId.getType() == ReadableType.String) {
-      final String commandIdStr = commandId.asString();
-      UIManagerHelper.getUIManager(
-              getReactApplicationContext(), ViewUtil.getUIManagerType(reactTag))
-          .dispatchCommand(reactTag, commandIdStr, commandArgs);
+      uiManager.dispatchCommand(reactTag, commandId.asString(), commandArgs);
     }
   }
 
@@ -801,10 +817,17 @@ public class UIManagerModule extends ReactContextBaseJavaModule
     if (uiManagerType == FABRIC) {
       UIManager fabricUIManager =
           UIManagerHelper.getUIManager(getReactApplicationContext(), uiManagerType);
-      fabricUIManager.sendAccessibilityEvent(tag, eventType);
+      if (fabricUIManager != null) {
+        fabricUIManager.sendAccessibilityEvent(tag, eventType);
+      }
     } else {
       mUIImplementation.sendAccessibilityEvent(tag, eventType);
     }
+  }
+
+  @Override
+  public void setAllowImmediateUIOperationExecution(boolean flag) {
+    // Noop outside of Fabric, call directly on FabricUIManager
   }
 
   /**

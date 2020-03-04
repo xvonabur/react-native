@@ -13,70 +13,98 @@
 import Image from '../../Image/Image';
 import Platform from '../../Utilities/Platform';
 import * as React from 'react';
-import SafeAreaView from '../../Components/SafeAreaView/SafeAreaView';
 import StyleSheet from '../../StyleSheet/StyleSheet';
 import Text from '../../Text/Text';
 import View from '../../Components/View/View';
-import LogBoxImageSource from './LogBoxImageSource';
+import StatusBar from '../../Components/StatusBar/StatusBar';
 import LogBoxButton from './LogBoxButton';
 import * as LogBoxStyle from './LogBoxStyle';
-
+import type {LogLevel} from '../Data/LogBoxLog';
 type Props = $ReadOnly<{|
   onSelectIndex: (selectedIndex: number) => void,
   selectedIndex: number,
   total: number,
+  level: LogLevel,
 |}>;
 
 function LogBoxInspectorHeader(props: Props): React.Node {
-  const prevIndex = props.selectedIndex - 1;
-  const nextIndex = props.selectedIndex + 1;
+  if (props.level === 'syntax') {
+    return (
+      <View style={[styles.safeArea, styles[props.level]]}>
+        <View style={styles.header}>
+          <View style={styles.title}>
+            <Text style={styles.titleText}>Failed to compile</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
-  const titleText =
-    props.total === 1
-      ? 'Log'
-      : `Log ${props.selectedIndex + 1} of ${props.total}`;
+  const prevIndex =
+    props.selectedIndex - 1 < 0 ? props.total - 1 : props.selectedIndex - 1;
+  const nextIndex =
+    props.selectedIndex + 1 > props.total - 1 ? 0 : props.selectedIndex + 1;
+
+  const titleText = `Log ${props.selectedIndex + 1} of ${props.total}`;
 
   return (
-    <SafeAreaView style={styles.root}>
+    <View style={[styles.safeArea, styles[props.level]]}>
       <View style={styles.header}>
         <LogBoxInspectorHeaderButton
-          disabled={prevIndex < 0}
-          image={LogBoxImageSource.chevronLeft}
+          disabled={props.total <= 1}
+          level={props.level}
+          image={require('./LogBoxImages/chevron-left.png')}
           onPress={() => props.onSelectIndex(prevIndex)}
         />
         <View style={styles.title}>
           <Text style={styles.titleText}>{titleText}</Text>
         </View>
         <LogBoxInspectorHeaderButton
-          disabled={nextIndex >= props.total}
-          image={LogBoxImageSource.chevronRight}
+          disabled={props.total <= 1}
+          level={props.level}
+          image={require('./LogBoxImages/chevron-right.png')}
           onPress={() => props.onSelectIndex(nextIndex)}
         />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
+
+const backgroundForLevel = (level: LogLevel) =>
+  ({
+    warn: {
+      default: 'transparent',
+      pressed: LogBoxStyle.getWarningDarkColor(),
+    },
+    error: {
+      default: 'transparent',
+      pressed: LogBoxStyle.getErrorDarkColor(),
+    },
+    fatal: {
+      default: 'transparent',
+      pressed: LogBoxStyle.getFatalDarkColor(),
+    },
+    syntax: {
+      default: 'transparent',
+      pressed: LogBoxStyle.getFatalDarkColor(),
+    },
+  }[level]);
 
 function LogBoxInspectorHeaderButton(
   props: $ReadOnly<{|
     disabled: boolean,
-    image: string,
+    image: number,
+    level: LogLevel,
     onPress?: ?() => void,
   |}>,
 ): React.Node {
   return (
     <LogBoxButton
-      backgroundColor={{
-        default: LogBoxStyle.getWarningColor(),
-        pressed: LogBoxStyle.getWarningDarkColor(),
-      }}
+      backgroundColor={backgroundForLevel(props.level)}
       onPress={props.disabled ? null : props.onPress}
       style={headerStyles.button}>
       {props.disabled ? null : (
-        <Image
-          source={{height: 16, uri: props.image, width: 16}}
-          style={headerStyles.buttonImage}
-        />
+        <Image source={props.image} style={headerStyles.buttonImage} />
       )}
     </LogBoxButton>
   );
@@ -87,20 +115,31 @@ const headerStyles = StyleSheet.create({
     alignItems: 'center',
     aspectRatio: 1,
     justifyContent: 'center',
-    marginTop: 3,
+    marginTop: 5,
     marginRight: 6,
     marginLeft: 6,
     marginBottom: -8,
     borderRadius: 3,
   },
   buttonImage: {
-    tintColor: LogBoxStyle.getTextColor(1),
+    height: 14,
+    width: 8,
+    tintColor: LogBoxStyle.getTextColor(),
   },
 });
 
 const styles = StyleSheet.create({
-  root: {
-    backgroundColor: LogBoxStyle.getWarningColor(1),
+  syntax: {
+    backgroundColor: LogBoxStyle.getFatalColor(),
+  },
+  fatal: {
+    backgroundColor: LogBoxStyle.getFatalColor(),
+  },
+  warn: {
+    backgroundColor: LogBoxStyle.getWarningColor(),
+  },
+  error: {
+    backgroundColor: LogBoxStyle.getErrorColor(),
   },
   header: {
     flexDirection: 'row',
@@ -115,11 +154,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   titleText: {
-    color: LogBoxStyle.getTextColor(1),
+    color: LogBoxStyle.getTextColor(),
     fontSize: 16,
     fontWeight: '600',
     includeFontPadding: false,
     lineHeight: 20,
+  },
+  safeArea: {
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 40,
   },
 });
 

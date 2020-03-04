@@ -23,6 +23,20 @@ void *TextLayoutManager::getNativeTextLayoutManager() const {
 }
 
 Size TextLayoutManager::measure(
+    AttributedStringBox attributedStringBox,
+    ParagraphAttributes paragraphAttributes,
+    LayoutConstraints layoutConstraints) const {
+  auto &attributedString = attributedStringBox.getValue();
+
+  return measureCache_.get(
+      {attributedString, paragraphAttributes, layoutConstraints},
+      [&](TextMeasureCacheKey const &key) {
+        return doMeasure(
+            attributedString, paragraphAttributes, layoutConstraints);
+      });
+}
+
+Size TextLayoutManager::doMeasure(
     AttributedString attributedString,
     ParagraphAttributes paragraphAttributes,
     LayoutConstraints layoutConstraints) const {
@@ -32,6 +46,7 @@ Size TextLayoutManager::measure(
   static auto measure =
       jni::findClassStatic("com/facebook/react/fabric/FabricUIManager")
           ->getMethod<jlong(
+              jint,
               jstring,
               ReadableMap::javaobject,
               ReadableMap::javaobject,
@@ -56,6 +71,7 @@ Size TextLayoutManager::measure(
       reinterpret_cast<ReadableMap::javaobject>(paragraphAttributesRNM.get()));
   return yogaMeassureToSize(measure(
       fabricUIManager,
+      -1,
       componentName.get(),
       attributedStringRM.get(),
       paragraphAttributesRM.get(),

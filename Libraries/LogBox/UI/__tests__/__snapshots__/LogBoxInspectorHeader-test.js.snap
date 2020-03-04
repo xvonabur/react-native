@@ -1,64 +1,16 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`LogBoxInspectorHeader should render no buttons for one total 1`] = `
-<ForwardRef(SafeAreaView)
+exports[`LogBoxInspectorHeader should render both buttons for two total 1`] = `
+<View
   style={
-    Object {
-      "backgroundColor": "rgba(250, 186, 48, 1)",
-    }
-  }
->
-  <View
-    style={
+    Array [
       Object {
-        "flexDirection": "row",
-        "height": 44,
-      }
-    }
-  >
-    <LogBoxInspectorHeaderButton
-      disabled={true}
-      image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAAaUlEQVRYhe3WsQ2AMAwAwRcs5LEYg3HpYANoQKKgcEEUI/6adM5LbgySfmZsNDeACdiApdEfaQGswH6+Xd1jugc9xYQxxhjz9RhaxwxvDuul3MrAqDyjsozKKnWgXUqdsJcAZgqsTFJ5B7gjUNw0n0HHAAAAAElFTkSuQmCC"
-      onPress={[Function]}
-    />
-    <View
-      style={
-        Object {
-          "alignItems": "center",
-          "flex": 1,
-          "justifyContent": "center",
-        }
-      }
-    >
-      <Text
-        style={
-          Object {
-            "color": "rgba(255, 255, 255, 1)",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "includeFontPadding": false,
-            "lineHeight": 20,
-          }
-        }
-      >
-        Log
-      </Text>
-    </View>
-    <LogBoxInspectorHeaderButton
-      disabled={true}
-      image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAAZElEQVRYhe3WsQmAQAxA0Y8ulLEcw3HtdANtBNvzCJjD/5pUgQ9pApJ+Zu7YCWABDmDLzemzA+c94+MW4AkqExUY1caoVka1GibqlSm7qJJSJzPGGGMylYqBgi9sACtFYiQN7wKC6VDcJ7tlpQAAAABJRU5ErkJggg=="
-      onPress={[Function]}
-    />
-  </View>
-</ForwardRef(SafeAreaView)>
-`;
-
-exports[`LogBoxInspectorHeader should render one left button for two total, right selected 1`] = `
-<ForwardRef(SafeAreaView)
-  style={
-    Object {
-      "backgroundColor": "rgba(250, 186, 48, 1)",
-    }
+        "paddingTop": 40,
+      },
+      Object {
+        "backgroundColor": "rgba(250, 186, 48, 1)",
+      },
+    ]
   }
 >
   <View
@@ -71,7 +23,12 @@ exports[`LogBoxInspectorHeader should render one left button for two total, righ
   >
     <LogBoxInspectorHeaderButton
       disabled={false}
-      image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAAaUlEQVRYhe3WsQ2AMAwAwRcs5LEYg3HpYANoQKKgcEEUI/6adM5LbgySfmZsNDeACdiApdEfaQGswH6+Xd1jugc9xYQxxhjz9RhaxwxvDuul3MrAqDyjsozKKnWgXUqdsJcAZgqsTFJ5B7gjUNw0n0HHAAAAAElFTkSuQmCC"
+      image={
+        Object {
+          "testUri": "../Libraries/LogBox/UI/LogBoxImages/chevron-left.png",
+        }
+      }
+      level="warn"
       onPress={[Function]}
     />
     <View
@@ -98,73 +55,30 @@ exports[`LogBoxInspectorHeader should render one left button for two total, righ
       </Text>
     </View>
     <LogBoxInspectorHeaderButton
-      disabled={true}
-      image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAAZElEQVRYhe3WsQmAQAxA0Y8ulLEcw3HtdANtBNvzCJjD/5pUgQ9pApJ+Zu7YCWABDmDLzemzA+c94+MW4AkqExUY1caoVka1GibqlSm7qJJSJzPGGGMylYqBgi9sACtFYiQN7wKC6VDcJ7tlpQAAAABJRU5ErkJggg=="
-      onPress={[Function]}
-    />
-  </View>
-</ForwardRef(SafeAreaView)>
-`;
-
-exports[`LogBoxInspectorHeader should render one right button for two total, left selected 1`] = `
-<ForwardRef(SafeAreaView)
-  style={
-    Object {
-      "backgroundColor": "rgba(250, 186, 48, 1)",
-    }
-  }
->
-  <View
-    style={
-      Object {
-        "flexDirection": "row",
-        "height": 44,
-      }
-    }
-  >
-    <LogBoxInspectorHeaderButton
-      disabled={true}
-      image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAAaUlEQVRYhe3WsQ2AMAwAwRcs5LEYg3HpYANoQKKgcEEUI/6adM5LbgySfmZsNDeACdiApdEfaQGswH6+Xd1jugc9xYQxxhjz9RhaxwxvDuul3MrAqDyjsozKKnWgXUqdsJcAZgqsTFJ5B7gjUNw0n0HHAAAAAElFTkSuQmCC"
-      onPress={[Function]}
-    />
-    <View
-      style={
-        Object {
-          "alignItems": "center",
-          "flex": 1,
-          "justifyContent": "center",
-        }
-      }
-    >
-      <Text
-        style={
-          Object {
-            "color": "rgba(255, 255, 255, 1)",
-            "fontSize": 16,
-            "fontWeight": "600",
-            "includeFontPadding": false,
-            "lineHeight": 20,
-          }
-        }
-      >
-        Log 1 of 2
-      </Text>
-    </View>
-    <LogBoxInspectorHeaderButton
       disabled={false}
-      image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAAZElEQVRYhe3WsQmAQAxA0Y8ulLEcw3HtdANtBNvzCJjD/5pUgQ9pApJ+Zu7YCWABDmDLzemzA+c94+MW4AkqExUY1caoVka1GibqlSm7qJJSJzPGGGMylYqBgi9sACtFYiQN7wKC6VDcJ7tlpQAAAABJRU5ErkJggg=="
+      image={
+        Object {
+          "testUri": "../Libraries/LogBox/UI/LogBoxImages/chevron-right.png",
+        }
+      }
+      level="warn"
       onPress={[Function]}
     />
   </View>
-</ForwardRef(SafeAreaView)>
+</View>
 `;
 
-exports[`LogBoxInspectorHeader should render two buttons for three total, middle selected 1`] = `
-<ForwardRef(SafeAreaView)
+exports[`LogBoxInspectorHeader should render no buttons for one total 1`] = `
+<View
   style={
-    Object {
-      "backgroundColor": "rgba(250, 186, 48, 1)",
-    }
+    Array [
+      Object {
+        "paddingTop": 40,
+      },
+      Object {
+        "backgroundColor": "rgba(250, 186, 48, 1)",
+      },
+    ]
   }
 >
   <View
@@ -177,7 +91,12 @@ exports[`LogBoxInspectorHeader should render two buttons for three total, middle
   >
     <LogBoxInspectorHeaderButton
       disabled={true}
-      image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAAaUlEQVRYhe3WsQ2AMAwAwRcs5LEYg3HpYANoQKKgcEEUI/6adM5LbgySfmZsNDeACdiApdEfaQGswH6+Xd1jugc9xYQxxhjz9RhaxwxvDuul3MrAqDyjsozKKnWgXUqdsJcAZgqsTFJ5B7gjUNw0n0HHAAAAAElFTkSuQmCC"
+      image={
+        Object {
+          "testUri": "../Libraries/LogBox/UI/LogBoxImages/chevron-left.png",
+        }
+      }
+      level="warn"
       onPress={[Function]}
     />
     <View
@@ -200,14 +119,135 @@ exports[`LogBoxInspectorHeader should render two buttons for three total, middle
           }
         }
       >
-        Log
+        Log 1 of 1
       </Text>
     </View>
     <LogBoxInspectorHeaderButton
       disabled={true}
-      image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAAZElEQVRYhe3WsQmAQAxA0Y8ulLEcw3HtdANtBNvzCJjD/5pUgQ9pApJ+Zu7YCWABDmDLzemzA+c94+MW4AkqExUY1caoVka1GibqlSm7qJJSJzPGGGMylYqBgi9sACtFYiQN7wKC6VDcJ7tlpQAAAABJRU5ErkJggg=="
+      image={
+        Object {
+          "testUri": "../Libraries/LogBox/UI/LogBoxImages/chevron-right.png",
+        }
+      }
+      level="warn"
       onPress={[Function]}
     />
   </View>
-</ForwardRef(SafeAreaView)>
+</View>
+`;
+
+exports[`LogBoxInspectorHeader should render syntax error header 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "paddingTop": 40,
+      },
+      Object {
+        "backgroundColor": "rgba(243, 83, 105, 1)",
+      },
+    ]
+  }
+>
+  <View
+    style={
+      Object {
+        "flexDirection": "row",
+        "height": 44,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "justifyContent": "center",
+        }
+      }
+    >
+      <Text
+        style={
+          Object {
+            "color": "rgba(255, 255, 255, 1)",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "includeFontPadding": false,
+            "lineHeight": 20,
+          }
+        }
+      >
+        Failed to compile
+      </Text>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`LogBoxInspectorHeader should render two buttons for three or more total 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "paddingTop": 40,
+      },
+      Object {
+        "backgroundColor": "rgba(250, 186, 48, 1)",
+      },
+    ]
+  }
+>
+  <View
+    style={
+      Object {
+        "flexDirection": "row",
+        "height": 44,
+      }
+    }
+  >
+    <LogBoxInspectorHeaderButton
+      disabled={true}
+      image={
+        Object {
+          "testUri": "../Libraries/LogBox/UI/LogBoxImages/chevron-left.png",
+        }
+      }
+      level="warn"
+      onPress={[Function]}
+    />
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "justifyContent": "center",
+        }
+      }
+    >
+      <Text
+        style={
+          Object {
+            "color": "rgba(255, 255, 255, 1)",
+            "fontSize": 16,
+            "fontWeight": "600",
+            "includeFontPadding": false,
+            "lineHeight": 20,
+          }
+        }
+      >
+        Log 1 of 1
+      </Text>
+    </View>
+    <LogBoxInspectorHeaderButton
+      disabled={true}
+      image={
+        Object {
+          "testUri": "../Libraries/LogBox/UI/LogBoxImages/chevron-right.png",
+        }
+      }
+      level="warn"
+      onPress={[Function]}
+    />
+  </View>
+</View>
 `;

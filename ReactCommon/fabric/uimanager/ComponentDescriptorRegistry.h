@@ -39,10 +39,19 @@ class ComponentDescriptorRegistry {
       ComponentDescriptorParameters const &parameters,
       ComponentDescriptorProviderRegistry const &providerRegistry);
 
+  /*
+   * This is broken. Please do not use.
+   * If you requesting a ComponentDescriptor and unsure that it's there, you are
+   * doing something wrong.
+   */
+  ComponentDescriptor const *
+  findComponentDescriptorByHandle_DO_NOT_USE_THIS_IS_BROKEN(
+      ComponentHandle componentHandle) const;
+
   ComponentDescriptor const &at(std::string const &componentName) const;
   ComponentDescriptor const &at(ComponentHandle componentHandle) const;
 
-  SharedShadowNode createNode(
+  ShadowNode::Shared createNode(
       Tag tag,
       std::string const &viewName,
       SurfaceId surfaceId,
@@ -59,13 +68,13 @@ class ComponentDescriptorRegistry {
       SharedComponentDescriptor componentDescriptor) const;
 
   /*
-   * Adds (or removes) a `ComponentDescriptor ` created using given
-   * `ComponentDescriptorProvider` and stored `ComponentDescriptorParameters`.
+   * Creates a `ComponentDescriptor` using specified
+   * `ComponentDescriptorProvider` and stored `ComponentDescriptorParameters`,
+   * and then adds that to the registry.
    * To be used by `ComponentDescriptorProviderRegistry` only.
    * Thread safe.
    */
   void add(ComponentDescriptorProvider componentDescriptorProvider) const;
-  void remove(ComponentDescriptorProvider componentDescriptorProvider) const;
 
   mutable better::shared_mutex mutex_;
   mutable better::map<ComponentHandle, SharedComponentDescriptor>

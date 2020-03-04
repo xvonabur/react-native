@@ -6,7 +6,7 @@
  *
  * @format
  * @emails oncall+react_native
- * @flow
+ * @flow strict-local
  */
 
 'use strict';
@@ -22,42 +22,46 @@ describe('LogBoxInspectorHeader', () => {
         onSelectIndex={() => {}}
         selectedIndex={0}
         total={1}
+        level="warn"
       />,
     );
 
     expect(output).toMatchSnapshot();
   });
 
-  it('should render one left button for two total, right selected', () => {
+  it('should render both buttons for two total', () => {
     const output = render.shallowRender(
       <LogBoxInspectorHeader
         onSelectIndex={() => {}}
         selectedIndex={1}
         total={2}
+        level="warn"
       />,
     );
 
     expect(output).toMatchSnapshot();
   });
 
-  it('should render two buttons for three total, middle selected', () => {
+  it('should render two buttons for three or more total', () => {
     const output = render.shallowRender(
       <LogBoxInspectorHeader
         onSelectIndex={() => {}}
         selectedIndex={0}
         total={1}
+        level="warn"
       />,
     );
 
     expect(output).toMatchSnapshot();
   });
 
-  it('should render one right button for two total, left selected', () => {
+  it('should render syntax error header', () => {
     const output = render.shallowRender(
       <LogBoxInspectorHeader
         onSelectIndex={() => {}}
         selectedIndex={0}
-        total={2}
+        total={1}
+        level="syntax"
       />,
     );
 

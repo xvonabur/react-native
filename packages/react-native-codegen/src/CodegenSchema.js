@@ -292,6 +292,9 @@ export type OptionsShape = $ReadOnly<{|
   // Does not check for new name
   paperComponentName?: string,
 
+  // Use for components that are not used on one or the other platform.
+  excludedPlatform?: 'iOS' | 'android',
+
   // Use for components currently being renamed in paper
   // Will use new name if it is available and fallback to this name
   paperComponentNameDeprecated?: string,
@@ -313,12 +316,12 @@ export type ComponentShape = $ReadOnly<{|
 export type SchemaType = $ReadOnly<{|
   modules: $ReadOnly<{
     [module: string]: $ReadOnly<{|
-      components?: $ReadOnly<{
-        [component: string]: ComponentShape,
-      }>,
+      components?: $ReadOnly<{[component: string]: ComponentShape, ...}>,
       nativeModules?: $ReadOnly<{
         [nativeModule: string]: NativeModuleShape,
+        ...,
       }>,
     |}>,
+    ...,
   }>,
 |}>;

@@ -4,7 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  * @generate-docs
  */
@@ -15,11 +15,16 @@ const Platform = require('../../Utilities/Platform');
 const React = require('react');
 const StyleSheet = require('../../StyleSheet/StyleSheet');
 
+import AndroidSwitchNativeComponent, {
+  Commands as AndroidSwitchCommands,
+} from './AndroidSwitchNativeComponent';
+import SwitchNativeComponent, {
+  Commands as SwitchCommands,
+} from './SwitchNativeComponent';
+
 import type {ColorValue} from '../../StyleSheet/StyleSheetTypes';
 import type {SyntheticEvent} from '../../Types/CoreEventTypes';
 import type {ViewProps} from '../View/ViewPropTypes';
-import SwitchNativeComponent from './SwitchNativeComponent';
-import AndroidSwitchNativeComponent from './AndroidSwitchNativeComponent';
 
 type SwitchChangeEvent = SyntheticEvent<
   $ReadOnly<{|
@@ -108,48 +113,18 @@ class Switch extends React.Component<Props> {
       ...props
     } = this.props;
 
-    // Support deprecated color props.
-    let _thumbColor = thumbColor;
-    let _trackColorForFalse = trackColor?.false;
-    let _trackColorForTrue = trackColor?.true;
-
-    // TODO: Remove support for these props after a couple releases.
-    const {thumbTintColor, tintColor, onTintColor} = (props: $FlowFixMe);
-    if (thumbTintColor != null) {
-      _thumbColor = thumbTintColor;
-      if (__DEV__) {
-        console.warn(
-          'Switch: `thumbTintColor` is deprecated, use `thumbColor` instead.',
-        );
-      }
-    }
-    if (tintColor != null) {
-      _trackColorForFalse = tintColor;
-      if (__DEV__) {
-        console.warn(
-          'Switch: `tintColor` is deprecated, use `trackColor` instead.',
-        );
-      }
-    }
-    if (onTintColor != null) {
-      _trackColorForTrue = onTintColor;
-      if (__DEV__) {
-        console.warn(
-          'Switch: `onTintColor` is deprecated, use `trackColor` instead.',
-        );
-      }
-    }
+    const trackColorForFalse = trackColor?.false;
+    const trackColorForTrue = trackColor?.true;
 
     if (Platform.OS === 'android') {
       const platformProps = {
         enabled: disabled !== true,
         on: value === true,
         style,
-        thumbTintColor: _thumbColor,
-        trackColorForFalse: _trackColorForFalse,
-        trackColorForTrue: _trackColorForTrue,
-        trackTintColor:
-          value === true ? _trackColorForTrue : _trackColorForFalse,
+        thumbTintColor: thumbColor,
+        trackColorForFalse: trackColorForFalse,
+        trackColorForTrue: trackColorForTrue,
+        trackTintColor: value === true ? trackColorForTrue : trackColorForFalse,
       };
 
       return (
@@ -167,7 +142,7 @@ class Switch extends React.Component<Props> {
 
     const platformProps = {
       disabled,
-      onTintColor: _trackColorForTrue,
+      onTintColor: trackColorForTrue,
       style: StyleSheet.compose(
         {height: 31, width: 51},
         StyleSheet.compose(
@@ -180,8 +155,8 @@ class Switch extends React.Component<Props> {
               },
         ),
       ),
-      thumbTintColor: _thumbColor,
-      tintColor: _trackColorForFalse,
+      thumbTintColor: thumbColor,
+      tintColor: trackColorForFalse,
       value: value === true,
     };
 
@@ -205,7 +180,7 @@ class Switch extends React.Component<Props> {
     const nativeProps = {};
     const value = this.props.value === true;
 
-    if (this._lastNativeValue !== value && typeof value === 'boolean') {
+    if (this._lastNativeValue !== value) {
       nativeProps.value = value;
     }
 
@@ -214,7 +189,14 @@ class Switch extends React.Component<Props> {
       this._nativeSwitchRef &&
       this._nativeSwitchRef.setNativeProps
     ) {
-      this._nativeSwitchRef.setNativeProps(nativeProps);
+      if (Platform.OS === 'android') {
+        AndroidSwitchCommands.setNativeValue(
+          this._nativeSwitchRef,
+          nativeProps.value,
+        );
+      } else {
+        SwitchCommands.setValue(this._nativeSwitchRef, nativeProps.value);
+      }
     }
   }
 

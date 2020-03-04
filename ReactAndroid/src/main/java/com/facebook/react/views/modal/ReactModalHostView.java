@@ -27,6 +27,7 @@ import com.facebook.react.R;
 import com.facebook.react.bridge.GuardedRunnable;
 import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.ReactContext;
+import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.common.annotations.VisibleForTesting;
@@ -96,7 +97,15 @@ public class ReactModalHostView extends ViewGroup implements LifecycleEventListe
   }
 
   @Override
+  protected void onDetachedFromWindow() {
+    super.onDetachedFromWindow();
+    dismiss();
+  }
+
+  @Override
   public void addView(View child, int index) {
+    UiThreadUtil.assertOnUiThread();
+
     mHostView.addView(child, index);
   }
 
@@ -112,11 +121,15 @@ public class ReactModalHostView extends ViewGroup implements LifecycleEventListe
 
   @Override
   public void removeView(View child) {
+    UiThreadUtil.assertOnUiThread();
+
     mHostView.removeView(child);
   }
 
   @Override
   public void removeViewAt(int index) {
+    UiThreadUtil.assertOnUiThread();
+
     View child = getChildAt(index);
     mHostView.removeView(child);
   }
@@ -140,6 +153,8 @@ public class ReactModalHostView extends ViewGroup implements LifecycleEventListe
   }
 
   private void dismiss() {
+    UiThreadUtil.assertOnUiThread();
+
     if (mDialog != null) {
       if (mDialog.isShowing()) {
         Activity dialogContext =
@@ -217,6 +232,8 @@ public class ReactModalHostView extends ViewGroup implements LifecycleEventListe
    * new Dialog.
    */
   protected void showOrUpdate() {
+    UiThreadUtil.assertOnUiThread();
+
     // If the existing Dialog is currently up, we may need to redraw it or we may be able to update
     // the property without having to recreate the dialog
     if (mDialog != null) {

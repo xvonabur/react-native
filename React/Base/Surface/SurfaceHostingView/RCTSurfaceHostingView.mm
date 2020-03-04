@@ -7,6 +7,7 @@
 
 #import "RCTSurfaceHostingView.h"
 
+#import "RCTConstants.h"
 #import "RCTDefines.h"
 #import "RCTSurface.h"
 #import "RCTSurfaceDelegate.h"
@@ -202,6 +203,18 @@ RCT_NOT_IMPLEMENTED(- (nullable instancetype)initWithCoder:(NSCoder *)coder)
     self.isActivityIndicatorViewVisible = NO;
     self.isActivityIndicatorViewVisible = YES;
   }
+}
+
+#pragma mark - UITraitCollection updates
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection
+{
+  [super traitCollectionDidChange:previousTraitCollection];
+  [[NSNotificationCenter defaultCenter] postNotificationName:RCTUserInterfaceStyleDidChangeNotification
+                                                      object:self
+                                                    userInfo:@{
+                                                      RCTUserInterfaceStyleDidChangeNotificationTraitCollectionKey: self.traitCollection,
+                                                    }];
 }
 
 #pragma mark - Private stuff

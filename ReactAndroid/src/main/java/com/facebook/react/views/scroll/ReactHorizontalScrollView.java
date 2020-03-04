@@ -13,7 +13,6 @@ import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
-import android.util.Log;
 import android.view.FocusFinder;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -23,8 +22,10 @@ import android.widget.OverScroller;
 import androidx.annotation.Nullable;
 import androidx.core.text.TextUtilsCompat;
 import androidx.core.view.ViewCompat;
+import com.facebook.common.logging.FLog;
 import com.facebook.infer.annotation.Assertions;
 import com.facebook.react.common.ReactConstants;
+import com.facebook.react.config.ReactFeatureFlags;
 import com.facebook.react.uimanager.MeasureSpecAssertions;
 import com.facebook.react.uimanager.ReactClippingViewGroup;
 import com.facebook.react.uimanager.ReactClippingViewGroupHelper;
@@ -94,7 +95,7 @@ public class ReactHorizontalScrollView extends HorizontalScrollView
         sScrollerField = HorizontalScrollView.class.getDeclaredField("mScroller");
         sScrollerField.setAccessible(true);
       } catch (NoSuchFieldException e) {
-        Log.w(
+        FLog.w(
             ReactConstants.TAG,
             "Failed to get mScroller field for HorizontalScrollView! "
                 + "This app will exhibit the bounce-back scrolling bug :(");
@@ -107,7 +108,7 @@ public class ReactHorizontalScrollView extends HorizontalScrollView
         if (scrollerValue instanceof OverScroller) {
           scroller = (OverScroller) scrollerValue;
         } else {
-          Log.w(
+          FLog.w(
               ReactConstants.TAG,
               "Failed to cast mScroller field in HorizontalScrollView (probably due to OEM changes to AOSP)! "
                   + "This app will exhibit the bounce-back scrolling bug :(");
@@ -325,7 +326,7 @@ public class ReactHorizontalScrollView extends HorizontalScrollView
       // Log and ignore the error. This seems to be a bug in the android SDK and
       // this is the commonly accepted workaround.
       // https://tinyurl.com/mw6qkod (Stack Overflow)
-      Log.w(ReactConstants.TAG, "Error intercepting touch event.", e);
+      FLog.w(ReactConstants.TAG, "Error intercepting touch event.", e);
     }
 
     return false;
@@ -494,8 +495,9 @@ public class ReactHorizontalScrollView extends HorizontalScrollView
 
   @Override
   public boolean getChildVisibleRect(View child, Rect r, android.graphics.Point offset) {
-    return ReactClippingViewGroupHelper.getChildVisibleRectHelper(
-        child, r, offset, this, mOverflow);
+    return ReactFeatureFlags.clipChildRectsIfOverflowIsHidden
+        ? ReactClippingViewGroupHelper.getChildVisibleRectHelper(child, r, offset, this, mOverflow)
+        : super.getChildVisibleRect(child, r, offset);
   }
 
   private int getSnapInterval() {

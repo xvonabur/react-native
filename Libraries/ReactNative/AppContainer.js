@@ -14,14 +14,11 @@ const EmitterSubscription = require('../vendor/emitter/EmitterSubscription');
 const PropTypes = require('prop-types');
 const RCTDeviceEventEmitter = require('../EventEmitter/RCTDeviceEventEmitter');
 const React = require('react');
-const ReactNative = require('../Renderer/shims/ReactNative');
 const RootTagContext = require('./RootTagContext');
 const StyleSheet = require('../StyleSheet/StyleSheet');
 const View = require('../Components/View/View');
 
-type Context = {
-  rootTag: number,
-};
+type Context = {rootTag: number, ...};
 
 type Props = $ReadOnly<{|
   children?: React.Node,
@@ -29,20 +26,25 @@ type Props = $ReadOnly<{|
   rootTag: number,
   showArchitectureIndicator?: boolean,
   WrapperComponent?: ?React.ComponentType<any>,
+  internal_excludeLogBox?: ?boolean,
 |}>;
 
 type State = {|
   inspector: ?React.Node,
   mainKey: number,
+  hasError: boolean,
 |};
 
 class AppContainer extends React.Component<Props, State> {
   state: State = {
     inspector: null,
     mainKey: 1,
+    hasError: false,
   };
   _mainRef: ?React.ElementRef<typeof View>;
   _subscription: ?EmitterSubscription = null;
+
+  static getDerivedStateFromError: any = undefined;
 
   static childContextTypes:
     | any
@@ -65,14 +67,12 @@ class AppContainer extends React.Component<Props, State> {
             const Inspector = require('../Inspector/Inspector');
             const inspector = this.state.inspector ? null : (
               <Inspector
-                inspectedViewTag={ReactNative.findNodeHandle(this._mainRef)}
-                onRequestRerenderApp={updateInspectedViewTag => {
+                isFabric={this.props.fabric === true}
+                inspectedView={this._mainRef}
+                onRequestRerenderApp={updateInspectedView => {
                   this.setState(
                     s => ({mainKey: s.mainKey + 1}),
-                    () =>
-                      updateInspectedViewTag(
-                        ReactNative.findNodeHandle(this._mainRef),
-                      ),
+                    () => updateInspectedView(this._mainRef),
                   );
                 }}
               />
@@ -93,14 +93,13 @@ class AppContainer extends React.Component<Props, State> {
   render(): React.Node {
     let logBox = null;
     if (__DEV__) {
-      if (!global.__RCTProfileIsProfiling) {
-        if (global.__reactExperimentalLogBox) {
-          const LogBox = require('../LogBox/LogBox');
-          logBox = <LogBox />;
-        } else {
-          const YellowBox = require('../YellowBox/YellowBox');
-          logBox = <YellowBox />;
-        }
+      if (
+        !global.__RCTProfileIsProfiling &&
+        !this.props.internal_excludeLogBox
+      ) {
+        const LogBoxNotificationContainer = require('../LogBox/LogBoxNotificationContainer')
+          .default;
+        logBox = <LogBoxNotificationContainer />;
       }
     }
 
@@ -132,9 +131,9 @@ class AppContainer extends React.Component<Props, State> {
     return (
       <RootTagContext.Provider value={this.props.rootTag}>
         <View style={styles.appContainer} pointerEvents="box-none">
-          {innerView}
-          {logBox}
+          {!this.state.hasError && innerView}
           {this.state.inspector}
+          {logBox}
         </View>
       </RootTagContext.Provider>
     );
@@ -149,13 +148,8 @@ const styles = StyleSheet.create({
 
 if (__DEV__) {
   if (!global.__RCTProfileIsProfiling) {
-    if (global.__reactExperimentalLogBox) {
-      const LogBox = require('../LogBox/LogBox');
-      LogBox.install();
-    } else {
-      const YellowBox = require('../YellowBox/YellowBox');
-      YellowBox.install();
-    }
+    const LogBox = require('../LogBox/LogBox');
+    LogBox.install();
   }
 }
 

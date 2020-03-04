@@ -6,7 +6,7 @@
  *
  * @format
  * @emails oncall+react_native
- * @flow
+ * @flow strict-local
  */
 
 'use strict';
@@ -22,16 +22,17 @@ describe('LogBoxInspectorReactFrames', () => {
     const output = render.shallowRender(
       <LogBoxInspectorReactFrames
         log={
-          new LogBoxLog(
-            {
+          new LogBoxLog({
+            level: 'warn',
+            isComponentError: false,
+            message: {
               content: 'Some kind of message',
               substitutions: [],
             },
-            [],
-            'Some kind of message',
-            [],
-            false,
-          )
+            stack: [],
+            category: 'Some kind of message',
+            componentStack: [],
+          })
         }
       />,
     );
@@ -39,25 +40,147 @@ describe('LogBoxInspectorReactFrames', () => {
     expect(output).toMatchSnapshot();
   });
 
-  it('should render componentStack frames', () => {
+  it('should render componentStack frames without full path pressable', () => {
     const output = render.shallowRender(
       <LogBoxInspectorReactFrames
         log={
-          new LogBoxLog(
-            {
+          new LogBoxLog({
+            level: 'warn',
+            isComponentError: false,
+            message: {
               content: 'Some kind of message',
               substitutions: [],
             },
-            [],
-            'Some kind of message',
-            [
+            stack: [],
+            category: 'Some kind of message',
+            componentStack: [
               {
-                component: 'MyComponent',
-                location: 'MyComponentFile.js:1',
+                content: 'MyComponent',
+                fileName: 'MyComponentFile.js',
+                location: {
+                  row: 1,
+                  column: -1,
+                },
               },
             ],
-            false,
-          )
+          })
+        }
+      />,
+    );
+
+    expect(output).toMatchSnapshot();
+  });
+
+  it('should render componentStack frames with full path pressable', () => {
+    const output = render.shallowRender(
+      <LogBoxInspectorReactFrames
+        log={
+          new LogBoxLog({
+            level: 'warn',
+            isComponentError: false,
+            message: {
+              content: 'Some kind of message',
+              substitutions: [],
+            },
+            stack: [],
+            category: 'Some kind of message',
+            componentStack: [
+              {
+                content: 'MyComponent',
+                fileName: '/path/to/MyComponentFile.js',
+                location: {
+                  row: 1,
+                  column: -1,
+                },
+              },
+            ],
+          })
+        }
+      />,
+    );
+
+    expect(output).toMatchSnapshot();
+  });
+
+  it('should render componentStack frames with parent folder of index.js', () => {
+    const output = render.shallowRender(
+      <LogBoxInspectorReactFrames
+        log={
+          new LogBoxLog({
+            level: 'warn',
+            isComponentError: false,
+            message: {
+              content: 'Some kind of message',
+              substitutions: [],
+            },
+            stack: [],
+            category: 'Some kind of message',
+            componentStack: [
+              {
+                content: 'MyComponent',
+                fileName: '/path/to/index.js',
+                location: {
+                  row: 1,
+                  column: -1,
+                },
+              },
+            ],
+          })
+        }
+      />,
+    );
+
+    expect(output).toMatchSnapshot();
+  });
+
+  it('should render componentStack frames with more than 3 stacks', () => {
+    const output = render.shallowRender(
+      <LogBoxInspectorReactFrames
+        log={
+          new LogBoxLog({
+            level: 'warn',
+            isComponentError: false,
+            message: {
+              content: 'Some kind of message',
+              substitutions: [],
+            },
+            stack: [],
+            category: 'Some kind of message',
+            componentStack: [
+              {
+                content: 'MyComponent',
+                fileName: '/path/to/index.js',
+                location: {
+                  row: 1,
+                  column: -1,
+                },
+              },
+              {
+                content: 'MyComponent2',
+                fileName: '/path/to/index2.js',
+                location: {
+                  row: 1,
+                  column: -1,
+                },
+              },
+              {
+                content: 'MyComponent3',
+                fileName: '/path/to/index3.js',
+                location: {
+                  row: 1,
+                  column: -1,
+                },
+              },
+              {
+                content: 'MyComponent4',
+                fileName: '/path/to/index4.js',
+                location: {
+                  row: 1,
+                  column: -1,
+                },
+              },
+            ],
+          })
         }
       />,
     );

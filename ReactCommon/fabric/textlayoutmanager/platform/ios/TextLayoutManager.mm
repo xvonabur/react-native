@@ -7,6 +7,8 @@
 
 #include "TextLayoutManager.h"
 
+#include <react/utils/ManagedObjectWrapper.h>
+
 #import "RCTTextLayoutManager.h"
 
 namespace facebook {
@@ -30,14 +32,39 @@ void *TextLayoutManager::getNativeTextLayoutManager() const
 }
 
 Size TextLayoutManager::measure(
-    AttributedString attributedString,
+    AttributedStringBox attributedStringBox,
     ParagraphAttributes paragraphAttributes,
     LayoutConstraints layoutConstraints) const
 {
   RCTTextLayoutManager *textLayoutManager = (__bridge RCTTextLayoutManager *)self_;
-  return [textLayoutManager measureWithAttributedString:attributedString
-                                    paragraphAttributes:paragraphAttributes
-                                      layoutConstraints:layoutConstraints];
+
+  auto size = Size{};
+
+  switch (attributedStringBox.getMode()) {
+    case AttributedStringBox::Mode::Value: {
+      auto &attributedString = attributedStringBox.getValue();
+
+      size = measureCache_.get(
+          {attributedString, paragraphAttributes, layoutConstraints}, [&](TextMeasureCacheKey const &key) {
+            return [textLayoutManager measureAttributedString:attributedString
+                                          paragraphAttributes:paragraphAttributes
+                                            layoutConstraints:layoutConstraints];
+          });
+      break;
+    }
+
+    case AttributedStringBox::Mode::OpaquePointer: {
+      NSAttributedString *nsAttributedString =
+          (NSAttributedString *)unwrapManagedObject(attributedStringBox.getOpaquePointer());
+
+      size = [textLayoutManager measureNSAttributedString:nsAttributedString
+                                      paragraphAttributes:paragraphAttributes
+                                        layoutConstraints:layoutConstraints];
+      break;
+    }
+  }
+
+  return layoutConstraints.clamp(size);
 }
 
 } // namespace react

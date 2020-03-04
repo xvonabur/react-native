@@ -12,6 +12,7 @@ import android.text.Layout;
 import android.text.Spannable;
 import androidx.annotation.Nullable;
 import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.ReadableNativeMap;
 import com.facebook.react.common.MapBuilder;
 import com.facebook.react.common.annotations.VisibleForTesting;
 import com.facebook.react.module.annotations.ReactModule;
@@ -32,6 +33,8 @@ public class ReactTextViewManager
     implements IViewManagerWithChildren {
 
   @VisibleForTesting public static final String REACT_CLASS = "RCTText";
+
+  protected @Nullable ReactTextViewManagerCallback mReactTextViewManagerCallback;
 
   @Override
   public String getName() {
@@ -58,6 +61,11 @@ public class ReactTextViewManager
     return new ReactTextShadowNode();
   }
 
+  public ReactTextShadowNode createShadowNodeInstance(
+      @Nullable ReactTextViewManagerCallback reactTextViewManagerCallback) {
+    return new ReactTextShadowNode(reactTextViewManagerCallback);
+  }
+
   @Override
   public Class<ReactTextShadowNode> getShadowNodeClass() {
     return ReactTextShadowNode.class;
@@ -77,31 +85,48 @@ public class ReactTextViewManager
   public Object updateState(
       ReactTextView view, ReactStylesDiffMap props, @Nullable StateWrapper stateWrapper) {
     // TODO T55794595: Add support for updating state with null stateWrapper
-    ReadableMap attributedString = stateWrapper.getState().getMap("attributedString");
+    ReadableNativeMap state = stateWrapper.getState();
+    ReadableMap attributedString = state.getMap("attributedString");
+    ReadableMap paragraphAttributes = state.getMap("paragraphAttributes");
 
     Spannable spanned =
-        TextLayoutManager.getOrCreateSpannableForText(view.getContext(), attributedString);
+        TextLayoutManager.getOrCreateSpannableForText(
+            view.getContext(), attributedString, mReactTextViewManagerCallback);
     view.setSpanned(spanned);
 
     TextAttributeProps textViewProps = new TextAttributeProps(props);
 
-    // TODO add textBreakStrategy prop into local Data
-    int textBreakStrategy = Layout.BREAK_STRATEGY_HIGH_QUALITY;
+    int textBreakStrategy =
+        getTextBreakStrategy(paragraphAttributes.getString("textBreakStrategy"));
 
     // TODO add justificationMode prop into local Data
     int justificationMode = Layout.JUSTIFICATION_MODE_NONE;
 
     return new ReactTextUpdate(
         spanned,
-        -1, // TODO add this into local Data?
+        state.hasKey("mostRecentEventCount") ? state.getInt("mostRecentEventCount") : -1,
         false, // TODO add this into local Data
-        textViewProps.getStartPadding(),
-        textViewProps.getTopPadding(),
-        textViewProps.getEndPadding(),
-        textViewProps.getBottomPadding(),
-        0,
+        textViewProps.getTextAlign(),
         textBreakStrategy,
         justificationMode);
+  }
+
+  private int getTextBreakStrategy(@Nullable String textBreakStrategy) {
+    int androidTextBreakStrategy = Layout.BREAK_STRATEGY_HIGH_QUALITY;
+    if (textBreakStrategy != null) {
+      switch (textBreakStrategy) {
+        case "simple":
+          androidTextBreakStrategy = Layout.BREAK_STRATEGY_SIMPLE;
+          break;
+        case "balanced":
+          androidTextBreakStrategy = Layout.BREAK_STRATEGY_BALANCED;
+          break;
+        default:
+          androidTextBreakStrategy = Layout.BREAK_STRATEGY_HIGH_QUALITY;
+          break;
+      }
+    }
+    return androidTextBreakStrategy;
   }
 
   @Override
@@ -120,10 +145,18 @@ public class ReactTextViewManager
       float width,
       YogaMeasureMode widthMode,
       float height,
-      YogaMeasureMode heightMode) {
+      YogaMeasureMode heightMode,
+      @Nullable int[] attachmentsPositions) {
 
     return TextLayoutManager.measureText(
-        context, localData, props, width, widthMode, height, heightMode);
+        context,
+        localData,
+        props,
+        width,
+        widthMode,
+        height,
+        heightMode,
+        mReactTextViewManagerCallback);
   }
 
   @Override

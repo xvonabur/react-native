@@ -14,51 +14,50 @@ import * as React from 'react';
 import StyleSheet from '../../StyleSheet/StyleSheet';
 import Text from '../../Text/Text';
 import View from '../../Components/View/View';
-import LogBoxButton from './LogBoxButton';
 import * as LogBoxStyle from './LogBoxStyle';
 import LogBoxMessage from './LogBoxMessage';
-
-import type {Message} from '../Data/LogBoxLogParser';
+import type {LogLevel} from '../Data/LogBoxLog';
+import type {Message} from '../Data/parseLogBoxLog';
 
 type Props = $ReadOnly<{|
   collapsed: boolean,
   message: Message,
+  level: LogLevel,
+  title: string,
   onPress: () => void,
 |}>;
 
+const SHOW_MORE_MESSAGE_LENGTH = 300;
+
 function LogBoxInspectorMessageHeader(props: Props): React.Node {
   function renderShowMore() {
-    if (props.message.content.length < 140) {
+    if (
+      props.message.content.length < SHOW_MORE_MESSAGE_LENGTH ||
+      !props.collapsed
+    ) {
       return null;
     }
     return (
-      <LogBoxButton
-        backgroundColor={{
-          default: 'transparent',
-          pressed: LogBoxStyle.getBackgroundLightColor(1),
-        }}
-        style={messageStyles.button}
-        onPress={() => props.onPress()}>
-        <Text style={messageStyles.collapse}>
-          {props.collapsed ? 'see more' : 'collapse'}
-        </Text>
-      </LogBoxButton>
+      <Text style={messageStyles.collapse} onPress={() => props.onPress()}>
+        ... See More
+      </Text>
     );
   }
 
   return (
     <View style={messageStyles.body}>
       <View style={messageStyles.heading}>
-        <Text style={messageStyles.headingText}>Warning</Text>
-        {renderShowMore()}
+        <Text style={[messageStyles.headingText, messageStyles[props.level]]}>
+          {props.title}
+        </Text>
       </View>
-      <Text
-        numberOfLines={props.collapsed ? 5 : null}
-        style={messageStyles.bodyText}>
+      <Text style={messageStyles.bodyText}>
         <LogBoxMessage
+          maxLength={props.collapsed ? SHOW_MORE_MESSAGE_LENGTH : Infinity}
           message={props.message}
           style={messageStyles.messageText}
         />
+        {renderShowMore()}
       </Text>
     </View>
   );
@@ -71,7 +70,6 @@ const messageStyles = StyleSheet.create({
     shadowOffset: {width: 0, height: 2},
     shadowRadius: 2,
     shadowOpacity: 0.5,
-    elevation: 2,
     flex: 0,
   },
   bodyText: {
@@ -91,19 +89,30 @@ const messageStyles = StyleSheet.create({
     marginBottom: 5,
   },
   headingText: {
-    color: LogBoxStyle.getWarningColor(1),
     flex: 1,
     fontSize: 20,
     fontWeight: '600',
     includeFontPadding: false,
     lineHeight: 28,
   },
+  warn: {
+    color: LogBoxStyle.getWarningColor(1),
+  },
+  error: {
+    color: LogBoxStyle.getErrorColor(1),
+  },
+  fatal: {
+    color: LogBoxStyle.getFatalColor(1),
+  },
+  syntax: {
+    color: LogBoxStyle.getFatalColor(1),
+  },
   messageText: {
     color: LogBoxStyle.getTextColor(0.6),
   },
   collapse: {
     color: LogBoxStyle.getTextColor(0.7),
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '300',
     lineHeight: 12,
   },

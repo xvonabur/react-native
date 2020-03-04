@@ -22,7 +22,7 @@ const View = require('../View/View');
 const SoundManager = require('../Sound/SoundManager');
 
 const keyMirror = require('fbjs/lib/keyMirror');
-const normalizeColor = require('../../Color/normalizeColor');
+const normalizeColor = require('../../StyleSheet/normalizeColor');
 
 import type {EdgeInsetsProp} from '../../StyleSheet/EdgeInsetsPropType';
 import type {PressEvent} from '../../Types/CoreEventTypes';
@@ -680,12 +680,16 @@ const TouchableMixin = {
    * @private
    */
   _remeasureMetricsOnActivation: function() {
-    const tag = this.state.touchable.responderID;
-    if (tag == null) {
+    const responderID = this.state.touchable.responderID;
+    if (responderID == null) {
       return;
     }
 
-    UIManager.measure(tag, this._handleQueryLayout);
+    if (typeof responderID === 'number') {
+      UIManager.measure(responderID, this._handleQueryLayout);
+    } else {
+      responderID.measure(this._handleQueryLayout);
+    }
   },
 
   _handleQueryLayout: function(
@@ -752,8 +756,10 @@ const TouchableMixin = {
           '` or state `' +
           curState +
           '` for Touchable responder `' +
-          responderID +
-          '`',
+          typeof this.state.touchable.responderID ===
+        'number'
+          ? this.state.touchable.responderID
+          : 'host component' + '`',
       );
     }
     if (nextState === States.ERROR) {
@@ -763,8 +769,10 @@ const TouchableMixin = {
           '` to `' +
           signal +
           '` for responder `' +
-          responderID +
-          '`',
+          typeof this.state.touchable.responderID ===
+        'number'
+          ? this.state.touchable.responderID
+          : '<<host component>>' + '`',
       );
     }
     if (curState !== nextState) {
@@ -925,6 +933,7 @@ const Touchable = {
   }: {
     color: string | number,
     hitSlop: EdgeInsetsProp,
+    ...
   }): null | React.Node => {
     if (!Touchable.TOUCH_TARGET_DEBUG) {
       return null;
@@ -950,6 +959,9 @@ const Touchable = {
         pointerEvents="none"
         style={[
           styles.debug,
+          /* $FlowFixMe(>=0.111.0 site=react_native_fb) This comment suppresses
+           * an error found when Flow v0.111 was deployed. To see the error,
+           * delete this comment and run Flow. */
           {
             borderColor: hexColor.slice(0, -2) + '55', // More opaque
             backgroundColor: hexColor.slice(0, -2) + '0F', // Less opaque

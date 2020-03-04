@@ -13,36 +13,24 @@
 import symbolicateStackTrace from '../../Core/Devtools/symbolicateStackTrace';
 
 import type {StackFrame} from '../../Core/NativeExceptionsManager';
+import type {SymbolicatedStackTrace} from '../../Core/Devtools/symbolicateStackTrace';
 
 export type Stack = Array<StackFrame>;
 
-const cache: Map<Stack, Promise<Stack>> = new Map();
+const cache: Map<Stack, Promise<SymbolicatedStackTrace>> = new Map();
 
 /**
  * Sanitize because sometimes, `symbolicateStackTrace` gives us invalid values.
  */
-const sanitize = (maybeStack: mixed): Stack => {
+const sanitize = ({
+  stack: maybeStack,
+  codeFrame,
+}: SymbolicatedStackTrace): SymbolicatedStackTrace => {
   if (!Array.isArray(maybeStack)) {
     throw new Error('Expected stack to be an array.');
   }
   const stack = [];
   for (const maybeFrame of maybeStack) {
-    if (typeof maybeFrame !== 'object' || maybeFrame == null) {
-      throw new Error('Expected each stack frame to be an object.');
-    }
-    if (typeof maybeFrame.column !== 'number' && maybeFrame.column != null) {
-      throw new Error('Expected stack frame `column` to be a nullable number.');
-    }
-    if (typeof maybeFrame.file !== 'string') {
-      throw new Error('Expected stack frame `file` to be a string.');
-    }
-    if (typeof maybeFrame.lineNumber !== 'number') {
-      throw new Error('Expected stack frame `lineNumber` to be a number.');
-    }
-    if (typeof maybeFrame.methodName !== 'string') {
-      throw new Error('Expected stack frame `methodName` to be a string.');
-    }
-
     let collapse = false;
     if ('collapse' in maybeFrame) {
       if (typeof maybeFrame.collapse !== 'boolean') {
@@ -58,14 +46,14 @@ const sanitize = (maybeStack: mixed): Stack => {
       collapse,
     });
   }
-  return stack;
+  return {stack, codeFrame};
 };
 
 export function deleteStack(stack: Stack): void {
   cache.delete(stack);
 }
 
-export function symbolicate(stack: Stack): Promise<Stack> {
+export function symbolicate(stack: Stack): Promise<SymbolicatedStackTrace> {
   let promise = cache.get(stack);
   if (promise == null) {
     promise = symbolicateStackTrace(stack).then(sanitize);

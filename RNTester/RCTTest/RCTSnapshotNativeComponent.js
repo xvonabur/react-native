@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @flow
+ * @flow strict-local
  */
 
 'use strict';
@@ -17,9 +17,7 @@ import type {SyntheticEvent} from '../../Libraries/Types/CoreEventTypes';
 import type {ViewProps} from '../../Libraries/Components/View/ViewPropTypes';
 
 type SnapshotReadyEvent = SyntheticEvent<
-  $ReadOnly<{
-    testIdentifier: string,
-  }>,
+  $ReadOnly<{testIdentifier: string, ...}>,
 >;
 
 type NativeProps = $ReadOnly<{|

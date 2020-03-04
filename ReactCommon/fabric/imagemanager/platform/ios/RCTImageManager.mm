@@ -11,20 +11,22 @@
 #import <react/utils/ManagedObjectWrapper.h>
 #import <react/utils/SharedFunction.h>
 
-#import <React/RCTImageLoader.h>
+#import <React/RCTImageLoaderWithAttributionProtocol.h>
+
 #import <react/imagemanager/ImageResponse.h>
 #import <react/imagemanager/ImageResponseObserver.h>
 
+#import "RCTImageInstrumentationProxy.h"
 #import "RCTImagePrimitivesConversions.h"
 
 using namespace facebook::react;
 
 @implementation RCTImageManager {
-  RCTImageLoader *_imageLoader;
+  id<RCTImageLoaderWithAttributionProtocol> _imageLoader;
   dispatch_queue_t _backgroundSerialQueue;
 }
 
-- (instancetype)initWithImageLoader:(RCTImageLoader *)imageLoader
+- (instancetype)initWithImageLoader:(id<RCTImageLoaderWithAttributionProtocol>)imageLoader
 {
   if (self = [super init]) {
     _imageLoader = imageLoader;
@@ -35,11 +37,12 @@ using namespace facebook::react;
   return self;
 }
 
-- (ImageRequest)requestImage:(ImageSource)imageSource
+- (ImageRequest)requestImage:(ImageSource)imageSource surfaceId:(SurfaceId)surfaceId
 {
   SystraceSection s("RCTImageManager::requestImage");
 
-  auto imageRequest = ImageRequest(imageSource);
+  auto imageInstrumentation = std::make_shared<RCTImageInstrumentationProxy>(_imageLoader);
+  auto imageRequest = ImageRequest(imageSource, imageInstrumentation);
   auto weakObserverCoordinator =
       (std::weak_ptr<const ImageResponseObserverCoordinator>)imageRequest.getSharedObserverCoordinator();
 
@@ -81,17 +84,24 @@ using namespace facebook::react;
       observerCoordinator->nativeImageResponseProgress(progress / (float)total);
     };
 
-    RCTImageLoaderCancellationBlock cancelationBlock =
+    RCTImageURLLoaderRequest *loaderRequest =
         [self->_imageLoader loadImageWithURLRequest:request
                                                size:CGSizeMake(imageSource.size.width, imageSource.size.height)
                                               scale:imageSource.scale
                                             clipped:YES
                                          resizeMode:RCTResizeModeStretch
+                                        attribution:{
+                                                        .surfaceId = surfaceId,
+                                                    }
                                       progressBlock:progressBlock
                                    partialLoadBlock:nil
                                     completionBlock:completionBlock];
-
+    RCTImageLoaderCancellationBlock cancelationBlock = loaderRequest.cancellationBlock;
     sharedCancelationFunction.assign([cancelationBlock]() { cancelationBlock(); });
+
+    if (imageInstrumentation) {
+      imageInstrumentation->setImageURLLoaderRequest(loaderRequest);
+    }
   });
 
   return imageRequest;

@@ -16,8 +16,8 @@ import type {AppearancePreferences} from '../../../../Libraries/Utilities/Native
 import {RNTesterThemeContext, themes} from '../../components/RNTesterTheme';
 
 class ColorSchemeSubscription extends React.Component<
-  {},
-  {colorScheme: ?string},
+  {...},
+  {colorScheme: ?string, ...},
 > {
   state = {
     colorScheme: Appearance.getColorScheme(),
@@ -191,7 +191,9 @@ exports.examples = [
                           paddingVertical: 2,
                           color: theme.LabelColor,
                         }}>
-                        {theme[key]}
+                        {typeof theme[key] === 'string'
+                          ? theme[key]
+                          : JSON.stringify(theme[key])}
                       </Text>
                     </View>
                   </View>

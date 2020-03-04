@@ -31,7 +31,7 @@ const {
   Text,
   useColorScheme,
   View,
-  YellowBox,
+  LogBox,
 } = require('react-native');
 
 import type {RNTesterExample} from './types/RNTesterTypes';
@@ -40,17 +40,20 @@ import type {RNTesterNavigationState} from './utils/RNTesterNavigationReducer';
 import {RNTesterThemeContext, themes} from './components/RNTesterTheme';
 import type {ColorSchemeName} from '../../Libraries/Utilities/NativeAppearance';
 
-type Props = {
-  exampleFromAppetizeParams?: ?string,
-};
+type Props = {exampleFromAppetizeParams?: ?string, ...};
 
-YellowBox.ignoreWarnings([
-  'Module RCTImagePickerManager requires main queue setup',
-]);
+LogBox.ignoreLogs(['Module RCTImagePickerManager requires main queue setup']);
 
 const APP_STATE_KEY = 'RNTesterAppState.v2';
 
-const Header = ({onBack, title}: {onBack?: () => mixed, title: string}) => (
+const Header = ({
+  onBack,
+  title,
+}: {
+  onBack?: () => mixed,
+  title: string,
+  ...
+}) => (
   <RNTesterThemeContext.Consumer>
     {theme => {
       return (
@@ -95,6 +98,7 @@ const RNTesterExampleContainerViaHook = ({
   onBack?: () => mixed,
   title: string,
   module: RNTesterExample,
+  ...
 }) => {
   const colorScheme: ?ColorSchemeName = useColorScheme();
   const theme = colorScheme === 'dark' ? themes.dark : themes.light;
@@ -116,7 +120,9 @@ const RNTesterExampleListViaHook = ({
   list: {
     ComponentExamples: Array<RNTesterExample>,
     APIExamples: Array<RNTesterExample>,
+    ...
   },
+  ...
 }) => {
   const colorScheme: ?ColorSchemeName = useColorScheme();
   const theme = colorScheme === 'dark' ? themes.dark : themes.light;
@@ -245,7 +251,7 @@ RNTesterList.ComponentExamples.concat(RNTesterList.APIExamples).forEach(
   (Example: RNTesterExample) => {
     const ExampleModule = Example.module;
     if (ExampleModule.displayName) {
-      class Snapshotter extends React.Component<{}> {
+      class Snapshotter extends React.Component<{...}> {
         render() {
           return (
             <SnapshotViewIOS>

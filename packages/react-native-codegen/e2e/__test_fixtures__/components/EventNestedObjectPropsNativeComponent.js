@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @flow
+ * @flow strict-local
  */
 
 'use strict';
@@ -21,11 +21,10 @@ import type {HostComponent} from '../../../../../Libraries/Renderer/shims/ReactN
 
 type OnChangeEvent = $ReadOnly<{|
   location: {
-    source: {
-      url: string,
-    },
+    source: {url: string, ...},
     x: Int32,
     y: Int32,
+    ...
   },
 |}>;
 

@@ -12,7 +12,10 @@
 
 const AnimatedNode = require('../Animated/src/nodes/AnimatedNode');
 
-export type ColorValue = null | string;
+import type {NativeColorValue} from './PlatformColorValueTypes';
+
+export type ColorValue = null | string | NativeColorValue;
+
 export type ColorArrayValue = null | $ReadOnlyArray<ColorValue>;
 export type PointValue = {|
   x: number,
@@ -643,6 +646,7 @@ export type ____DangerouslyImpreciseStyle_Internal = {
   +resizeMode?: 'contain' | 'cover' | 'stretch' | 'center' | 'repeat',
   +tintColor?: ColorValue,
   +overlayColor?: string,
+  ...
 };
 
 type GenericStyleProp<+T> =
@@ -668,4 +672,5 @@ export type ____ImageStyleProp_Internal = GenericStyleProp<
 
 export type ____Styles_Internal = {
   +[key: string]: $Shape<____DangerouslyImpreciseStyle_Internal>,
+  ...,
 };

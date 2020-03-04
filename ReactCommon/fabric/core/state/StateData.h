@@ -21,11 +21,11 @@ namespace react {
  * don't have a state.
  */
 struct StateData final {
-  using Shared = std::shared_ptr<void>;
+  using Shared = std::shared_ptr<void const>;
 
 #ifdef ANDROID
   StateData() = default;
-  StateData(folly::dynamic data){};
+  StateData(StateData const &previousState, folly::dynamic data){};
   folly::dynamic getDynamic() const;
 #endif
 };

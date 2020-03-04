@@ -106,7 +106,7 @@ function getJavaValueForProp(
     case 'NativePrimitiveTypeAnnotation':
       switch (typeAnnotation.name) {
         case 'ColorPrimitive':
-          return 'value == null ? null : ((Double) value).intValue()';
+          return 'ColorPropConverter.getColor(value, view.getContext())';
         case 'ImageSourcePrimitive':
           return '(ReadableMap) value';
         case 'PointPrimitive':
@@ -230,7 +230,7 @@ function getClassExtendString(component): string {
 }
 
 function getDelegateImports(component) {
-  const imports = getImports(component);
+  const imports = getImports(component, 'delegate');
   // The delegate needs ReadableArray for commands always.
   // The interface doesn't always need it
   if (component.commands.length > 0) {
@@ -269,38 +269,43 @@ module.exports = {
         return;
       }
 
-      return Object.keys(components).forEach(componentName => {
-        const component = components[componentName];
-        const className = getDelegateJavaClassName(componentName);
-        const interfaceClassName = getInterfaceJavaClassName(componentName);
-        const fileName = `${className}.java`;
+      return Object.keys(components)
+        .filter(componentName => {
+          const component = components[componentName];
+          return component.excludedPlatform !== 'android';
+        })
+        .forEach(componentName => {
+          const component = components[componentName];
+          const className = getDelegateJavaClassName(componentName);
+          const interfaceClassName = getInterfaceJavaClassName(componentName);
+          const fileName = `${className}.java`;
 
-        const imports = getDelegateImports(component);
-        const propsString = generatePropCasesString(component, componentName);
-        const commandsString = generateCommandCasesString(
-          component,
-          componentName,
-        );
-        const extendString = getClassExtendString(component);
+          const imports = getDelegateImports(component);
+          const propsString = generatePropCasesString(component, componentName);
+          const commandsString = generateCommandCasesString(
+            component,
+            componentName,
+          );
+          const extendString = getClassExtendString(component);
 
-        const replacedTemplate = template
-          .replace(
-            /::_IMPORTS_::/g,
-            Array.from(imports)
-              .sort()
-              .join('\n'),
-          )
-          .replace(/::_CLASSNAME_::/g, className)
-          .replace('::_EXTEND_CLASSES_::', extendString)
-          .replace('::_PROP_CASES_::', propsString)
-          .replace(
-            '::_METHODS_::',
-            generateMethods(propsString, commandsString),
-          )
-          .replace(/::_INTERFACE_CLASSNAME_::/g, interfaceClassName);
+          const replacedTemplate = template
+            .replace(
+              /::_IMPORTS_::/g,
+              Array.from(imports)
+                .sort()
+                .join('\n'),
+            )
+            .replace(/::_CLASSNAME_::/g, className)
+            .replace('::_EXTEND_CLASSES_::', extendString)
+            .replace('::_PROP_CASES_::', propsString)
+            .replace(
+              '::_METHODS_::',
+              generateMethods(propsString, commandsString),
+            )
+            .replace(/::_INTERFACE_CLASSNAME_::/g, interfaceClassName);
 
-        files.set(fileName, replacedTemplate);
-      });
+          files.set(fileName, replacedTemplate);
+        });
     });
 
     return files;

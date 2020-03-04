@@ -10,21 +10,20 @@
 
 'use strict';
 
-import Platform from '../../Utilities/Platform';
+import LogBoxInspectorCodeFrame from './LogBoxInspectorCodeFrame';
 import * as React from 'react';
 import ScrollView from '../../Components/ScrollView/ScrollView';
 import StyleSheet from '../../StyleSheet/StyleSheet';
 import View from '../../Components/View/View';
+import * as LogBoxData from '../Data/LogBoxData';
+import Keyboard from '../../Components/Keyboard/Keyboard';
 import LogBoxInspectorFooter from './LogBoxInspectorFooter';
 import LogBoxInspectorMessageHeader from './LogBoxInspectorMessageHeader';
 import LogBoxInspectorReactFrames from './LogBoxInspectorReactFrames';
 import LogBoxInspectorStackFrames from './LogBoxInspectorStackFrames';
-import LogBoxInspectorMeta from './LogBoxInspectorMeta';
 import LogBoxInspectorHeader from './LogBoxInspectorHeader';
 import * as LogBoxStyle from './LogBoxStyle';
-
-import type LogBoxLog from '../Data/LogBoxLog';
-import type {SymbolicationRequest} from '../Data/LogBoxLog';
+import LogBoxLog, {type LogLevel} from '../Data/LogBoxLog';
 
 type Props = $ReadOnly<{|
   onDismiss: () => void,
@@ -32,80 +31,80 @@ type Props = $ReadOnly<{|
   onMinimize: () => void,
   logs: $ReadOnlyArray<LogBoxLog>,
   selectedIndex: number,
+  fatalType?: ?LogLevel,
 |}>;
 
-class LogBoxInspector extends React.Component<Props> {
-  _symbolication: ?SymbolicationRequest;
+function LogBoxInspector(props: Props): React.Node {
+  const {logs, selectedIndex} = props;
+  let log = logs[selectedIndex];
 
-  _handleDismiss = () => {
-    this.props.onDismiss();
-  };
-
-  render(): React.Node {
-    const {logs, selectedIndex} = this.props;
-
-    const log = logs[selectedIndex];
-    if (log == null) {
-      return null;
+  React.useEffect(() => {
+    if (log) {
+      LogBoxData.symbolicateLogNow(log);
     }
+  }, [log]);
 
-    return (
-      <View style={styles.root}>
-        <LogBoxInspectorHeader
-          onSelectIndex={this._handleSelectIndex}
-          selectedIndex={selectedIndex}
-          total={logs.length}
-        />
-        <LogBoxInspectorBody
-          log={log}
-          onRetry={this._handleRetrySymbolication}
-        />
-        <LogBoxInspectorFooter
-          onDismiss={this._handleDismiss}
-          onMinimize={this.props.onMinimize}
-        />
-      </View>
-    );
-  }
-
-  componentDidMount(): void {
-    this._handleSymbolication();
-  }
-
-  componentDidUpdate(prevProps: Props): void {
-    if (
-      prevProps.logs[prevProps.selectedIndex] !==
-      this.props.logs[this.props.selectedIndex]
-    ) {
-      this._handleSymbolication();
+  React.useEffect(() => {
+    // Optimistically symbolicate the last and next logs.
+    if (logs.length > 1) {
+      const selected = selectedIndex;
+      const lastIndex = logs.length - 1;
+      const prevIndex = selected - 1 < 0 ? lastIndex : selected - 1;
+      const nextIndex = selected + 1 > lastIndex ? 0 : selected + 1;
+      LogBoxData.symbolicateLogLazy(logs[prevIndex]);
+      LogBoxData.symbolicateLogLazy(logs[nextIndex]);
     }
+  }, [logs, selectedIndex]);
+
+  React.useEffect(() => {
+    Keyboard.dismiss();
+  }, []);
+
+  function _handleRetry() {
+    LogBoxData.retrySymbolicateLogNow(log);
   }
 
-  _handleRetrySymbolication = () => {
-    this.forceUpdate(() => {
-      const log = this.props.logs[this.props.selectedIndex];
-      this._symbolication = log.retrySymbolicate(() => {
-        this.forceUpdate();
-      });
-    });
-  };
-
-  _handleSymbolication(): void {
-    const log = this.props.logs[this.props.selectedIndex];
-    if (log.symbolicated.status !== 'COMPLETE') {
-      this._symbolication = log.symbolicate(() => {
-        this.forceUpdate();
-      });
-    }
+  if (log == null) {
+    return null;
   }
 
-  _handleSelectIndex = (selectedIndex: number): void => {
-    this.props.onChangeSelectedIndex(selectedIndex);
-  };
+  return (
+    <View style={styles.root}>
+      <LogBoxInspectorHeader
+        onSelectIndex={props.onChangeSelectedIndex}
+        selectedIndex={selectedIndex}
+        total={logs.length}
+        level={log.level}
+      />
+      <LogBoxInspectorBody log={log} onRetry={_handleRetry} />
+      <LogBoxInspectorFooter
+        onDismiss={props.onDismiss}
+        onMinimize={props.onMinimize}
+        level={log.level}
+      />
+    </View>
+  );
 }
+
+const headerTitleMap = {
+  warn: 'Warning',
+  error: 'Error',
+  fatal: 'Exception',
+  syntax: 'Syntax Error',
+  component: 'Component Exception',
+};
 
 function LogBoxInspectorBody(props) {
   const [collapsed, setCollapsed] = React.useState(true);
+
+  React.useEffect(() => {
+    setCollapsed(true);
+  }, [props.log]);
+
+  const headerTitle =
+    props.log.type ??
+    headerTitleMap[props.log.isComponentError ? 'component' : props.log.level];
+
   if (collapsed) {
     return (
       <>
@@ -113,11 +112,13 @@ function LogBoxInspectorBody(props) {
           collapsed={collapsed}
           onPress={() => setCollapsed(!collapsed)}
           message={props.log.message}
+          level={props.log.level}
+          title={headerTitle}
         />
         <ScrollView style={styles.scrollBody}>
+          <LogBoxInspectorCodeFrame codeFrame={props.log.codeFrame} />
           <LogBoxInspectorReactFrames log={props.log} />
           <LogBoxInspectorStackFrames log={props.log} onRetry={props.onRetry} />
-          <LogBoxInspectorMeta />
         </ScrollView>
       </>
     );
@@ -128,19 +129,20 @@ function LogBoxInspectorBody(props) {
         collapsed={collapsed}
         onPress={() => setCollapsed(!collapsed)}
         message={props.log.message}
+        level={props.log.level}
+        title={headerTitle}
       />
+      <LogBoxInspectorCodeFrame codeFrame={props.log.codeFrame} />
       <LogBoxInspectorReactFrames log={props.log} />
       <LogBoxInspectorStackFrames log={props.log} onRetry={props.onRetry} />
-      <LogBoxInspectorMeta />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
-    backgroundColor: LogBoxStyle.getTextColor(1),
-    elevation: Platform.OS === 'android' ? Number.MAX_SAFE_INTEGER : undefined,
-    height: '100%',
+    flex: 1,
+    backgroundColor: LogBoxStyle.getTextColor(),
   },
   scrollBody: {
     backgroundColor: LogBoxStyle.getBackgroundColor(0.9),

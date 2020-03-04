@@ -13,7 +13,15 @@
 #import <React/RCTCxxBridgeDelegate.h>
 #import <React/RCTJavaScriptLoader.h>
 #import <React/RCTLinkingManager.h>
+#import <React/RCTImageLoader.h>
+#import <React/RCTLocalAssetImageLoader.h>
+#import <React/RCTGIFImageDecoder.h>
+#import <React/RCTNetworking.h>
+#import <React/RCTHTTPRequestHandler.h>
+#import <React/RCTDataRequestHandler.h>
+#import <React/RCTFileRequestHandler.h>
 #import <React/RCTRootView.h>
+#import <ReactCommon/BridgeJSCallInvoker.h>
 
 #import <cxxreact/JSExecutor.h>
 
@@ -24,6 +32,19 @@
 #ifdef RN_FABRIC_ENABLED
 #import <React/RCTSurfacePresenter.h>
 #import <React/RCTFabricSurfaceHostingProxyRootView.h>
+#endif
+
+  
+#if DEBUG
+#ifdef FB_SONARKIT_ENABLED
+#import <FlipperKit/FlipperClient.h>
+#import <FlipperKitLayoutPlugin/FlipperKitLayoutPlugin.h>
+#import <FlipperKitLayoutPlugin/SKDescriptorMapper.h>
+#import <FlipperKitNetworkPlugin/FlipperKitNetworkPlugin.h>
+#import <FlipperKitReactPlugin/FlipperKitReactPlugin.h>
+#import <FlipperKitUserDefaultsPlugin/FKUserDefaultsPlugin.h>
+#import <SKIOSNetworkPlugin/SKIOSNetworkAdapter.h>
+#endif
 #endif
 
 #import <ReactCommon/RCTTurboModuleManager.h>
@@ -76,6 +97,7 @@
   rootViewController.view = rootView;
   self.window.rootViewController = rootViewController;
   [self.window makeKeyAndVisible];
+  [self initializeFlipper:application];
   return YES;
 }
 
@@ -85,6 +107,22 @@
   NSString *bundleRoot = [NSString stringWithFormat:@"%@RNTester/js/RNTesterApp.ios", bundlePrefix];
   return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:bundleRoot
                                                         fallbackResource:nil];
+}
+
+- (void)initializeFlipper:(UIApplication *)application
+{
+#if DEBUG
+#ifdef FB_SONARKIT_ENABLED
+  FlipperClient *client = [FlipperClient sharedClient];
+  SKDescriptorMapper *layoutDescriptorMapper = [[SKDescriptorMapper alloc] initWithDefaults];
+  [client addPlugin:[[FlipperKitLayoutPlugin alloc] initWithRootNode:application
+                                                withDescriptorMapper:layoutDescriptorMapper]];
+  [client addPlugin:[[FKUserDefaultsPlugin alloc] initWithSuiteName:nil]];
+  [client addPlugin:[FlipperKitReactPlugin new]];
+  [client addPlugin:[[FlipperKitNetworkPlugin alloc] initWithNetworkAdapter:[SKIOSNetworkAdapter new]]];
+  [client start];
+#endif
+#endif
 }
 
 - (BOOL)application:(UIApplication *)app
@@ -107,7 +145,9 @@
 
 - (std::unique_ptr<facebook::react::JSExecutorFactory>)jsExecutorFactoryForBridge:(RCTBridge *)bridge
 {
-  _turboModuleManager = [[RCTTurboModuleManager alloc] initWithBridge:bridge delegate:self];
+  _turboModuleManager = [[RCTTurboModuleManager alloc] initWithBridge:bridge
+                                                             delegate:self
+                                                            jsInvoker:std::make_shared<facebook::react::BridgeJSCallInvoker>(bridge.reactInstance)];
   __weak __typeof(self) weakSelf = self;
   return std::make_unique<facebook::react::JSCExecutorFactory>([weakSelf, bridge](facebook::jsi::Runtime &runtime) {
     if (!bridge) {
@@ -142,6 +182,21 @@
 
 - (id<RCTTurboModule>)getModuleInstanceFromClass:(Class)moduleClass
 {
+  if (moduleClass == RCTImageLoader.class) {
+    return [[moduleClass alloc] initWithRedirectDelegate:nil loadersProvider:^NSArray<id<RCTImageURLLoader>> *{
+      return @[[RCTLocalAssetImageLoader new]];
+    } decodersProvider:^NSArray<id<RCTImageDataDecoder>> *{
+      return @[[RCTGIFImageDecoder new]];
+    }];
+  } else if (moduleClass == RCTNetworking.class) {
+    return [[moduleClass alloc] initWithHandlersProvider:^NSArray<id<RCTURLRequestHandler>> *{
+      return @[
+        [RCTHTTPRequestHandler new],
+        [RCTDataRequestHandler new],
+        [RCTFileRequestHandler new],
+      ];
+    }];
+  }
   // No custom initializer here.
   return [moduleClass new];
 }

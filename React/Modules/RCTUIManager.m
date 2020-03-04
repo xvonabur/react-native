@@ -88,11 +88,6 @@ RCT_EXPORT_MODULE()
   return NO;
 }
 
-- (void)dealloc
-{
-  [NSNotificationCenter.defaultCenter removeObserver:self];
-}
-
 - (void)invalidate
 {
   /**
@@ -339,9 +334,12 @@ static NSDictionary *deviceOrientationEventBody(UIDeviceOrientation orientation)
   if (name) {
     return name;
   }
-  
-  UIView *view = _viewRegistry[reactTag];
-  
+
+  __block UIView *view;
+  RCTUnsafeExecuteOnMainQueueSync(^{
+    view = self->_viewRegistry[reactTag];
+  });
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundeclared-selector"
 
@@ -990,7 +988,7 @@ RCT_EXPORT_METHOD(createView:(nonnull NSNumber *)reactTag
       return;
     }
 
-    preliminaryCreatedView = [componentData createViewWithTag:reactTag];
+    preliminaryCreatedView = [componentData createViewWithTag:reactTag rootTag:rootTag];
 
     if (preliminaryCreatedView) {
       self->_viewRegistry[reactTag] = preliminaryCreatedView;

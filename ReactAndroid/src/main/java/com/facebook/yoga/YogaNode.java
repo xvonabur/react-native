@@ -213,7 +213,7 @@ public abstract class YogaNode {
 
   public abstract void print();
 
-  public abstract void setStyleInputs(float[] styleInputs, int size);
-
   public abstract YogaNode cloneWithoutChildren();
+
+  public abstract YogaNode cloneWithChildren();
 }

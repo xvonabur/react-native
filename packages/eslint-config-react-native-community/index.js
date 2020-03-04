@@ -70,6 +70,9 @@ module.exports = {
         jest: true,
         'jest/globals': true,
       },
+      rules: {
+        'react-native/no-inline-styles': 0,
+      },
     },
   ],
 
@@ -94,6 +97,8 @@ module.exports = {
     fetch: false,
     FormData: false,
     global: false,
+    Headers: false,
+    Intl: false,
     Map: true,
     module: false,
     navigator: false,
@@ -106,6 +111,9 @@ module.exports = {
     setImmediate: true,
     setInterval: false,
     setTimeout: false,
+    URL: false,
+    URLSearchParams: false,
+    WebSocket: true,
     window: false,
     XMLHttpRequest: false,
   },

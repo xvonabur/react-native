@@ -10,9 +10,9 @@ package com.facebook.react.bridge;
 import static com.facebook.infer.annotation.ThreadConfined.ANY;
 
 import android.app.Activity;
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import com.facebook.common.logging.FLog;
+import com.facebook.infer.annotation.Assertions;
 import com.facebook.infer.annotation.ThreadConfined;
 import com.facebook.react.common.build.ReactBuildConfig;
 
@@ -21,15 +21,21 @@ import com.facebook.react.common.build.ReactBuildConfig;
  */
 public abstract class ReactContextBaseJavaModule extends BaseJavaModule {
 
-  private final ReactApplicationContext mReactApplicationContext;
+  private final @Nullable ReactApplicationContext mReactApplicationContext;
 
-  public ReactContextBaseJavaModule(@NonNull ReactApplicationContext reactContext) {
+  public ReactContextBaseJavaModule() {
+    mReactApplicationContext = null;
+  }
+
+  public ReactContextBaseJavaModule(@Nullable ReactApplicationContext reactContext) {
     mReactApplicationContext = reactContext;
   }
 
   /** Subclasses can use this method to access catalyst context passed as a constructor. */
   protected final ReactApplicationContext getReactApplicationContext() {
-    return mReactApplicationContext;
+    return Assertions.assertNotNull(
+        mReactApplicationContext,
+        "Tried to get ReactApplicationContext even though NativeModule wasn't instantiated with one");
   }
 
   /**
@@ -45,15 +51,16 @@ public abstract class ReactContextBaseJavaModule extends BaseJavaModule {
    * thread-safe.
    */
   @ThreadConfined(ANY)
-  protected @Nullable final ReactApplicationContext getReactApplicationContextIfActiveOrWarn(
-      String tag, String reason) {
-    if (mReactApplicationContext.hasActiveCatalystInstance()) {
+  protected @Nullable final ReactApplicationContext getReactApplicationContextIfActiveOrWarn() {
+    if (mReactApplicationContext.hasActiveCatalystInstance()
+        || mReactApplicationContext.isBridgeless()) {
       return mReactApplicationContext;
     }
 
     // We want to collect data about how often this happens, but SoftExceptions will cause a crash
     // in debug mode, which isn't usually desirable.
-    String msg = "Catalyst Instance has already disappeared: " + reason;
+    String msg = "Catalyst Instance has already disappeared: requested by " + this.getName();
+    String tag = "ReactContextBaseJavaModule";
     if (ReactBuildConfig.DEBUG) {
       FLog.w(tag, msg);
     } else {

@@ -454,7 +454,7 @@ function generatePropsString(
       const nativeType = getNativeTypeFromAnnotation(componentName, prop, []);
       const defaultValue = convertDefaultTypeToString(componentName, prop);
 
-      return `const ${nativeType} ${prop.name}{${defaultValue}};`;
+      return `${nativeType} ${prop.name}{${defaultValue}};`;
     })
     .join('\n' + '  ');
 }
@@ -772,6 +772,10 @@ module.exports = {
         }
 
         return Object.keys(components)
+          .filter(componentName => {
+            const component = components[componentName];
+            return component.excludedPlatform !== 'iOS';
+          })
           .map(componentName => {
             const component = components[componentName];
 

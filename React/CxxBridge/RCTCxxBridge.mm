@@ -24,6 +24,7 @@
 #import <React/RCTPerformanceLogger.h>
 #import <React/RCTProfile.h>
 #import <React/RCTRedBox.h>
+#import <React/RCTReloadCommand.h>
 #import <React/RCTUtils.h>
 #import <React/RCTFollyConvert.h>
 #import <cxxreact/CxxNativeModule.h>
@@ -44,13 +45,9 @@
 #import <React/RCTFBSystrace.h>
 #endif
 
-#if RCT_DEV && __has_include(<React/RCTDevLoadingView.h>)
-#import <React/RCTDevLoadingView.h>
+#if (RCT_DEV | RCT_ENABLE_LOADING_VIEW) && __has_include(<React/RCTDevLoadingViewProtocol.h>)
+#import <React/RCTDevLoadingViewProtocol.h>
 #endif
-
-#define RCTAssertJSThread() \
-  RCTAssert(self.executorClass || self->_jsThread == [NSThread currentThread], \
-            @"This method must be called on JS thread")
 
 static NSString *const RCTJSThreadName = @"com.facebook.react.JavaScript";
 
@@ -375,10 +372,9 @@ struct RCTInstanceCallback : public InstanceCallback {
     sourceCode = source.data;
     dispatch_group_leave(prepareBridge);
   } onProgress:^(RCTLoadingProgress *progressData) {
-#if RCT_DEV && __has_include(<React/RCTDevLoadingView.h>)
+#if (RCT_DEV | RCT_ENABLE_LOADING_VIEW) && __has_include(<React/RCTDevLoadingViewProtocol.h>)
     // Note: RCTDevLoadingView should have been loaded at this point, so no need to allow lazy loading.
-    RCTDevLoadingView *loadingView = [weakSelf moduleForName:RCTBridgeModuleNameForClass([RCTDevLoadingView class])
-                                       lazilyLoadIfNecessary:NO];
+    id<RCTDevLoadingViewProtocol> loadingView = [weakSelf moduleForName:@"DevLoadingView" lazilyLoadIfNecessary:NO];
     [loadingView updateProgress:progressData];
 #endif
   }];
@@ -488,19 +484,22 @@ struct RCTInstanceCallback : public InstanceCallback {
     return moduleData.instance;
   }
 
-  static NSSet<NSString *> *ignoredModuleLoadFailures = [NSSet setWithArray: @[@"UIManager"]];
-
   // Module may not be loaded yet, so attempt to force load it here.
   const BOOL result = [self.delegate respondsToSelector:@selector(bridge:didNotFindModule:)] &&
     [self.delegate bridge:self didNotFindModule:moduleName];
   if (result) {
     // Try again.
     moduleData = _moduleDataByName[moduleName];
-  } else if ([ignoredModuleLoadFailures containsObject: moduleName]) {
-    RCTLogWarn(@"Unable to find module for %@", moduleName);
+#if RCT_DEV
+  // If the `_moduleDataByName` is nil, it must have been cleared by the reload.
+  } else if (_moduleDataByName != nil) {
+    RCTLogError(@"Unable to find module for %@", moduleName);
+  }
+#else
   } else {
     RCTLogError(@"Unable to find module for %@", moduleName);
   }
+#endif
 
   return moduleData.instance;
 }
@@ -556,7 +555,6 @@ struct RCTInstanceCallback : public InstanceCallback {
     return;
   }
 
-  RCTAssertJSThread();
   __weak RCTCxxBridge *weakSelf = self;
   _jsMessageThread = std::make_shared<RCTMessageThread>([NSRunLoop currentRunLoop], ^(NSError *error) {
     if (error) {
@@ -915,16 +913,7 @@ struct RCTInstanceCallback : public InstanceCallback {
     [self enqueueApplicationScript:sourceCode url:self.bundleURL onComplete:completion];
   }
 
-  if (self.devSettings.isHotLoadingAvailable) {
-    NSString *path = [self.bundleURL.path substringFromIndex:1]; // strip initial slash
-    NSString *host = self.bundleURL.host;
-    NSNumber *port = self.bundleURL.port;
-    BOOL isHotLoadingEnabled = self.devSettings.isHotLoadingEnabled;
-    [self enqueueJSCall:@"HMRClient"
-                 method:@"setup"
-                   args:@[@"ios", path, host, RCTNullIfNil(port), @(isHotLoadingEnabled)]
-             completion:NULL];
-  }
+  [self.devSettings setupHotModuleReloadClientIfApplicableForURL:self.bundleURL];
 }
 
 - (void)handleError:(NSError *)error
@@ -1009,7 +998,7 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithBundleURL:(__unused NSURL *)bundleUR
   if (!_valid) {
     RCTLogWarn(@"Attempting to reload bridge before it's valid: %@. Try restarting the development server if connected.", self);
   }
-  [_parentBridge reloadWithReason:@"Unknown from cxx bridge"];
+  RCTTriggerReloadCommandListeners(@"Unknown from cxx bridge");
 }
 
 - (void)reloadWithReason:(NSString *)reason
@@ -1017,7 +1006,7 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithBundleURL:(__unused NSURL *)bundleUR
   if (!_valid) {
     RCTLogWarn(@"Attempting to reload bridge before it's valid: %@. Try restarting the development server if connected.", self);
   }
-  [_parentBridge reloadWithReason:reason];
+  RCTTriggerReloadCommandListeners(reason);
 }
 
 - (Class)executorClass
@@ -1288,8 +1277,6 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithBundleURL:(__unused NSURL *)bundleUR
  */
 - (void)_immediatelyCallTimer:(NSNumber *)timer
 {
-  RCTAssertJSThread();
-
   if (_reactInstance) {
     _reactInstance->callJSFunction("JSTimers", "callTimers",
                                    folly::dynamic::array(folly::dynamic::array([timer doubleValue])));

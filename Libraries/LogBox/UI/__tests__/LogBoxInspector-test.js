@@ -6,7 +6,7 @@
  *
  * @format
  * @emails oncall+react_native
- * @flow
+ * @flow strict-local
  */
 
 'use strict';
@@ -17,26 +17,39 @@ const LogBoxLog = require('../../Data/LogBoxLog').default;
 const render = require('../../../../jest/renderer');
 
 const logs = [
-  new LogBoxLog(
-    {
+  new LogBoxLog({
+    level: 'warn',
+    isComponentError: false,
+    message: {
       content: 'Some kind of message (first)',
       substitutions: [],
     },
-    [],
-    'Some kind of message (first)',
-    [],
-    false,
-  ),
-  new LogBoxLog(
-    {
+    stack: [],
+    category: 'Some kind of message (first)',
+    componentStack: [],
+  }),
+  new LogBoxLog({
+    level: 'error',
+    isComponentError: false,
+    message: {
       content: 'Some kind of message (second)',
       substitutions: [],
     },
-    [],
-    'Some kind of message (second)',
-    [],
-    false,
-  ),
+    stack: [],
+    category: 'Some kind of message (second)',
+    componentStack: [],
+  }),
+  new LogBoxLog({
+    level: 'fatal',
+    isComponentError: false,
+    message: {
+      content: 'Some kind of message (third)',
+      substitutions: [],
+    },
+    stack: [],
+    category: 'Some kind of message (third)',
+    componentStack: [],
+  }),
 ];
 
 describe('LogBoxContainer', () => {
@@ -54,7 +67,7 @@ describe('LogBoxContainer', () => {
     expect(output).toMatchSnapshot();
   });
 
-  it('should render first log with selectedIndex 0', () => {
+  it('should render warning with selectedIndex 0', () => {
     const output = render.shallowRender(
       <LogBoxInspector
         onDismiss={() => {}}
@@ -68,14 +81,15 @@ describe('LogBoxContainer', () => {
     expect(output).toMatchSnapshot();
   });
 
-  it('should render second log with selectedIndex 1', () => {
+  it('should render fatal with selectedIndex 2', () => {
     const output = render.shallowRender(
       <LogBoxInspector
         onDismiss={() => {}}
         onMinimize={() => {}}
         onChangeSelectedIndex={() => {}}
         logs={logs}
-        selectedIndex={1}
+        selectedIndex={2}
+        fatalType="fatal"
       />,
     );
 

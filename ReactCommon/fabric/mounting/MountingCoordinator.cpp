@@ -9,13 +9,13 @@
 
 #ifdef RN_SHADOW_TREE_INTROSPECTION
 #include <glog/logging.h>
+#include <sstream>
 #endif
 
 #include <condition_variable>
 
 #include <react/mounting/Differentiator.h>
 #include <react/mounting/ShadowViewMutation.h>
-#include <react/utils/TimeUtils.h>
 
 namespace facebook {
 namespace react {
@@ -52,6 +52,11 @@ void MountingCoordinator::push(ShadowTreeRevision &&revision) const {
 
 void MountingCoordinator::revoke() const {
   std::lock_guard<std::mutex> lock(mutex_);
+  // We have two goals here.
+  // 1. We need to stop retaining `ShadowNode`s to not prolong their lifetime
+  // to prevent them from overliving `ComponentDescriptor`s.
+  // 2. A possible call to `pullTransaction()` should return empty optional.
+  baseRevision_.rootShadowNode_.reset();
   lastRevision_.reset();
 }
 
@@ -84,20 +89,27 @@ better::optional<MountingTransaction> MountingCoordinator::pullTransaction()
   stubViewTree_.mutate(mutations);
   auto stubViewTree =
       stubViewTreeFromShadowNode(lastRevision_->getRootShadowNode());
-  if (stubViewTree_ != stubViewTree) {
-    LOG(ERROR) << "Old tree:"
-               << "\n"
-               << baseRevision_.getRootShadowNode().getDebugDescription()
-               << "\n";
-    LOG(ERROR) << "New tree:"
-               << "\n"
-               << lastRevision_->getRootShadowNode().getDebugDescription()
-               << "\n";
-    LOG(ERROR) << "Mutations:"
-               << "\n"
-               << getDebugDescription(mutations);
-    assert(false);
+
+  std::string line;
+
+  std::stringstream ssOldTree(
+      baseRevision_.getRootShadowNode().getDebugDescription());
+  while (std::getline(ssOldTree, line, '\n')) {
+    LOG(ERROR) << "Old tree:" << line;
   }
+
+  std::stringstream ssNewTree(
+      lastRevision_->getRootShadowNode().getDebugDescription());
+  while (std::getline(ssNewTree, line, '\n')) {
+    LOG(ERROR) << "New tree:" << line;
+  }
+
+  std::stringstream ssMutations(getDebugDescription(mutations, {}));
+  while (std::getline(ssMutations, line, '\n')) {
+    LOG(ERROR) << "Mutations:" << line;
+  }
+
+  assert(stubViewTree_ == stubViewTree);
 #endif
 
   baseRevision_ = std::move(*lastRevision_);

@@ -8,6 +8,7 @@
 package com.facebook.react.fabric.events;
 
 import android.annotation.SuppressLint;
+import androidx.annotation.NonNull;
 import com.facebook.jni.HybridData;
 import com.facebook.proguard.annotations.DoNotStrip;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -29,32 +30,15 @@ public class EventBeatManager implements BatchEventDispatchedListener {
 
   private static native HybridData initHybrid();
 
-  private native void beat();
+  private native void tick();
 
-  public EventBeatManager(ReactApplicationContext reactApplicationContext) {
+  public EventBeatManager(@NonNull ReactApplicationContext reactApplicationContext) {
     mHybridData = initHybrid();
     mReactApplicationContext = reactApplicationContext;
   }
 
   @Override
   public void onBatchEventDispatched() {
-    dispatchEventsAsync();
-  }
-
-  /**
-   * Induce a beat in the AsyncEventBeat, calling the JNI method {@link #beat()} in the JS thread.
-   */
-  private void dispatchEventsAsync() {
-    if (mReactApplicationContext.isOnJSQueueThread()) {
-      beat();
-    } else {
-      mReactApplicationContext.runOnJSQueueThread(
-          new Runnable() {
-            @Override
-            public void run() {
-              beat();
-            }
-          });
-    }
+    tick();
   }
 }

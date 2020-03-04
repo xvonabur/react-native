@@ -11,6 +11,7 @@
 #import <React/RCTBridge+Private.h>
 #import <React/RCTScrollEvent.h>
 
+#import <react/components/scrollview/RCTComponentViewHelpers.h>
 #import <react/components/scrollview/ScrollViewComponentDescriptor.h>
 #import <react/components/scrollview/ScrollViewEventEmitter.h>
 #import <react/components/scrollview/ScrollViewProps.h>
@@ -19,6 +20,7 @@
 
 #import "RCTConversions.h"
 #import "RCTEnhancedScrollView.h"
+#import "RCTFabricComponentsPlugins.h"
 
 using namespace facebook::react;
 
@@ -37,7 +39,7 @@ static void RCTSendPaperScrollEvent_DEPRECATED(UIScrollView *scrollView, NSInteg
   [[RCTBridge currentBridge].eventDispatcher sendEvent:scrollEvent];
 }
 
-@interface RCTScrollViewComponentView () <UIScrollViewDelegate>
+@interface RCTScrollViewComponentView () <UIScrollViewDelegate, RCTScrollViewProtocol, RCTScrollableProtocol>
 
 @end
 
@@ -70,12 +72,7 @@ static void RCTSendPaperScrollEvent_DEPRECATED(UIScrollView *scrollView, NSInteg
     _containerView = [[UIView alloc] initWithFrame:CGRectZero];
     [_scrollView addSubview:_containerView];
 
-    __weak __typeof(self) weakSelf = self;
-    _scrollViewDelegateSplitter = [[RCTGenericDelegateSplitter alloc] initWithDelegateUpdateBlock:^(id delegate) {
-      weakSelf.scrollView.delegate = delegate;
-    }];
-
-    [_scrollViewDelegateSplitter addDelegate:self];
+    [self.scrollViewDelegateSplitter addDelegate:self];
 
     _scrollEventThrottle = INFINITY;
   }
@@ -85,8 +82,14 @@ static void RCTSendPaperScrollEvent_DEPRECATED(UIScrollView *scrollView, NSInteg
 
 - (void)dealloc
 {
-  // This is not strictly necessary but that prevents a crash caused by a bug in UIKit.
-  _scrollView.delegate = nil;
+  // Removing all delegates from the splitter nils the actual delegate which prevents a crash on UIScrollView
+  // deallocation.
+  [self.scrollViewDelegateSplitter removeAllDelegates];
+}
+
+- (RCTGenericDelegateSplitter<id<UIScrollViewDelegate>> *)scrollViewDelegateSplitter
+{
+  return ((RCTEnhancedScrollView *)_scrollView).delegateSplitter;
 }
 
 #pragma mark - RCTComponentViewProtocol
@@ -251,9 +254,7 @@ static void RCTSendPaperScrollEvent_DEPRECATED(UIScrollView *scrollView, NSInteg
   std::static_pointer_cast<ScrollViewEventEmitter const>(_eventEmitter)->onScrollBeginDrag([self _scrollViewMetrics]);
 }
 
-- (void)scrollViewWillEndDragging:(UIScrollView *)scrollView
-                     withVelocity:(CGPoint)velocity
-              targetContentOffset:(inout CGPoint *)targetContentOffset
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
 {
   [self _forceDispatchNextScrollEvent];
 
@@ -262,6 +263,7 @@ static void RCTSendPaperScrollEvent_DEPRECATED(UIScrollView *scrollView, NSInteg
   }
 
   std::static_pointer_cast<ScrollViewEventEmitter const>(_eventEmitter)->onScrollEndDrag([self _scrollViewMetrics]);
+  [self _updateStateWithContentOffset];
 }
 
 - (void)scrollViewWillBeginDecelerating:(UIScrollView *)scrollView
@@ -330,9 +332,39 @@ static void RCTSendPaperScrollEvent_DEPRECATED(UIScrollView *scrollView, NSInteg
   _lastScrollEventDispatchTime = 0;
 }
 
-@end
+#pragma mark - Native commands
 
-@implementation RCTScrollViewComponentView (ScrollableProtocol)
+- (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args
+{
+  RCTScrollViewHandleCommand(self, commandName, args);
+}
+
+- (void)flashScrollIndicators
+{
+  [_scrollView flashScrollIndicators];
+}
+
+- (void)scrollTo:(double)x y:(double)y animated:(BOOL)animated
+{
+  [_scrollView setContentOffset:CGPointMake(x, y) animated:animated];
+}
+
+- (void)scrollToEnd:(BOOL)animated
+{
+  BOOL isHorizontal = _scrollView.contentSize.width > self.frame.size.width;
+  CGPoint offset;
+  if (isHorizontal) {
+    CGFloat offsetX = _scrollView.contentSize.width - _scrollView.bounds.size.width + _scrollView.contentInset.right;
+    offset = CGPointMake(fmax(offsetX, 0), 0);
+  } else {
+    CGFloat offsetY = _scrollView.contentSize.height - _scrollView.bounds.size.height + _scrollView.contentInset.bottom;
+    offset = CGPointMake(0, fmax(offsetY, 0));
+  }
+
+  [_scrollView setContentOffset:offset animated:animated];
+}
+
+#pragma mark - RCTScrollableProtocol
 
 - (CGSize)contentSize
 {
@@ -351,11 +383,6 @@ static void RCTSendPaperScrollEvent_DEPRECATED(UIScrollView *scrollView, NSInteg
   [self.scrollView setContentOffset:offset animated:animated];
 }
 
-- (void)scrollToEnd:(BOOL)animated
-{
-  // Not implemented.
-}
-
 - (void)zoomToRect:(CGRect)rect animated:(BOOL)animated
 {
   // Not implemented.
@@ -372,3 +399,8 @@ static void RCTSendPaperScrollEvent_DEPRECATED(UIScrollView *scrollView, NSInteg
 }
 
 @end
+
+Class<RCTComponentViewProtocol> RCTScrollViewCls(void)
+{
+  return RCTScrollViewComponentView.class;
+}

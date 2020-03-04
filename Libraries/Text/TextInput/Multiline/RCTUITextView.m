@@ -46,14 +46,18 @@ static UIColor *defaultPlaceholderColor()
     [self addSubview:_placeholderView];
 
     _textInputDelegateAdapter = [[RCTBackedTextViewDelegateAdapter alloc] initWithTextView:self];
+
+    self.backgroundColor = [UIColor clearColor];
+    self.textColor = [UIColor blackColor];
+    // This line actually removes 5pt (default value) left and right padding in UITextView.
+    self.textContainer.lineFragmentPadding = 0;
+#if !TARGET_OS_TV
+    self.scrollsToTop = NO;
+#endif
+    self.scrollEnabled = YES;
   }
 
   return self;
-}
-
-- (void)dealloc
-{
-  [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 #pragma mark - Accessibility
@@ -174,6 +178,17 @@ static UIColor *defaultPlaceholderColor()
   // Turning off scroll animation.
   // This fixes the problem also known as "flaky scrolling".
   [super setContentOffset:contentOffset animated:NO];
+}
+
+- (void)selectAll:(id)sender
+{
+  [super selectAll:sender];
+
+  // `selectAll:` does not work for UITextView when it's being called inside UITextView's delegate methods.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    UITextRange *selectionRange = [self textRangeFromPosition:self.beginningOfDocument toPosition:self.endOfDocument];
+    [self setSelectedTextRange:selectionRange notifyDelegate:NO];
+  });
 }
 
 #pragma mark - Layout

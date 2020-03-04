@@ -9,7 +9,6 @@
 
 #import <React/RCTUtils.h>
 #import <React/UIView+React.h>
-
 #import <React/RCTBackedTextInputDelegateAdapter.h>
 #import <React/RCTTextAttributes.h>
 
@@ -27,14 +26,10 @@
                                                object:self];
 
     _textInputDelegateAdapter = [[RCTBackedTextFieldDelegateAdapter alloc] initWithTextField:self];
+    _scrollEnabled = YES;
   }
 
   return self;
-}
-
-- (void)dealloc
-{
-  [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (void)_textDidChange
@@ -99,14 +94,20 @@
   self.enabled = editable;
 }
 
-- (void)setScrollEnabled:(BOOL)enabled
+- (void)setSecureTextEntry:(BOOL)secureTextEntry
 {
-  // Do noting, compatible with multiline textinput
-}
+  if (self.secureTextEntry == secureTextEntry) {
+    return;
+  }
 
-- (BOOL)scrollEnabled
-{
-  return NO;
+  [super setSecureTextEntry:secureTextEntry];
+
+  // Fix for trailing whitespate issue
+  // Read more:
+  // https://stackoverflow.com/questions/14220187/uitextfield-has-trailing-whitespace-after-securetextentry-toggle/22537788#22537788
+  NSAttributedString *originalText = [self.attributedText copy];
+  self.attributedText = [NSAttributedString new];
+  self.attributedText = originalText;
 }
 
 #pragma mark - Placeholder

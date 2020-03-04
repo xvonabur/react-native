@@ -6,7 +6,8 @@
  */
 
 #include "ParagraphShadowNode.h"
-#include "ParagraphMeasurementCache.h"
+
+#include <react/attributedstring/AttributedStringBox.h>
 #include "ParagraphState.h"
 
 namespace facebook {
@@ -14,10 +15,11 @@ namespace react {
 
 char const ParagraphComponentName[] = "Paragraph";
 
-AttributedString ParagraphShadowNode::getAttributedString() const {
+AttributedString ParagraphShadowNode::getAttributedString(Float fontSizeMultiplier) const {
   if (!cachedAttributedString_.has_value()) {
     auto textAttributes = TextAttributes::defaultTextAttributes();
-    textAttributes.apply(getProps()->textAttributes);
+    textAttributes.fontSizeMultiplier = fontSizeMultiplier;
+    textAttributes.apply(getConcreteProps().textAttributes);
 
     cachedAttributedString_ =
         BaseTextShadowNode::getAttributedString(textAttributes, *this);
@@ -32,16 +34,10 @@ void ParagraphShadowNode::setTextLayoutManager(
   textLayoutManager_ = textLayoutManager;
 }
 
-void ParagraphShadowNode::setMeasureCache(
-    ParagraphMeasurementCache const *cache) {
-  ensureUnsealed();
-  measureCache_ = cache;
-}
-
-void ParagraphShadowNode::updateStateIfNeeded() {
+void ParagraphShadowNode::updateStateIfNeeded(LayoutContext layoutContext) {
   ensureUnsealed();
 
-  auto attributedString = getAttributedString();
+  auto attributedString = getAttributedString(layoutContext.fontSizeMultiplier);
   auto const &state = getStateData();
 
   assert(textLayoutManager_);
@@ -54,37 +50,28 @@ void ParagraphShadowNode::updateStateIfNeeded() {
     return;
   }
 
-  setStateData(ParagraphState{attributedString, textLayoutManager_});
+  setStateData(ParagraphState{attributedString,
+                              getConcreteProps().paragraphAttributes,
+                              textLayoutManager_});
 }
 
 #pragma mark - LayoutableShadowNode
 
-Size ParagraphShadowNode::measure(LayoutConstraints layoutConstraints) const {
-  AttributedString attributedString = getAttributedString();
+Size ParagraphShadowNode::measureContent(LayoutConstraints layoutConstraints, LayoutContext layoutContext) const {
+  AttributedString attributedString = getAttributedString(layoutContext.fontSizeMultiplier);
 
   if (attributedString.isEmpty()) {
-    return {0, 0};
+    return layoutConstraints.clamp({0, 0});
   }
 
-  ParagraphAttributes const paragraphAttributes =
-      getProps()->paragraphAttributes;
-
-  assert(measureCache_);
-
-  return measureCache_->get(
-      ParagraphMeasurementCacheKey{
-          attributedString, paragraphAttributes, layoutConstraints},
-      [&](ParagraphMeasurementCacheKey const &key) {
-        return textLayoutManager_->measure(
-            attributedString, paragraphAttributes, layoutConstraints);
-      });
-
   return textLayoutManager_->measure(
-      attributedString, paragraphAttributes, layoutConstraints);
+      AttributedStringBox{attributedString},
+      getConcreteProps().paragraphAttributes,
+      layoutConstraints);
 }
 
 void ParagraphShadowNode::layout(LayoutContext layoutContext) {
-  updateStateIfNeeded();
+  updateStateIfNeeded(layoutContext);
   ConcreteViewShadowNode::layout(layoutContext);
 }
 

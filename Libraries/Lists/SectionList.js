@@ -27,7 +27,7 @@ export type SectionBase<SectionItemT> = _SectionBase<SectionItemT>;
 
 type RequiredProps<SectionT: SectionBase<any>> = {|
   /**
-   * The actual data to render, akin to the `data` prop in [`<FlatList>`](/react-native/docs/flatlist.html).
+   * The actual data to render, akin to the `data` prop in [`<FlatList>`](https://reactnative.dev/docs/flatlist.html).
    *
    * General shape:
    *
@@ -52,7 +52,9 @@ type OptionalProps<SectionT: SectionBase<any>> = {|
       highlight: () => void,
       unhighlight: () => void,
       updateProps: (select: 'leading' | 'trailing', newProps: Object) => void,
+      ...
     },
+    ...
   }) => null | React.Element<any>,
   /**
    * A marker property for telling the list to re-render (since it implements `PureComponent`). If
@@ -81,7 +83,7 @@ type OptionalProps<SectionT: SectionBase<any>> = {|
    * Called once when the scroll position gets within `onEndReachedThreshold` of the rendered
    * content.
    */
-  onEndReached?: ?(info: {distanceFromEnd: number}) => void,
+  onEndReached?: ?(info: {distanceFromEnd: number, ...}) => void,
   /**
    * Note: may have bugs (missing content) in some circumstances - use at your own risk.
    *
@@ -103,6 +105,7 @@ export type Props<SectionT> = {|
         VirtualizedSectionListProps<SectionT>,
         'renderItem',
       >,
+      ...
     },
   >,
   ...RequiredProps<SectionT>,
@@ -131,7 +134,7 @@ type DefaultProps = typeof defaultProps;
  *  - Scroll loading.
  *
  * If you don't need section support and want a simpler interface, use
- * [`<FlatList>`](/react-native/docs/flatlist.html).
+ * [`<FlatList>`](https://reactnative.dev/docs/flatlist.html).
  *
  * Simple Examples:
  *

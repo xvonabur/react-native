@@ -30,6 +30,18 @@ Class RCTCoreModulesClassProvider(const char *name) {
     {"AlertManager", RCTAlertManagerCls},
     {"AsyncLocalStorage", RCTAsyncLocalStorageCls},
     {"Timing", RCTTimingCls},
+    {"StatusBarManager", RCTStatusBarManagerCls},
+    {"KeyboardObserver", RCTKeyboardObserverCls},
+    {"AppState", RCTAppStateCls},
+    {"PerfMonitor", RCTPerfMonitorCls},
+    {"DevMenu", RCTDevMenuCls},
+    {"DevSettings", RCTDevSettingsCls},
+    {"RedBox", RCTRedBoxCls},
+    {"LogBox", RCTLogBoxCls},
+    {"TVNavigationEventEmitter", RCTTVNavigationEventEmitterCls},
+    {"WebSocketExecutor", RCTWebSocketExecutorCls},
+    {"WebSocketModule", RCTWebSocketModuleCls},
+    {"DevLoadingView", RCTDevLoadingViewCls},
   };
 
   auto p = sCoreModuleClassMap.find(name);

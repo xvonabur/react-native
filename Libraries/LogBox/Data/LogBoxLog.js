@@ -4,7 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @flow strict-local
  * @format
  */
 
@@ -12,20 +12,39 @@
 
 import * as LogBoxSymbolication from './LogBoxSymbolication';
 
-import type {Category, Message, ComponentStack} from './LogBoxLogParser';
+import type {
+  Category,
+  Message,
+  ComponentStack,
+  CodeFrame,
+} from './parseLogBoxLog';
 import type {Stack} from './LogBoxSymbolication';
 
-export type SymbolicationRequest = $ReadOnly<{|
-  abort: () => void,
+type SymbolicationStatus = 'NONE' | 'PENDING' | 'COMPLETE' | 'FAILED';
+
+export type LogLevel = 'warn' | 'error' | 'fatal' | 'syntax';
+
+export type LogBoxLogData = $ReadOnly<{|
+  level: LogLevel,
+  type?: ?string,
+  message: Message,
+  stack: Stack,
+  category: string,
+  componentStack: ComponentStack,
+  codeFrame?: ?CodeFrame,
+  isComponentError: boolean,
 |}>;
 
 class LogBoxLog {
   message: Message;
+  type: ?string;
   category: Category;
   componentStack: ComponentStack;
   stack: Stack;
   count: number;
-  ignored: boolean;
+  level: LogLevel;
+  codeFrame: ?CodeFrame;
+  isComponentError: boolean;
   symbolicated:
     | $ReadOnly<{|error: null, stack: null, status: 'NONE'|}>
     | $ReadOnly<{|error: null, stack: null, status: 'PENDING'|}>
@@ -36,18 +55,15 @@ class LogBoxLog {
     status: 'NONE',
   };
 
-  constructor(
-    message: Message,
-    stack: Stack,
-    category: string,
-    componentStack: ComponentStack,
-    ignored: boolean,
-  ) {
-    this.message = message;
-    this.stack = stack;
-    this.category = category;
-    this.componentStack = componentStack;
-    this.ignored = ignored;
+  constructor(data: LogBoxLogData) {
+    this.level = data.level;
+    this.type = data.type;
+    this.message = data.message;
+    this.stack = data.stack;
+    this.category = data.category;
+    this.componentStack = data.componentStack;
+    this.codeFrame = data.codeFrame;
+    this.isComponentError = data.isComponentError;
     this.count = 1;
   }
 
@@ -61,44 +77,67 @@ class LogBoxLog {
       : this.stack;
   }
 
-  retrySymbolicate(callback: () => void): SymbolicationRequest {
-    LogBoxSymbolication.deleteStack(this.stack);
-    return this.symbolicate(callback);
+  retrySymbolicate(callback?: (status: SymbolicationStatus) => void): void {
+    if (this.symbolicated.status !== 'COMPLETE') {
+      LogBoxSymbolication.deleteStack(this.stack);
+      this.handleSymbolicate(callback);
+    }
   }
 
-  symbolicate(callback: () => void): SymbolicationRequest {
-    let aborted = false;
+  symbolicate(callback?: (status: SymbolicationStatus) => void): void {
+    if (this.symbolicated.status === 'NONE') {
+      this.handleSymbolicate(callback);
+    }
+  }
 
-    if (this.symbolicated.status !== 'COMPLETE') {
-      const updateStatus = (error: ?Error, stack: ?Stack): void => {
-        if (error != null) {
-          this.symbolicated = {error, stack: null, status: 'FAILED'};
-        } else if (stack != null) {
-          this.symbolicated = {error: null, stack, status: 'COMPLETE'};
-        } else {
-          this.symbolicated = {error: null, stack: null, status: 'PENDING'};
-        }
-        if (!aborted) {
-          callback();
-        }
-      };
-
-      updateStatus(null, null);
+  handleSymbolicate(callback?: (status: SymbolicationStatus) => void): void {
+    if (this.symbolicated.status !== 'PENDING') {
+      this.updateStatus(null, null, null, callback);
       LogBoxSymbolication.symbolicate(this.stack).then(
-        stack => {
-          updateStatus(null, stack);
+        data => {
+          this.updateStatus(null, data?.stack, data?.codeFrame, callback);
         },
         error => {
-          updateStatus(error, null);
+          this.updateStatus(error, null, null, callback);
         },
       );
     }
+  }
 
-    return {
-      abort(): void {
-        aborted = true;
-      },
-    };
+  updateStatus(
+    error: ?Error,
+    stack: ?Stack,
+    codeFrame: ?CodeFrame,
+    callback?: (status: SymbolicationStatus) => void,
+  ): void {
+    const lastStatus = this.symbolicated.status;
+    if (error != null) {
+      this.symbolicated = {
+        error,
+        stack: null,
+        status: 'FAILED',
+      };
+    } else if (stack != null) {
+      if (codeFrame) {
+        this.codeFrame = codeFrame;
+      }
+
+      this.symbolicated = {
+        error: null,
+        stack,
+        status: 'COMPLETE',
+      };
+    } else {
+      this.symbolicated = {
+        error: null,
+        stack: null,
+        status: 'PENDING',
+      };
+    }
+
+    if (callback && lastStatus !== this.symbolicated.status) {
+      callback(this.symbolicated.status);
+    }
   }
 }
 

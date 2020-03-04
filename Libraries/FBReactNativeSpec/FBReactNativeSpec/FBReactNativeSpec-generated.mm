@@ -281,6 +281,10 @@ namespace facebook {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "disconnectAnimatedNodeFromView", @selector(disconnectAnimatedNodeFromView:viewTag:), args, count);
     }
 
+    static facebook::jsi::Value __hostFunction_NativeAnimatedModuleSpecJSI_restoreDefaultValues(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "restoreDefaultValues", @selector(restoreDefaultValues:), args, count);
+    }
+
     static facebook::jsi::Value __hostFunction_NativeAnimatedModuleSpecJSI_dropAnimatedNode(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "dropAnimatedNode", @selector(dropAnimatedNode:), args, count);
     }
@@ -344,6 +348,9 @@ namespace facebook {
         methodMap_["disconnectAnimatedNodeFromView"] = MethodMetadata {2, __hostFunction_NativeAnimatedModuleSpecJSI_disconnectAnimatedNodeFromView};
         
         
+        methodMap_["restoreDefaultValues"] = MethodMetadata {1, __hostFunction_NativeAnimatedModuleSpecJSI_restoreDefaultValues};
+        
+        
         methodMap_["dropAnimatedNode"] = MethodMetadata {1, __hostFunction_NativeAnimatedModuleSpecJSI_dropAnimatedNode};
         
         
@@ -403,7 +410,7 @@ namespace facebook {
 
     
     static facebook::jsi::Value __hostFunction_NativeAppStateSpecJSI_getCurrentAppState(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
-      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "getCurrentAppState", @selector(getCurrentAppState:failure:), args, count);
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "getCurrentAppState", @selector(getCurrentAppState:error:), args, count);
     }
 
     static facebook::jsi::Value __hostFunction_NativeAppStateSpecJSI_addListener(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
@@ -689,6 +696,83 @@ namespace facebook {
 
   } // namespace react
 } // namespace facebook
+@implementation RCTCxxConvert (NativeCameraRollManager_GetPhotosParams)
++ (RCTManagedPointer *)JS_NativeCameraRollManager_GetPhotosParams:(id)json
+{
+  return facebook::react::managedPointer<JS::NativeCameraRollManager::GetPhotosParams>(json);
+}
+@end
+namespace facebook {
+  namespace react {
+
+    
+    static facebook::jsi::Value __hostFunction_NativeCameraRollManagerSpecJSI_getPhotos(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "getPhotos", @selector(getPhotos:resolve:reject:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeCameraRollManagerSpecJSI_saveToCameraRoll(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "saveToCameraRoll", @selector(saveToCameraRoll:type:resolve:reject:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeCameraRollManagerSpecJSI_deletePhotos(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "deletePhotos", @selector(deletePhotos:resolve:reject:), args, count);
+    }
+
+
+    NativeCameraRollManagerSpecJSI::NativeCameraRollManagerSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
+      : ObjCTurboModule("CameraRollManager", instance, jsInvoker) {
+        
+        methodMap_["getPhotos"] = MethodMetadata {1, __hostFunction_NativeCameraRollManagerSpecJSI_getPhotos};
+        
+        setMethodArgConversionSelector(@"getPhotos", 0, @"JS_NativeCameraRollManager_GetPhotosParams:");
+        
+        methodMap_["saveToCameraRoll"] = MethodMetadata {2, __hostFunction_NativeCameraRollManagerSpecJSI_saveToCameraRoll};
+        
+        
+        methodMap_["deletePhotos"] = MethodMetadata {1, __hostFunction_NativeCameraRollManagerSpecJSI_deletePhotos};
+        
+        
+
+    }
+
+  } // namespace react
+} // namespace facebook
+@implementation RCTCxxConvert (NativeCameraRollManager_PhotoIdentifierNodeImage)
++ (RCTManagedPointer *)JS_NativeCameraRollManager_PhotoIdentifierNodeImage:(id)json
+{
+  return facebook::react::managedPointer<JS::NativeCameraRollManager::PhotoIdentifierNodeImage>(json);
+}
+@end
+@implementation RCTCxxConvert (NativeCameraRollManager_PhotoIdentifierNodeLocation)
++ (RCTManagedPointer *)JS_NativeCameraRollManager_PhotoIdentifierNodeLocation:(id)json
+{
+  return facebook::react::managedPointer<JS::NativeCameraRollManager::PhotoIdentifierNodeLocation>(json);
+}
+@end
+@implementation RCTCxxConvert (NativeCameraRollManager_PhotoIdentifierNode)
++ (RCTManagedPointer *)JS_NativeCameraRollManager_PhotoIdentifierNode:(id)json
+{
+  return facebook::react::managedPointer<JS::NativeCameraRollManager::PhotoIdentifierNode>(json);
+}
+@end
+@implementation RCTCxxConvert (NativeCameraRollManager_PhotoIdentifier)
++ (RCTManagedPointer *)JS_NativeCameraRollManager_PhotoIdentifier:(id)json
+{
+  return facebook::react::managedPointer<JS::NativeCameraRollManager::PhotoIdentifier>(json);
+}
+@end
+@implementation RCTCxxConvert (NativeCameraRollManager_PhotoIdentifiersPagePage_info)
++ (RCTManagedPointer *)JS_NativeCameraRollManager_PhotoIdentifiersPagePage_info:(id)json
+{
+  return facebook::react::managedPointer<JS::NativeCameraRollManager::PhotoIdentifiersPagePage_info>(json);
+}
+@end
+@implementation RCTCxxConvert (NativeCameraRollManager_PhotoIdentifiersPage)
++ (RCTManagedPointer *)JS_NativeCameraRollManager_PhotoIdentifiersPage:(id)json
+{
+  return facebook::react::managedPointer<JS::NativeCameraRollManager::PhotoIdentifiersPage>(json);
+}
+@end
 namespace facebook {
   namespace react {
 
@@ -741,7 +825,7 @@ namespace facebook {
 
     
     static facebook::jsi::Value __hostFunction_NativeDevLoadingViewSpecJSI_showMessage(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
-      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "showMessage", @selector(showMessage:color:backgroundColor:), args, count);
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "showMessage", @selector(showMessage:withColor:withBackgroundColor:), args, count);
     }
 
     static facebook::jsi::Value __hostFunction_NativeDevLoadingViewSpecJSI_hide(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
@@ -756,6 +840,54 @@ namespace facebook {
         
         
         methodMap_["hide"] = MethodMetadata {0, __hostFunction_NativeDevLoadingViewSpecJSI_hide};
+        
+        
+
+    }
+
+  } // namespace react
+} // namespace facebook
+namespace facebook {
+  namespace react {
+
+    
+    static facebook::jsi::Value __hostFunction_NativeDevMenuSpecJSI_show(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "show", @selector(show), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeDevMenuSpecJSI_reload(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "reload", @selector(reload), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeDevMenuSpecJSI_debugRemotely(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "debugRemotely", @selector(debugRemotely:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeDevMenuSpecJSI_setProfilingEnabled(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setProfilingEnabled", @selector(setProfilingEnabled:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeDevMenuSpecJSI_setHotLoadingEnabled(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setHotLoadingEnabled", @selector(setHotLoadingEnabled:), args, count);
+    }
+
+
+    NativeDevMenuSpecJSI::NativeDevMenuSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
+      : ObjCTurboModule("DevMenu", instance, jsInvoker) {
+        
+        methodMap_["show"] = MethodMetadata {0, __hostFunction_NativeDevMenuSpecJSI_show};
+        
+        
+        methodMap_["reload"] = MethodMetadata {0, __hostFunction_NativeDevMenuSpecJSI_reload};
+        
+        
+        methodMap_["debugRemotely"] = MethodMetadata {1, __hostFunction_NativeDevMenuSpecJSI_debugRemotely};
+        
+        
+        methodMap_["setProfilingEnabled"] = MethodMetadata {1, __hostFunction_NativeDevMenuSpecJSI_setProfilingEnabled};
+        
+        
+        methodMap_["setHotLoadingEnabled"] = MethodMetadata {1, __hostFunction_NativeDevMenuSpecJSI_setHotLoadingEnabled};
         
         
 
@@ -799,6 +931,14 @@ namespace facebook {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "addMenuItem", @selector(addMenuItem:), args, count);
     }
 
+    static facebook::jsi::Value __hostFunction_NativeDevSettingsSpecJSI_addListener(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "addListener", @selector(addListener:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeDevSettingsSpecJSI_removeListeners(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "removeListeners", @selector(removeListeners:), args, count);
+    }
+
     static facebook::jsi::Value __hostFunction_NativeDevSettingsSpecJSI_setIsShakeToShowDevMenuEnabled(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setIsShakeToShowDevMenuEnabled", @selector(setIsShakeToShowDevMenuEnabled:), args, count);
     }
@@ -829,6 +969,12 @@ namespace facebook {
         
         
         methodMap_["addMenuItem"] = MethodMetadata {1, __hostFunction_NativeDevSettingsSpecJSI_addMenuItem};
+        
+        
+        methodMap_["addListener"] = MethodMetadata {1, __hostFunction_NativeDevSettingsSpecJSI_addListener};
+        
+        
+        methodMap_["removeListeners"] = MethodMetadata {1, __hostFunction_NativeDevSettingsSpecJSI_removeListeners};
         
         
         methodMap_["setIsShakeToShowDevMenuEnabled"] = MethodMetadata {1, __hostFunction_NativeDevSettingsSpecJSI_setIsShakeToShowDevMenuEnabled};
@@ -1080,33 +1226,6 @@ namespace facebook {
   namespace react {
 
     
-    static facebook::jsi::Value __hostFunction_NativeHeapCaptureSpecJSI_captureHeap(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
-      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "captureHeap", @selector(captureHeap:), args, count);
-    }
-
-    static facebook::jsi::Value __hostFunction_NativeHeapCaptureSpecJSI_captureComplete(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
-      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "captureComplete", @selector(captureComplete:error:), args, count);
-    }
-
-
-    NativeHeapCaptureSpecJSI::NativeHeapCaptureSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
-      : ObjCTurboModule("HeapCapture", instance, jsInvoker) {
-        
-        methodMap_["captureHeap"] = MethodMetadata {1, __hostFunction_NativeHeapCaptureSpecJSI_captureHeap};
-        
-        
-        methodMap_["captureComplete"] = MethodMetadata {2, __hostFunction_NativeHeapCaptureSpecJSI_captureComplete};
-        
-        
-
-    }
-
-  } // namespace react
-} // namespace facebook
-namespace facebook {
-  namespace react {
-
-    
     static facebook::jsi::Value __hostFunction_NativeI18nManagerSpecJSI_allowRTL(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "allowRTL", @selector(allowRTL:), args, count);
     }
@@ -1193,36 +1312,84 @@ namespace facebook {
   namespace react {
 
     
-    static facebook::jsi::Value __hostFunction_NativeImageLoaderSpecJSI_getSize(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+    static facebook::jsi::Value __hostFunction_NativeImageLoaderAndroidSpecJSI_abortRequest(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "abortRequest", @selector(abortRequest:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeImageLoaderAndroidSpecJSI_getSize(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "getSize", @selector(getSize:resolve:reject:), args, count);
     }
 
-    static facebook::jsi::Value __hostFunction_NativeImageLoaderSpecJSI_getSizeWithHeaders(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+    static facebook::jsi::Value __hostFunction_NativeImageLoaderAndroidSpecJSI_getSizeWithHeaders(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "getSizeWithHeaders", @selector(getSizeWithHeaders:headers:resolve:reject:), args, count);
     }
 
-    static facebook::jsi::Value __hostFunction_NativeImageLoaderSpecJSI_prefetchImage(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
-      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "prefetchImage", @selector(prefetchImage:resolve:reject:), args, count);
+    static facebook::jsi::Value __hostFunction_NativeImageLoaderAndroidSpecJSI_prefetchImage(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "prefetchImage", @selector(prefetchImage:requestId:resolve:reject:), args, count);
     }
 
-    static facebook::jsi::Value __hostFunction_NativeImageLoaderSpecJSI_queryCache(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+    static facebook::jsi::Value __hostFunction_NativeImageLoaderAndroidSpecJSI_queryCache(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "queryCache", @selector(queryCache:resolve:reject:), args, count);
     }
 
 
-    NativeImageLoaderSpecJSI::NativeImageLoaderSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
-      : ObjCTurboModule("ImageLoader", instance, jsInvoker) {
+    NativeImageLoaderAndroidSpecJSI::NativeImageLoaderAndroidSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
+      : ObjCTurboModule("ImageLoaderAndroid", instance, jsInvoker) {
         
-        methodMap_["getSize"] = MethodMetadata {1, __hostFunction_NativeImageLoaderSpecJSI_getSize};
-        
-        
-        methodMap_["getSizeWithHeaders"] = MethodMetadata {2, __hostFunction_NativeImageLoaderSpecJSI_getSizeWithHeaders};
+        methodMap_["abortRequest"] = MethodMetadata {1, __hostFunction_NativeImageLoaderAndroidSpecJSI_abortRequest};
         
         
-        methodMap_["prefetchImage"] = MethodMetadata {1, __hostFunction_NativeImageLoaderSpecJSI_prefetchImage};
+        methodMap_["getSize"] = MethodMetadata {1, __hostFunction_NativeImageLoaderAndroidSpecJSI_getSize};
         
         
-        methodMap_["queryCache"] = MethodMetadata {1, __hostFunction_NativeImageLoaderSpecJSI_queryCache};
+        methodMap_["getSizeWithHeaders"] = MethodMetadata {2, __hostFunction_NativeImageLoaderAndroidSpecJSI_getSizeWithHeaders};
+        
+        
+        methodMap_["prefetchImage"] = MethodMetadata {2, __hostFunction_NativeImageLoaderAndroidSpecJSI_prefetchImage};
+        
+        
+        methodMap_["queryCache"] = MethodMetadata {1, __hostFunction_NativeImageLoaderAndroidSpecJSI_queryCache};
+        
+        
+
+    }
+
+  } // namespace react
+} // namespace facebook
+namespace facebook {
+  namespace react {
+
+    
+    static facebook::jsi::Value __hostFunction_NativeImageLoaderIOSSpecJSI_getSize(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "getSize", @selector(getSize:resolve:reject:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeImageLoaderIOSSpecJSI_getSizeWithHeaders(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "getSizeWithHeaders", @selector(getSizeWithHeaders:headers:resolve:reject:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeImageLoaderIOSSpecJSI_prefetchImage(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "prefetchImage", @selector(prefetchImage:resolve:reject:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeImageLoaderIOSSpecJSI_queryCache(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "queryCache", @selector(queryCache:resolve:reject:), args, count);
+    }
+
+
+    NativeImageLoaderIOSSpecJSI::NativeImageLoaderIOSSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
+      : ObjCTurboModule("ImageLoaderIOS", instance, jsInvoker) {
+        
+        methodMap_["getSize"] = MethodMetadata {1, __hostFunction_NativeImageLoaderIOSSpecJSI_getSize};
+        
+        
+        methodMap_["getSizeWithHeaders"] = MethodMetadata {2, __hostFunction_NativeImageLoaderIOSSpecJSI_getSizeWithHeaders};
+        
+        
+        methodMap_["prefetchImage"] = MethodMetadata {1, __hostFunction_NativeImageLoaderIOSSpecJSI_prefetchImage};
+        
+        
+        methodMap_["queryCache"] = MethodMetadata {1, __hostFunction_NativeImageLoaderIOSSpecJSI_queryCache};
         
         
 
@@ -1339,6 +1506,26 @@ namespace facebook {
         
         
         methodMap_["addImageFromBase64"] = MethodMetadata {3, __hostFunction_NativeImageStoreSpecJSI_addImageFromBase64};
+        
+        
+
+    }
+
+  } // namespace react
+} // namespace facebook
+namespace facebook {
+  namespace react {
+
+    
+    static facebook::jsi::Value __hostFunction_NativeJSCHeapCaptureSpecJSI_captureComplete(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "captureComplete", @selector(captureComplete:error:), args, count);
+    }
+
+
+    NativeJSCHeapCaptureSpecJSI::NativeJSCHeapCaptureSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
+      : ObjCTurboModule("JSCHeapCapture", instance, jsInvoker) {
+        
+        methodMap_["captureComplete"] = MethodMetadata {2, __hostFunction_NativeJSCHeapCaptureSpecJSI_captureComplete};
         
         
 
@@ -1499,6 +1686,33 @@ namespace facebook {
   namespace react {
 
     
+    static facebook::jsi::Value __hostFunction_NativeLogBoxSpecJSI_show(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "show", @selector(show), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeLogBoxSpecJSI_hide(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "hide", @selector(hide), args, count);
+    }
+
+
+    NativeLogBoxSpecJSI::NativeLogBoxSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
+      : ObjCTurboModule("LogBox", instance, jsInvoker) {
+        
+        methodMap_["show"] = MethodMetadata {0, __hostFunction_NativeLogBoxSpecJSI_show};
+        
+        
+        methodMap_["hide"] = MethodMetadata {0, __hostFunction_NativeLogBoxSpecJSI_hide};
+        
+        
+
+    }
+
+  } // namespace react
+} // namespace facebook
+namespace facebook {
+  namespace react {
+
+    
     static facebook::jsi::Value __hostFunction_NativeModalManagerSpecJSI_addListener(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "addListener", @selector(addListener:), args, count);
     }
@@ -1522,12 +1736,6 @@ namespace facebook {
 
   } // namespace react
 } // namespace facebook
-@implementation RCTCxxConvert (NativeNetworkingAndroid_Header)
-+ (RCTManagedPointer *)JS_NativeNetworkingAndroid_Header:(id)json
-{
-  return facebook::react::managedPointer<JS::NativeNetworkingAndroid::Header>(json);
-}
-@end
 namespace facebook {
   namespace react {
 
@@ -1877,7 +2085,7 @@ namespace facebook {
 
     
     static facebook::jsi::Value __hostFunction_NativeRedBoxSpecJSI_setExtraData(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
-      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setExtraData", @selector(setExtraData:identifier:), args, count);
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setExtraData", @selector(setExtraData:forIdentifier:), args, count);
     }
 
     static facebook::jsi::Value __hostFunction_NativeRedBoxSpecJSI_dismiss(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
@@ -2027,81 +2235,115 @@ namespace facebook {
 
   } // namespace react
 } // namespace facebook
-@implementation RCTCxxConvert (NativeStatusBarManager_SpecGetHeightCallbackResult)
-+ (RCTManagedPointer *)JS_NativeStatusBarManager_SpecGetHeightCallbackResult:(id)json
+namespace facebook {
+  namespace react {
+
+    
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerAndroidSpecJSI_setColor(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setColor", @selector(setColor:animated:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerAndroidSpecJSI_setTranslucent(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setTranslucent", @selector(setTranslucent:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerAndroidSpecJSI_setStyle(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setStyle", @selector(setStyle:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerAndroidSpecJSI_setHidden(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setHidden", @selector(setHidden:), args, count);
+    }
+
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerAndroidSpecJSI_getConstants(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, ObjectKind, "getConstants", @selector(getConstants), args, count);
+    }
+
+
+    NativeStatusBarManagerAndroidSpecJSI::NativeStatusBarManagerAndroidSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
+      : ObjCTurboModule("StatusBarManagerAndroid", instance, jsInvoker) {
+        
+        methodMap_["setColor"] = MethodMetadata {2, __hostFunction_NativeStatusBarManagerAndroidSpecJSI_setColor};
+        
+        
+        methodMap_["setTranslucent"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerAndroidSpecJSI_setTranslucent};
+        
+        
+        methodMap_["setStyle"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerAndroidSpecJSI_setStyle};
+        
+        
+        methodMap_["setHidden"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerAndroidSpecJSI_setHidden};
+        
+        
+        methodMap_["getConstants"] = MethodMetadata {0, __hostFunction_NativeStatusBarManagerAndroidSpecJSI_getConstants};
+        
+        
+
+    }
+
+  } // namespace react
+} // namespace facebook
+@implementation RCTCxxConvert (NativeStatusBarManagerIOS_SpecGetHeightCallbackResult)
++ (RCTManagedPointer *)JS_NativeStatusBarManagerIOS_SpecGetHeightCallbackResult:(id)json
 {
-  return facebook::react::managedPointer<JS::NativeStatusBarManager::SpecGetHeightCallbackResult>(json);
+  return facebook::react::managedPointer<JS::NativeStatusBarManagerIOS::SpecGetHeightCallbackResult>(json);
 }
 @end
 namespace facebook {
   namespace react {
 
     
-    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerSpecJSI_setColor(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
-      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setColor", @selector(setColor:animated:), args, count);
-    }
-
-    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerSpecJSI_setTranslucent(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
-      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setTranslucent", @selector(setTranslucent:), args, count);
-    }
-
-    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerSpecJSI_getHeight(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerIOSSpecJSI_getHeight(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "getHeight", @selector(getHeight:), args, count);
     }
 
-    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerSpecJSI_setNetworkActivityIndicatorVisible(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerIOSSpecJSI_setNetworkActivityIndicatorVisible(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setNetworkActivityIndicatorVisible", @selector(setNetworkActivityIndicatorVisible:), args, count);
     }
 
-    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerSpecJSI_addListener(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerIOSSpecJSI_addListener(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "addListener", @selector(addListener:), args, count);
     }
 
-    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerSpecJSI_removeListeners(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerIOSSpecJSI_removeListeners(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "removeListeners", @selector(removeListeners:), args, count);
     }
 
-    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerSpecJSI_setStyle(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerIOSSpecJSI_setStyle(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setStyle", @selector(setStyle:animated:), args, count);
     }
 
-    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerSpecJSI_setHidden(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerIOSSpecJSI_setHidden(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "setHidden", @selector(setHidden:withAnimation:), args, count);
     }
 
-    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerSpecJSI_getConstants(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+    static facebook::jsi::Value __hostFunction_NativeStatusBarManagerIOSSpecJSI_getConstants(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
       return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, ObjectKind, "getConstants", @selector(getConstants), args, count);
     }
 
 
-    NativeStatusBarManagerSpecJSI::NativeStatusBarManagerSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
-      : ObjCTurboModule("StatusBarManager", instance, jsInvoker) {
+    NativeStatusBarManagerIOSSpecJSI::NativeStatusBarManagerIOSSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
+      : ObjCTurboModule("StatusBarManagerIOS", instance, jsInvoker) {
         
-        methodMap_["setColor"] = MethodMetadata {2, __hostFunction_NativeStatusBarManagerSpecJSI_setColor};
-        
-        
-        methodMap_["setTranslucent"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerSpecJSI_setTranslucent};
+        methodMap_["getHeight"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerIOSSpecJSI_getHeight};
         
         
-        methodMap_["getHeight"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerSpecJSI_getHeight};
+        methodMap_["setNetworkActivityIndicatorVisible"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerIOSSpecJSI_setNetworkActivityIndicatorVisible};
         
         
-        methodMap_["setNetworkActivityIndicatorVisible"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerSpecJSI_setNetworkActivityIndicatorVisible};
+        methodMap_["addListener"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerIOSSpecJSI_addListener};
         
         
-        methodMap_["addListener"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerSpecJSI_addListener};
+        methodMap_["removeListeners"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerIOSSpecJSI_removeListeners};
         
         
-        methodMap_["removeListeners"] = MethodMetadata {1, __hostFunction_NativeStatusBarManagerSpecJSI_removeListeners};
+        methodMap_["setStyle"] = MethodMetadata {2, __hostFunction_NativeStatusBarManagerIOSSpecJSI_setStyle};
         
         
-        methodMap_["setStyle"] = MethodMetadata {2, __hostFunction_NativeStatusBarManagerSpecJSI_setStyle};
+        methodMap_["setHidden"] = MethodMetadata {2, __hostFunction_NativeStatusBarManagerIOSSpecJSI_setHidden};
         
         
-        methodMap_["setHidden"] = MethodMetadata {2, __hostFunction_NativeStatusBarManagerSpecJSI_setHidden};
-        
-        
-        methodMap_["getConstants"] = MethodMetadata {0, __hostFunction_NativeStatusBarManagerSpecJSI_getConstants};
+        methodMap_["getConstants"] = MethodMetadata {0, __hostFunction_NativeStatusBarManagerIOSSpecJSI_getConstants};
         
         
 
@@ -2136,6 +2378,39 @@ namespace facebook {
 
   } // namespace react
 } // namespace facebook
+@implementation RCTCxxConvert (NativeTimePickerAndroid_TimePickerOptions)
++ (RCTManagedPointer *)JS_NativeTimePickerAndroid_TimePickerOptions:(id)json
+{
+  return facebook::react::managedPointer<JS::NativeTimePickerAndroid::TimePickerOptions>(json);
+}
+@end
+namespace facebook {
+  namespace react {
+
+    
+    static facebook::jsi::Value __hostFunction_NativeTimePickerAndroidSpecJSI_open(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, PromiseKind, "open", @selector(open:resolve:reject:), args, count);
+    }
+
+
+    NativeTimePickerAndroidSpecJSI::NativeTimePickerAndroidSpecJSI(id<RCTTurboModule> instance, std::shared_ptr<CallInvoker> jsInvoker)
+      : ObjCTurboModule("TimePickerAndroid", instance, jsInvoker) {
+        
+        methodMap_["open"] = MethodMetadata {1, __hostFunction_NativeTimePickerAndroidSpecJSI_open};
+        
+        setMethodArgConversionSelector(@"open", 0, @"JS_NativeTimePickerAndroid_TimePickerOptions:");
+        
+
+    }
+
+  } // namespace react
+} // namespace facebook
+@implementation RCTCxxConvert (NativeTimePickerAndroid_TimePickerResult)
++ (RCTManagedPointer *)JS_NativeTimePickerAndroid_TimePickerResult:(id)json
+{
+  return facebook::react::managedPointer<JS::NativeTimePickerAndroid::TimePickerResult>(json);
+}
+@end
 namespace facebook {
   namespace react {
 
@@ -2447,12 +2722,6 @@ namespace facebook {
 
   } // namespace react
 } // namespace facebook
-@implementation RCTCxxConvert (NativeWebSocketModule_SpecConnectOptionsHeaders)
-+ (RCTManagedPointer *)JS_NativeWebSocketModule_SpecConnectOptionsHeaders:(id)json
-{
-  return facebook::react::managedPointer<JS::NativeWebSocketModule::SpecConnectOptionsHeaders>(json);
-}
-@end
 @implementation RCTCxxConvert (NativeWebSocketModule_SpecConnectOptions)
 + (RCTManagedPointer *)JS_NativeWebSocketModule_SpecConnectOptions:(id)json
 {
@@ -2468,11 +2737,11 @@ namespace facebook {
     }
 
     static facebook::jsi::Value __hostFunction_NativeWebSocketModuleSpecJSI_send(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
-      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "send", @selector(send:socketID:), args, count);
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "send", @selector(send:forSocketID:), args, count);
     }
 
     static facebook::jsi::Value __hostFunction_NativeWebSocketModuleSpecJSI_sendBinary(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
-      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "sendBinary", @selector(sendBinary:socketID:), args, count);
+      return static_cast<ObjCTurboModule&>(turboModule).invokeObjCMethod(rt, VoidKind, "sendBinary", @selector(sendBinary:forSocketID:), args, count);
     }
 
     static facebook::jsi::Value __hostFunction_NativeWebSocketModuleSpecJSI_ping(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {

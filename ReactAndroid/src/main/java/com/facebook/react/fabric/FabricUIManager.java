@@ -19,6 +19,7 @@ import static com.facebook.react.uimanager.common.UIManagerType.FABRIC;
 import android.annotation.SuppressLint;
 import android.os.SystemClock;
 import android.view.View;
+import androidx.annotation.AnyThread;
 import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -34,13 +35,13 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReactMarker;
 import com.facebook.react.bridge.ReactMarkerConstants;
+import com.facebook.react.bridge.ReactNoCrashSoftException;
 import com.facebook.react.bridge.ReactSoftException;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.UIManager;
 import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.common.ReactConstants;
 import com.facebook.react.config.ReactFeatureFlags;
 import com.facebook.react.fabric.events.EventBeatManager;
 import com.facebook.react.fabric.events.EventEmitterWrapper;
@@ -82,8 +83,11 @@ import java.util.concurrent.ConcurrentHashMap;
 @SuppressLint("MissingNativeLoadLibrary")
 public class FabricUIManager implements UIManager, LifecycleEventListener {
 
-  public static final String TAG = FabricUIManager.class.getSimpleName();
-  public static final boolean DEBUG =
+  public static final String TAG = "FabricUIManager";
+  // The IS_DEVELOPMENT_ENVIRONMENT variable is used to log extra data when running fabric in a
+  // development environment. DO NOT ENABLE THIS ON PRODUCTION OR YOU WILL BE FIRED!
+  public static final boolean IS_DEVELOPMENT_ENVIRONMENT = false;
+  public static final boolean ENABLE_FABRIC_LOGS =
       ReactFeatureFlags.enableFabricLogs
           || PrinterHolder.getPrinter()
               .shouldDisplayLogMessage(ReactDebugOverlayTags.FABRIC_UI_MANAGER);
@@ -108,6 +112,10 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
   @NonNull private final Object mMountItemsLock = new Object();
   @NonNull private final Object mPreMountItemsLock = new Object();
 
+  private boolean mInDispatch = false;
+  private boolean mShouldDispatchAgain = false;
+  private int mReDispatchCounter = 0;
+
   @GuardedBy("mMountItemsLock")
   @NonNull
   private List<MountItem> mMountItems = new ArrayList<>();
@@ -121,8 +129,12 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
   @NonNull
   private final DispatchUIFrameCallback mDispatchUIFrameCallback;
 
+  /**
+   * Whether or not to immediately, synchronously execute mountItems when they are scheduled on the
+   * UI thread.
+   */
   @ThreadConfined(UI)
-  private volatile boolean mIsMountingEnabled = true;
+  private boolean mImmediatelyExecutedMountItemsOnUI = true;
 
   /**
    * This is used to keep track of whether or not the FabricUIManager has been destroyed. Once the
@@ -159,16 +171,21 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
 
   // TODO (T47819352): Rename this to startSurface for consistency with xplat/iOS
   @Override
+  @UiThread
+  @ThreadConfined(UI)
   public <T extends View> int addRootView(
       final T rootView, final WritableMap initialProps, final @Nullable String initialUITemplate) {
     final int rootTag = ReactRootViewTagGenerator.getNextRootViewTag();
+    ReactRoot reactRootView = (ReactRoot) rootView;
+
     // TODO T31905686: Combine with startSurface below
     ThemedReactContext reactContext =
-        new ThemedReactContext(mReactApplicationContext, rootView.getContext());
+        new ThemedReactContext(
+            mReactApplicationContext, rootView.getContext(), reactRootView.getSurfaceID());
     mMountingManager.addRootView(rootTag, rootView);
+    String moduleName = reactRootView.getJSModuleName();
     mReactContextForRootTag.put(rootTag, reactContext);
-    String moduleName = ((ReactRoot) rootView).getJSModuleName();
-    if (DEBUG) {
+    if (ENABLE_FABRIC_LOGS) {
       FLog.d(TAG, "Starting surface for module: %s and reactTag: %d", moduleName, rootTag);
     }
     mBinding.startSurface(rootTag, moduleName, (NativeMap) initialProps);
@@ -178,6 +195,7 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
     return rootTag;
   }
 
+  @AnyThread
   @ThreadConfined(ANY)
   public <T extends View> int startSurface(
       final T rootView,
@@ -187,8 +205,8 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
       int heightMeasureSpec) {
     final int rootTag = ReactRootViewTagGenerator.getNextRootViewTag();
     ThemedReactContext reactContext =
-        new ThemedReactContext(mReactApplicationContext, rootView.getContext());
-    if (DEBUG) {
+        new ThemedReactContext(mReactApplicationContext, rootView.getContext(), moduleName);
+    if (ENABLE_FABRIC_LOGS) {
       FLog.d(TAG, "Starting surface for module: %s and reactTag: %d", moduleName, rootTag);
     }
     mMountingManager.addRootView(rootTag, rootView);
@@ -211,6 +229,7 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
     mEventDispatcher.dispatchAllEvents();
   }
 
+  @AnyThread
   @ThreadConfined(ANY)
   public void stopSurface(int surfaceID) {
     mBinding.stopSurface(surfaceID);
@@ -224,6 +243,8 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
 
   // This is called on the JS thread (see CatalystInstanceImpl).
   @Override
+  @AnyThread
+  @ThreadConfined(ANY)
   public void onCatalystInstanceDestroy() {
     FLog.i(TAG, "FabricUIManager.onCatalystInstanceDestroy");
 
@@ -238,16 +259,21 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
     // This is not technically thread-safe, since it's read on the UI thread and written
     // here on the JS thread. We've marked it as volatile so that this writes to UI-thread
     // memory immediately.
-    mIsMountingEnabled = false;
+    mDispatchUIFrameCallback.stop();
 
     mEventDispatcher.removeBatchEventDispatchedListener(mEventBeatManager);
     mEventDispatcher.unregisterEventEmitter(FABRIC);
 
     // Remove lifecycle listeners (onHostResume, onHostPause) since the FabricUIManager is going
-    // away. This and setting `mIsMountingEnabled` to false will cause the choreographer
+    // away. Then stop the mDispatchUIFrameCallback false will cause the choreographer
     // callbacks to stop firing.
     mReactApplicationContext.removeLifecycleEventListener(this);
     onHostPause();
+
+    // This is not technically thread-safe, since it's read on the UI thread and written
+    // here on the JS thread. We've marked it as volatile so that this writes to UI-thread
+    // memory immediately.
+    mDispatchUIFrameCallback.stop();
 
     mBinding.unregister();
     mBinding = null;
@@ -257,6 +283,8 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private void preallocateView(
       int rootTag,
       int reactTag,
@@ -281,6 +309,8 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem createMountItem(
       String componentName,
       @Nullable ReadableMap props,
@@ -305,30 +335,40 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem removeMountItem(int reactTag, int parentReactTag, int index) {
     return new RemoveMountItem(reactTag, parentReactTag, index);
   }
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem insertMountItem(int reactTag, int parentReactTag, int index) {
     return new InsertMountItem(reactTag, parentReactTag, index);
   }
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem deleteMountItem(int reactTag) {
     return new DeleteMountItem(reactTag);
   }
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem removeDeleteMultiMountItem(int[] metadata) {
     return new RemoveDeleteMultiMountItem(metadata);
   }
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem updateLayoutMountItem(
       int reactTag, int x, int y, int width, int height, int layoutDirection) {
     return new UpdateLayoutMountItem(reactTag, x, y, width, height, layoutDirection);
@@ -336,36 +376,48 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem updatePaddingMountItem(int reactTag, int left, int top, int right, int bottom) {
     return new UpdatePaddingMountItem(reactTag, left, top, right, bottom);
   }
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem updatePropsMountItem(int reactTag, ReadableMap map) {
     return new UpdatePropsMountItem(reactTag, map);
   }
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem updateLocalDataMountItem(int reactTag, ReadableMap newLocalData) {
     return new UpdateLocalDataMountItem(reactTag, newLocalData);
   }
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem updateStateMountItem(int reactTag, @Nullable Object stateWrapper) {
     return new UpdateStateMountItem(reactTag, (StateWrapper) stateWrapper);
   }
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem updateEventEmitterMountItem(int reactTag, Object eventEmitter) {
     return new UpdateEventEmitterMountItem(reactTag, (EventEmitterWrapper) eventEmitter);
   }
 
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private MountItem createBatchMountItem(MountItem[] items, int size, int commitNumber) {
     return new BatchMountItem(items, size, commitNumber);
   }
@@ -382,21 +434,23 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
       float maxWidth,
       float minHeight,
       float maxHeight) {
-    return mMountingManager.measure(
-        mReactContextForRootTag.get(rootTag),
+    return measure(
+        rootTag,
         componentName,
         localData,
         props,
         state,
-        getYogaSize(minWidth, maxWidth),
-        getYogaMeasureMode(minWidth, maxWidth),
-        getYogaSize(minHeight, maxHeight),
-        getYogaMeasureMode(minHeight, maxHeight));
+        minWidth,
+        maxWidth,
+        minHeight,
+        maxHeight,
+        null);
   }
 
   @DoNotStrip
   @SuppressWarnings("unused")
   private long measure(
+      int rootTag,
       String componentName,
       ReadableMap localData,
       ReadableMap props,
@@ -404,9 +458,12 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
       float minWidth,
       float maxWidth,
       float minHeight,
-      float maxHeight) {
+      float maxHeight,
+      @Nullable int[] attachmentsPositions) {
+    ReactContext context =
+        rootTag < 0 ? mReactApplicationContext : mReactContextForRootTag.get(rootTag);
     return mMountingManager.measure(
-        mReactApplicationContext,
+        context,
         componentName,
         localData,
         props,
@@ -414,27 +471,46 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
         getYogaSize(minWidth, maxWidth),
         getYogaMeasureMode(minWidth, maxWidth),
         getYogaSize(minHeight, maxHeight),
-        getYogaMeasureMode(minHeight, maxHeight));
+        getYogaMeasureMode(minHeight, maxHeight),
+        attachmentsPositions);
   }
 
   @Override
+  @UiThread
   @ThreadConfined(UI)
-  public void synchronouslyUpdateViewOnUIThread(int reactTag, ReadableMap props) {
+  public void synchronouslyUpdateViewOnUIThread(int reactTag, @NonNull ReadableMap props) {
     UiThreadUtil.assertOnUiThread();
     long time = SystemClock.uptimeMillis();
     int commitNumber = mCurrentSynchronousCommitNumber++;
     try {
       ReactMarker.logFabricMarker(
           ReactMarkerConstants.FABRIC_UPDATE_UI_MAIN_THREAD_START, null, commitNumber);
+      if (ENABLE_FABRIC_LOGS) {
+        FLog.d(TAG, "SynchronouslyUpdateViewOnUIThread for tag %d", reactTag);
+      }
       scheduleMountItem(
           updatePropsMountItem(reactTag, props), commitNumber, time, 0, 0, 0, 0, 0, 0);
     } catch (Exception ex) {
-      // ignore exceptions for now
       // TODO T42943890: Fix animations in Fabric and remove this try/catch
+      ReactSoftException.logSoftException(
+          TAG,
+          new ReactNoCrashSoftException(
+              "Caught exception in synchronouslyUpdateViewOnUIThread", ex));
     } finally {
       ReactMarker.logFabricMarker(
           ReactMarkerConstants.FABRIC_UPDATE_UI_MAIN_THREAD_END, null, commitNumber);
     }
+  }
+
+  /**
+   * When mounting instructions are scheduled on the UI thread, should they be executed immediately?
+   * *
+   */
+  @Override
+  @UiThread
+  @ThreadConfined(UI)
+  public void setAllowImmediateUIOperationExecution(boolean flag) {
+    mImmediatelyExecutedMountItemsOnUI = flag;
   }
 
   /**
@@ -443,8 +519,10 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
    */
   @DoNotStrip
   @SuppressWarnings("unused")
+  @AnyThread
+  @ThreadConfined(ANY)
   private void scheduleMountItem(
-      final MountItem mountItem,
+      @NonNull final MountItem mountItem,
       int commitNumber,
       long commitStartTime,
       long diffStartTime,
@@ -471,10 +549,24 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
       mMountItems.add(mountItem);
     }
 
-    // Post markers outside of lock
+    if (UiThreadUtil.isOnUiThread()) {
+      // We only read these flags on the UI thread.
+      boolean immediateExecutionEnabled =
+          !ReactFeatureFlags.allowDisablingImmediateExecutionOfScheduleMountItems
+              || mImmediatelyExecutedMountItemsOnUI;
+      if (immediateExecutionEnabled) {
+        try {
+          dispatchMountItems();
+        } finally {
+          mInDispatch = false;
+        }
+      }
+    }
+
+    // Post markers outside of lock and after sync mounting finishes its execution
     if (isBatchMountItem) {
       ReactMarker.logFabricMarker(
-          ReactMarkerConstants.FABRIC_COMMIT_START, null, commitNumber, mCommitStartTime);
+          ReactMarkerConstants.FABRIC_COMMIT_START, null, commitNumber, commitStartTime);
       ReactMarker.logFabricMarker(
           ReactMarkerConstants.FABRIC_FINISH_TRANSACTION_START,
           null,
@@ -495,19 +587,34 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
           ReactMarkerConstants.FABRIC_LAYOUT_END, null, commitNumber, layoutEndTime);
       ReactMarker.logFabricMarker(ReactMarkerConstants.FABRIC_COMMIT_END, null, commitNumber);
     }
-
-    if (UiThreadUtil.isOnUiThread()) {
-      dispatchMountItems();
-    }
   }
 
   @UiThread
+  @ThreadConfined(UI)
+  /**
+   * Anything that calls dispatchMountItems must call `mInDispatch = false` in a `finally` block
+   * after calling it. dispatchMountItems will do its best to clean up, but we don't try to recover
+   * from all failures here.
+   */
   private void dispatchMountItems() {
+    // Prevent re-dispatching in the middle of another dispatch call - this would cause mount
+    // items to execute out of order. No need to synchronize, this is all happening on the UI
+    // thread. TODO T63186801: refactor this
+    if (mInDispatch) {
+      mShouldDispatchAgain = true;
+      return;
+    }
+    if (mReDispatchCounter == 0) {
+      mBatchedExecutionTime = 0;
+    }
+    mInDispatch = true;
+
     mRunStartTime = SystemClock.uptimeMillis();
 
     List<MountItem> mountItemsToDispatch;
     synchronized (mMountItemsLock) {
       if (mMountItems.isEmpty()) {
+        dispatchMountItemsCleanup();
         return;
       }
       mountItemsToDispatch = mMountItems;
@@ -541,7 +648,7 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
 
     long batchedExecutionStartTime = SystemClock.uptimeMillis();
     for (MountItem mountItem : mountItemsToDispatch) {
-      if (DEBUG) {
+      if (ENABLE_FABRIC_LOGS) {
         // If a MountItem description is split across multiple lines, it's because it's a compound
         // MountItem. Log each line separately.
         String[] mountItemLines = mountItem.toString().split("\n");
@@ -551,13 +658,56 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
       }
       mountItem.execute(mMountingManager);
     }
-    mBatchedExecutionTime = SystemClock.uptimeMillis() - batchedExecutionStartTime;
+    mBatchedExecutionTime += SystemClock.uptimeMillis() - batchedExecutionStartTime;
     Systrace.endSection(Systrace.TRACE_TAG_REACT_JAVA_BRIDGE);
+
+    dispatchMountItemsCleanup();
+  }
+
+  /** Should be called at the end of every dispatchMountItems call. */
+  @UiThread
+  @ThreadConfined(UI)
+  private void dispatchMountItemsCleanup() {
+    // Should we dispatch again? We do this up to 10 times. This is a magic number subject to
+    // change. TODO T63181639: pick a better magic number.
+    // Reentrance into dispatchMountItems can potentially happen a lot on Android in Fabric because
+    // `updateState` from the
+    // mounting layer causes mount items to be dispatched synchronously. We want to 1) make sure
+    // we don't reenter in those cases, but 2) still execute those queued instructions
+    // synchronously.
+    // This is a pretty blunt tool, but we might not have better options since we really don't want
+    // to execute anything out-of-order.
+    mInDispatch = false;
+    if (mShouldDispatchAgain) {
+      mReDispatchCounter++;
+      mShouldDispatchAgain = false;
+      ReactSoftException.logSoftException(
+          TAG,
+          new ReactNoCrashSoftException(
+              "Re-dispatched "
+                  + mReDispatchCounter
+                  + " times. This indicates setState (?) is likely being called too many times during mounting."));
+
+      // If we reach this point, we just wait for the next UI tick to execute mount instructions.
+      if (mReDispatchCounter < 10) {
+        dispatchMountItems();
+      }
+    }
+    mReDispatchCounter = 0;
   }
 
   @UiThread
+  @ThreadConfined(UI)
   private void dispatchPreMountItems(long frameTimeNanos) {
+    // Just set the flag, don't try to do any retries here. Allow `dispatchMountItems` to handle
+    // that.
+    if (mInDispatch) {
+      return;
+    }
+
     Systrace.beginSection(Systrace.TRACE_TAG_REACT_JAVA_BRIDGE, "FabricUIManager::premountViews");
+
+    mInDispatch = true;
 
     while (true) {
       long timeLeftInFrame = FRAME_TIME_MS - ((System.nanoTime() - frameTimeNanos) / 1000000);
@@ -575,6 +725,8 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
 
       preMountItemsToDispatch.execute(mMountingManager);
     }
+
+    mInDispatch = false;
     Systrace.endSection(Systrace.TRACE_TAG_REACT_JAVA_BRIDGE);
   }
 
@@ -586,10 +738,12 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
    * Updates the layout metrics of the root view based on the Measure specs received by parameters.
    */
   @Override
+  @UiThread
+  @ThreadConfined(UI)
   public void updateRootLayoutSpecs(
       final int rootTag, final int widthMeasureSpec, final int heightMeasureSpec) {
 
-    if (DEBUG) {
+    if (ENABLE_FABRIC_LOGS) {
       FLog.d(TAG, "Updating Root Layout Specs");
     }
 
@@ -619,6 +773,13 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
   }
 
   @Override
+  @NonNull
+  @SuppressWarnings("unchecked")
+  public EventDispatcher getEventDispatcher() {
+    return mEventDispatcher;
+  }
+
+  @Override
   public void onHostPause() {
     ReactChoreographer.getInstance()
         .removeFrameCallback(ReactChoreographer.CallbackType.DISPATCH_UI, mDispatchUIFrameCallback);
@@ -629,6 +790,8 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
 
   @Deprecated
   @Override
+  @AnyThread
+  @ThreadConfined(ANY)
   public void dispatchCommand(
       final int reactTag, final int commandId, @Nullable final ReadableArray commandArgs) {
     synchronized (mMountItemsLock) {
@@ -637,6 +800,8 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
   }
 
   @Override
+  @AnyThread
+  @ThreadConfined(ANY)
   public void dispatchCommand(
       final int reactTag, final String commandId, @Nullable final ReadableArray commandArgs) {
     synchronized (mMountItemsLock) {
@@ -645,6 +810,8 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
   }
 
   @Override
+  @AnyThread
+  @ThreadConfined(ANY)
   public void sendAccessibilityEvent(int reactTag, int eventType) {
     synchronized (mMountItemsLock) {
       mMountItems.add(new SendAccessibilityEvent(reactTag, eventType));
@@ -709,30 +876,43 @@ public class FabricUIManager implements UIManager, LifecycleEventListener {
 
   private class DispatchUIFrameCallback extends GuardedFrameCallback {
 
-    private DispatchUIFrameCallback(ReactContext reactContext) {
+    private volatile boolean mIsMountingEnabled = true;
+
+    private DispatchUIFrameCallback(@NonNull ReactContext reactContext) {
       super(reactContext);
     }
 
+    @AnyThread
+    void stop() {
+      mIsMountingEnabled = false;
+    }
+
     @Override
+    @UiThread
+    @ThreadConfined(UI)
     public void doFrameGuarded(long frameTimeNanos) {
       if (!mIsMountingEnabled || mDestroyed) {
-        FLog.w(
-            ReactConstants.TAG,
-            "Not flushing pending UI operations because of previously thrown Exception");
+        FLog.w(TAG, "Not flushing pending UI operations because of previously thrown Exception");
         return;
       }
 
       try {
-
         dispatchPreMountItems(frameTimeNanos);
 
         dispatchMountItems();
 
       } catch (Exception ex) {
-        FLog.i(ReactConstants.TAG, "Exception thrown when executing UIFrameGuarded", ex);
-        mIsMountingEnabled = false;
+        FLog.e(TAG, "Exception thrown when executing UIFrameGuarded", ex);
+        stop();
         throw ex;
       } finally {
+        // In case a catastrophic exception is thrown in either dispatch/preDispatch, and cleanup
+        // doesn't run. In case of any other cleanup screwup, resetting this flag here will ensure
+        // that we *never* skip more than a single frame of mount instructions (that would be very
+        // bad,
+        // but skipping more than one frame would be even more very bad).
+        mInDispatch = false;
+
         ReactChoreographer.getInstance()
             .postFrameCallback(
                 ReactChoreographer.CallbackType.DISPATCH_UI, mDispatchUIFrameCallback);

@@ -13,103 +13,11 @@
 namespace facebook {
 namespace react {
 
-/**
- * This was cribbed from BaseTextProps. Maybe we can unify someday.
- * TODO: we should probably just move this to BaseTextProps / subclass it
- *
- * @param rawProps
- * @param defaultTextAttributes
- * @return
- */
-static TextAttributes convertRawProp(
-    const RawProps &rawProps,
-    const TextAttributes defaultTextAttributes) {
-  auto textAttributes = TextAttributes{};
-
-  // Color
-  textAttributes.foregroundColor =
-      convertRawProp(rawProps, "color", defaultTextAttributes.foregroundColor);
-  // Todo T53300333: not found in AndroidTextInput (java) and/or TextInput
-  textAttributes.backgroundColor = convertRawProp(
-      rawProps, "backgroundColor", defaultTextAttributes.backgroundColor);
-  // Todo T53300333: not found in AndroidTextInput (java) and/or TextInput
-  textAttributes.opacity =
-      convertRawProp(rawProps, "opacity", defaultTextAttributes.opacity);
-
-  // Font
-  textAttributes.fontFamily =
-      convertRawProp(rawProps, "fontFamily", defaultTextAttributes.fontFamily);
-  textAttributes.fontSize =
-      convertRawProp(rawProps, "fontSize", defaultTextAttributes.fontSize);
-  // Todo T53300333: not found in AndroidTextInput (java) and/or TextInput
-  // is this maxFontSizeMultiplier?
-  textAttributes.fontSizeMultiplier = convertRawProp(
-      rawProps, "fontSizeMultiplier", defaultTextAttributes.fontSizeMultiplier);
-  textAttributes.fontWeight =
-      convertRawProp(rawProps, "fontWeight", defaultTextAttributes.fontWeight);
-  textAttributes.fontStyle =
-      convertRawProp(rawProps, "fontStyle", defaultTextAttributes.fontStyle);
-  // Todo T53300333: not found in AndroidTextInput (java) and/or TextInput
-  textAttributes.fontVariant = convertRawProp(
-      rawProps, "fontVariant", defaultTextAttributes.fontVariant);
-  textAttributes.allowFontScaling = convertRawProp(
-      rawProps, "allowFontScaling", defaultTextAttributes.allowFontScaling);
-  textAttributes.letterSpacing = convertRawProp(
-      rawProps, "letterSpacing", defaultTextAttributes.letterSpacing);
-
-  // Paragraph
-  textAttributes.lineHeight =
-      convertRawProp(rawProps, "lineHeight", defaultTextAttributes.lineHeight);
-  textAttributes.alignment =
-      convertRawProp(rawProps, "textAlign", defaultTextAttributes.alignment);
-  // Todo T53300333: not found in AndroidTextInput (java) and/or TextInput
-  textAttributes.baseWritingDirection = convertRawProp(
-      rawProps,
-      "baseWritingDirection",
-      defaultTextAttributes.baseWritingDirection);
-
-  // Decoration
-  // Todo T53300333: not found in AndroidTextInput (java) and/or TextInput
-  textAttributes.textDecorationColor = convertRawProp(
-      rawProps,
-      "textDecorationColor",
-      defaultTextAttributes.textDecorationColor);
-  textAttributes.textDecorationLineType = convertRawProp(
-      rawProps,
-      "textDecorationLine",
-      defaultTextAttributes.textDecorationLineType);
-  // Todo T53300333: not found in AndroidTextInput (java) and/or TextInput
-  textAttributes.textDecorationLineStyle = convertRawProp(
-      rawProps,
-      "textDecorationLineStyle",
-      defaultTextAttributes.textDecorationLineStyle);
-  // Todo T53300333: not found in AndroidTextInput (java) and/or TextInput
-  textAttributes.textDecorationLinePattern = convertRawProp(
-      rawProps,
-      "textDecorationLinePattern",
-      defaultTextAttributes.textDecorationLinePattern);
-
-  // Shadow
-  textAttributes.textShadowOffset = convertRawProp(
-      rawProps, "textShadowOffset", defaultTextAttributes.textShadowOffset);
-  textAttributes.textShadowRadius = convertRawProp(
-      rawProps, "textShadowRadius", defaultTextAttributes.textShadowRadius);
-  textAttributes.textShadowColor = convertRawProp(
-      rawProps, "textShadowColor", defaultTextAttributes.textShadowColor);
-
-  // Special
-  // Todo T53300333: not found in AndroidTextInput (java) and/or TextInput
-  textAttributes.isHighlighted = convertRawProp(
-      rawProps, "isHighlighted", defaultTextAttributes.isHighlighted);
-
-  return textAttributes;
-}
-
 AndroidTextInputProps::AndroidTextInputProps(
     const AndroidTextInputProps &sourceProps,
     const RawProps &rawProps)
     : ViewProps(sourceProps, rawProps),
-
+      BaseTextProps(sourceProps, rawProps),
       autoCompleteType(convertRawProp(
           rawProps,
           "autoCompleteType",
@@ -313,7 +221,17 @@ AndroidTextInputProps::AndroidTextInputProps(
           sourceProps.mostRecentEventCount,
           {0})),
       text(convertRawProp(rawProps, "text", sourceProps.text, {})),
-      textAttributes(convertRawProp(rawProps, sourceProps.textAttributes)) {}
+      paragraphAttributes(
+          convertRawProp(rawProps, sourceProps.paragraphAttributes, {})),
+      // See AndroidTextInputComponentDescriptor for usage
+      // TODO T63008435: can these, and this feature, be removed entirely?
+      hasPaddingLeft(rawProps.at("", "padding", "") != nullptr || rawProps.at("Left", "padding", "") != nullptr),
+      hasPaddingTop(rawProps.at("", "padding", "") != nullptr || rawProps.at("Top", "padding", "") != nullptr),
+      hasPaddingRight(rawProps.at("", "padding", "") != nullptr || rawProps.at("Right", "padding", "") != nullptr),
+      hasPaddingBottom(rawProps.at("", "padding", "") != nullptr || rawProps.at("Bottom", "padding", "") != nullptr),
+      hasPaddingStart(rawProps.at("", "padding", "") != nullptr || rawProps.at("Start", "padding", "") != nullptr),
+      hasPaddingEnd(rawProps.at("", "padding", "") != nullptr || rawProps.at("End", "padding", "") != nullptr)
+      { }
 
 // TODO T53300085: support this in codegen; this was hand-written
 folly::dynamic AndroidTextInputProps::getDynamic() const {
@@ -367,6 +285,14 @@ folly::dynamic AndroidTextInputProps::getDynamic() const {
   props["cursorColor"] = toDynamic(cursorColor);
   props["mostRecentEventCount"] = mostRecentEventCount;
   props["text"] = text;
+
+  props["hasPaddingStart"] = hasPaddingStart;
+  props["hasPaddingEnd"] = hasPaddingEnd;
+  props["hasPaddingLeft"] = hasPaddingLeft;
+  props["hasPaddingRight"] = hasPaddingRight;
+  props["hasPaddingTop"] = hasPaddingTop;
+  props["hasPaddingBottom"] = hasPaddingBottom;
+
   return props;
 }
 
@@ -374,7 +300,7 @@ folly::dynamic AndroidTextInputProps::getDynamic() const {
 
 #if RN_DEBUG_STRING_CONVERTIBLE
 // TODO: codegen these
-SharedDebugStringConvertibleList TextProps::getDebugProps() const {
+SharedDebugStringConvertibleList AndroidTextInputProps::getDebugProps() const {
   return {};
 }
 #endif

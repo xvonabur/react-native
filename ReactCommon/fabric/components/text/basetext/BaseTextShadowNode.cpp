@@ -17,6 +17,15 @@
 namespace facebook {
 namespace react {
 
+inline ShadowView shadowViewFromShadowNode(ShadowNode const &shadowNode) {
+  auto shadowView = ShadowView{shadowNode};
+  // Clearing `props` and `state` (which we don't use) allows avoiding retain
+  // cycles.
+  shadowView.props = nullptr;
+  shadowView.state = nullptr;
+  return shadowView;
+}
+
 AttributedString BaseTextShadowNode::getAttributedString(
     TextAttributes const &textAttributes,
     ShadowNode const &parentNode) {
@@ -28,14 +37,14 @@ AttributedString BaseTextShadowNode::getAttributedString(
         std::dynamic_pointer_cast<const RawTextShadowNode>(childNode);
     if (rawTextShadowNode) {
       auto fragment = AttributedString::Fragment{};
-      fragment.string = rawTextShadowNode->getProps()->text;
+      fragment.string = rawTextShadowNode->getConcreteProps().text;
       fragment.textAttributes = textAttributes;
 
       // Storing a retaining pointer to `ParagraphShadowNode` inside
       // `attributedString` causes a retain cycle (besides that fact that we
       // don't need it at all). Storing a `ShadowView` instance instead of
       // `ShadowNode` should properly fix this problem.
-      fragment.parentShadowView = ShadowView(parentNode);
+      fragment.parentShadowView = shadowViewFromShadowNode(parentNode);
       attributedString.appendFragment(fragment);
       continue;
     }
@@ -45,7 +54,8 @@ AttributedString BaseTextShadowNode::getAttributedString(
         std::dynamic_pointer_cast<const TextShadowNode>(childNode);
     if (textShadowNode) {
       auto localTextAttributes = textAttributes;
-      localTextAttributes.apply(textShadowNode->getProps()->textAttributes);
+      localTextAttributes.apply(
+          textShadowNode->getConcreteProps().textAttributes);
       attributedString.appendAttributedString(
           textShadowNode->getAttributedString(
               localTextAttributes, *textShadowNode));
@@ -54,7 +64,8 @@ AttributedString BaseTextShadowNode::getAttributedString(
 
     // Any other kind of ShadowNode
     auto fragment = AttributedString::Fragment{};
-    fragment.shadowView = ShadowView(*childNode);
+    fragment.string = AttributedString::Fragment::AttachmentCharacter();
+    fragment.parentShadowView = shadowViewFromShadowNode(*childNode);
     fragment.textAttributes = textAttributes;
     attributedString.appendFragment(fragment);
   }

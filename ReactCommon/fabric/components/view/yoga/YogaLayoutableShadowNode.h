@@ -22,20 +22,24 @@
 namespace facebook {
 namespace react {
 
-class YogaLayoutableShadowNode : public LayoutableShadowNode,
-                                 public virtual DebugStringConvertible,
-                                 public virtual Sealable {
+class YogaLayoutableShadowNode : public LayoutableShadowNode {
  public:
   using UnsharedList = better::small_vector<
       YogaLayoutableShadowNode *,
       kShadowNodeChildrenSmallVectorSize>;
 
+  static ShadowNodeTraits BaseTraits();
+
 #pragma mark - Constructors
 
-  YogaLayoutableShadowNode();
+  YogaLayoutableShadowNode(
+      ShadowNodeFragment const &fragment,
+      ShadowNodeFamily::Shared const &family,
+      ShadowNodeTraits traits);
 
   YogaLayoutableShadowNode(
-      const YogaLayoutableShadowNode &layoutableShadowNode);
+      ShadowNode const &sourceShadowNode,
+      ShadowNodeFragment const &fragment);
 
 #pragma mark - Mutating Methods
 
@@ -45,31 +49,20 @@ class YogaLayoutableShadowNode : public LayoutableShadowNode,
    */
   void enableMeasurement();
 
-  /*
-   * Appends `child`'s Yoga node to the own Yoga node.
-   * Complements `ShadowNode::appendChild(...)` functionality from Yoga
-   * perspective.
-   */
-  void appendChild(YogaLayoutableShadowNode *child);
+  void appendChild(ShadowNode::Shared const &child);
+
+  void updateYogaChildren();
+
+  void updateYogaProps();
 
   /*
-   * Sets Yoga children based on collection of `YogaLayoutableShadowNode`
-   * instances. Complements `ShadowNode::setChildren(...)` functionality from
-   * Yoga perspective.
-   */
-  void setChildren(YogaLayoutableShadowNode::UnsharedList children);
-
-  /*
-   * Sets Yoga styles based on given `YogaStylableProps`.
-   */
-  void setProps(const YogaStylableProps &props);
-
-  /**
    * Sets layoutable size of node.
    */
   void setSize(Size size) const;
 
-  /**
+  void setPadding(RectangleEdges<Float> padding) const;
+
+  /*
    * Sets position type of Yoga node (relative, absolute).
    */
   void setPositionType(YGPositionType positionType) const;
@@ -87,11 +80,11 @@ class YogaLayoutableShadowNode : public LayoutableShadowNode,
    * Computes layout using Yoga layout engine.
    * See `LayoutableShadowNode` for more details.
    */
-  void layout(LayoutContext layoutContext) override;
+  void layoutTree(
+      LayoutContext layoutContext,
+      LayoutConstraints layoutConstraints) override;
 
   void layoutChildren(LayoutContext layoutContext) override;
-
-  LayoutableShadowNode::UnsharedList getLayoutableChildNodes() const override;
 
  protected:
   /*
@@ -107,6 +100,17 @@ class YogaLayoutableShadowNode : public LayoutableShadowNode,
   mutable YGNode yogaNode_;
 
  private:
+  /*
+   * Appends `child`'s Yoga node to the own Yoga node.
+   * Complements `ShadowNode::appendChild(...)` functionality from Yoga
+   * perspective.
+   */
+  void appendChildYogaNode(YogaLayoutableShadowNode const &child);
+
+  YogaLayoutableShadowNode &cloneAndReplaceChild(
+      YogaLayoutableShadowNode &child,
+      int suggestedIndex);
+
   static YGConfig &initializeYogaConfig(YGConfig &config);
   static YGNode *yogaNodeCloneCallbackConnector(
       YGNode *oldYogaNode,
@@ -117,8 +121,36 @@ class YogaLayoutableShadowNode : public LayoutableShadowNode,
       float width,
       YGMeasureMode widthMode,
       float height,
-      YGMeasureMode heightMode);
+      YGMeasureMode heightMode,
+      void *layoutContext);
 };
+
+template <>
+inline YogaLayoutableShadowNode const &
+traitCast<YogaLayoutableShadowNode const &>(ShadowNode const &shadowNode) {
+  bool castable =
+      shadowNode.getTraits().check(ShadowNodeTraits::Trait::YogaLayoutableKind);
+  assert(
+      castable ==
+      (dynamic_cast<YogaLayoutableShadowNode const *>(&shadowNode) != nullptr));
+  assert(castable);
+  (void)castable;
+  return static_cast<YogaLayoutableShadowNode const &>(shadowNode);
+}
+
+template <>
+inline YogaLayoutableShadowNode const *
+traitCast<YogaLayoutableShadowNode const *>(ShadowNode const *shadowNode) {
+  bool castable = shadowNode->getTraits().check(
+      ShadowNodeTraits::Trait::YogaLayoutableKind);
+  assert(
+      castable ==
+      (dynamic_cast<YogaLayoutableShadowNode const *>(shadowNode) != nullptr));
+  if (!castable) {
+    return nullptr;
+  }
+  return static_cast<YogaLayoutableShadowNode const *>(shadowNode);
+}
 
 } // namespace react
 } // namespace facebook

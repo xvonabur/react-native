@@ -14,6 +14,7 @@
 
 #include <react/attributedstring/TextAttributes.h>
 #include <react/attributedstring/conversions.h>
+#include <react/components/text/BaseTextProps.h>
 #include <react/components/view/ViewProps.h>
 #include <react/core/propsConversions.h>
 #include <react/graphics/Color.h>
@@ -91,7 +92,7 @@ inline folly::dynamic toDynamic(const AndroidTextInputSelectionStruct &value) {
 }
 #endif
 
-class AndroidTextInputProps final : public ViewProps {
+class AndroidTextInputProps final : public ViewProps, public BaseTextProps {
  public:
   AndroidTextInputProps() = default;
   AndroidTextInputProps(
@@ -152,11 +153,27 @@ class AndroidTextInputProps final : public ViewProps {
   const int mostRecentEventCount{0};
   const std::string text{};
 
-  /**
-   * TextAttributes: see all BaseText. These attributes are not set
-   * directly; see convertRawProps.
+  /*
+   * Contains all prop values that affect visual representation of the
+   * paragraph.
    */
-  const TextAttributes textAttributes{};
+  ParagraphAttributes const paragraphAttributes{};
+
+  /**
+   * Auxiliary information to detect if these props are set or not.
+   * See AndroidTextInputComponentDescriptor for usage.
+   * TODO T63008435: can these, and this feature, be removed entirely?
+   */
+  const bool hasPaddingLeft{};
+  const bool hasPaddingTop{};
+  const bool hasPaddingRight{};
+  const bool hasPaddingBottom{};
+  const bool hasPaddingStart{};
+  const bool hasPaddingEnd{};
+
+#if RN_DEBUG_STRING_CONVERTIBLE
+  SharedDebugStringConvertibleList getDebugProps() const;
+#endif
 };
 
 } // namespace react

@@ -10,6 +10,7 @@
 
 'use strict';
 import ReactNativeViewViewConfigAndroid from './ReactNativeViewViewConfigAndroid';
+import {Platform} from 'react-native';
 
 const ReactNativeViewConfig = {
   uiViewClassName: 'RCTView',
@@ -172,7 +173,6 @@ const ReactNativeViewConfig = {
     height: true,
     hitSlop: {diff: (require('../../Utilities/differ/insetsDiffer'): any)},
     importantForAccessibility: true,
-    isTVSelectable: true,
     justifyContent: true,
     left: true,
     margin: true,
@@ -322,7 +322,9 @@ const ReactNativeViewConfig = {
       textTransform: true,
       tintColor: {process: require('../../StyleSheet/processColor')},
       top: true,
-      transform: {diff: require('../../Utilities/differ/matricesDiffer')},
+      transform: ((Platform.OS === 'ios'
+        ? {diff: require('../../Utilities/differ/matricesDiffer')}
+        : {process: require('../../StyleSheet/processTransform')}): any),
       transformMatrix: true,
       translateX: true,
       translateY: true,
@@ -332,10 +334,11 @@ const ReactNativeViewConfig = {
     },
     testID: true,
     top: true,
-    transform: {diff: require('../../Utilities/differ/matricesDiffer')},
+    transform: ((Platform.OS === 'ios'
+      ? {diff: require('../../Utilities/differ/matricesDiffer')}
+      : {process: require('../../StyleSheet/processTransform')}): any),
     translateX: true,
     translateY: true,
-    tvParallaxProperties: true,
     width: true,
     zIndex: true,
   },

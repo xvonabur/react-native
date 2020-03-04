@@ -13,6 +13,8 @@
 import * as React from 'react';
 import StyleSheet from '../../StyleSheet/StyleSheet';
 import Text from '../../Text/Text';
+import View from '../../Components/View/View';
+import Platform from '../../Utilities/Platform';
 import LogBoxButton from './LogBoxButton';
 import * as LogBoxStyle from './LogBoxStyle';
 
@@ -26,68 +28,88 @@ type Props = $ReadOnly<{|
 
 function LogBoxInspectorStackFrame(props: Props): React.Node {
   const {frame, onPress} = props;
-
+  const column = frame.column != null && parseInt(frame.column, 10);
+  const location =
+    getFileName(frame.file) +
+    (frame.lineNumber != null
+      ? ':' +
+        frame.lineNumber +
+        (column && !isNaN(column) ? ':' + (column + 1) : '')
+      : '');
   return (
-    <LogBoxButton
-      backgroundColor={{
-        default: 'transparent',
-        pressed: LogBoxStyle.getBackgroundColor(1),
-      }}
-      onPress={onPress}
-      style={styles.frame}>
-      <Text style={styles.frameName}>{frame.methodName}</Text>
-      <Text
-        ellipsizeMode="middle"
-        numberOfLines={1}
-        style={styles.frameLocation}>
-        {formatFrameLocation(frame)}
-      </Text>
-    </LogBoxButton>
+    <View style={styles.frameContainer}>
+      <LogBoxButton
+        backgroundColor={{
+          default: 'transparent',
+          pressed: onPress ? LogBoxStyle.getBackgroundColor(1) : 'transparent',
+        }}
+        onPress={onPress}
+        style={styles.frame}>
+        <Text style={[styles.name, frame.collapse === true && styles.dim]}>
+          {frame.methodName}
+        </Text>
+        <Text
+          ellipsizeMode="middle"
+          numberOfLines={1}
+          style={[styles.location, frame.collapse === true && styles.dim]}>
+          {location}
+        </Text>
+      </LogBoxButton>
+    </View>
   );
 }
 
-function formatFrameLocation(frame: StackFrame): string {
-  const {file, lineNumber, column} = frame;
+function getFileName(file) {
   if (file == null) {
     return '<unknown>';
   }
   const queryIndex = file.indexOf('?');
-  const query = queryIndex < 0 ? '' : file.substr(queryIndex);
-
-  const path = queryIndex < 0 ? file : file.substr(0, queryIndex);
-  let location = path.substr(path.lastIndexOf('/') + 1) + query;
-
-  if (lineNumber == null) {
-    return location;
-  }
-
-  location = location + ':' + lineNumber;
-
-  if (column == null) {
-    return location;
-  }
-
-  return location + ':' + column;
+  return file.substring(
+    file.lastIndexOf('/') + 1,
+    queryIndex === -1 ? file.length : queryIndex,
+  );
 }
 
 const styles = StyleSheet.create({
-  frame: {
-    paddingHorizontal: 25,
-    paddingVertical: 4,
+  frameContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 15,
   },
-  frameName: {
+  frame: {
+    flex: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 5,
+  },
+  lineLocation: {
+    flexDirection: 'row',
+  },
+  name: {
     color: LogBoxStyle.getTextColor(1),
     fontSize: 14,
     includeFontPadding: false,
     lineHeight: 18,
+    fontWeight: '400',
+    fontFamily: Platform.select({android: 'monospace', ios: 'Menlo'}),
   },
-  frameLocation: {
-    color: LogBoxStyle.getTextColor(0.7),
+  location: {
+    color: LogBoxStyle.getTextColor(0.8),
     fontSize: 12,
     fontWeight: '300',
     includeFontPadding: false,
     lineHeight: 16,
     paddingLeft: 10,
+  },
+  dim: {
+    color: LogBoxStyle.getTextColor(0.4),
+    fontWeight: '300',
+  },
+  line: {
+    color: LogBoxStyle.getTextColor(0.8),
+    fontSize: 12,
+    fontWeight: '300',
+    includeFontPadding: false,
+    lineHeight: 16,
   },
 });
 

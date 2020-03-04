@@ -25,6 +25,8 @@ import com.facebook.react.R;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Dynamic;
 import com.facebook.react.bridge.ReactContext;
+import com.facebook.react.bridge.ReactNoCrashSoftException;
+import com.facebook.react.bridge.ReactSoftException;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
@@ -278,9 +280,14 @@ public class ReactAccessibilityDelegate extends AccessibilityDelegateCompat {
       final WritableMap event = Arguments.createMap();
       event.putString("actionName", mAccessibilityActionsMap.get(action));
       ReactContext reactContext = (ReactContext) host.getContext();
-      reactContext
-          .getJSModule(RCTEventEmitter.class)
-          .receiveEvent(host.getId(), "topAccessibilityAction", event);
+      if (reactContext.hasActiveCatalystInstance()) {
+        reactContext
+            .getJSModule(RCTEventEmitter.class)
+            .receiveEvent(host.getId(), "topAccessibilityAction", event);
+      } else {
+        ReactSoftException.logSoftException(
+            TAG, new ReactNoCrashSoftException("Cannot get RCTEventEmitter, no CatalystInstance"));
+      }
 
       // In order to make Talkback announce the change of the adjustable's value,
       // schedule to send a TYPE_VIEW_SELECTED event after performing the scroll actions.
@@ -360,7 +367,6 @@ public class ReactAccessibilityDelegate extends AccessibilityDelegateCompat {
     } else if (role.equals(AccessibilityRole.SUMMARY)) {
       nodeInfo.setRoleDescription(context.getString(R.string.summary_description));
     } else if (role.equals(AccessibilityRole.HEADER)) {
-      nodeInfo.setRoleDescription(context.getString(R.string.header_description));
       final AccessibilityNodeInfoCompat.CollectionItemInfoCompat itemInfo =
           AccessibilityNodeInfoCompat.CollectionItemInfoCompat.obtain(0, 1, 0, 1, true);
       nodeInfo.setCollectionItemInfo(itemInfo);

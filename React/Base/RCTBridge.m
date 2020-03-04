@@ -36,8 +36,8 @@ NSString *const RCTBridgeWillDownloadScriptNotification = @"RCTBridgeWillDownloa
 NSString *const RCTBridgeDidDownloadScriptNotification = @"RCTBridgeDidDownloadScriptNotification";
 NSString *const RCTBridgeWillInvalidateModulesNotification = @"RCTBridgeWillInvalidateModulesNotification";
 NSString *const RCTBridgeDidInvalidateModulesNotification = @"RCTBridgeDidInvalidateModulesNotification";
+NSString *const RCTBridgeWillBeInvalidatedNotification = @"RCTBridgeWillBeInvalidatedNotification";
 NSString *const RCTBridgeDidDownloadScriptNotificationSourceKey = @"source";
-NSString *const RCTBridgeDidDownloadScriptNotificationReasonKey = @"reason";
 NSString *const RCTBridgeDidDownloadScriptNotificationBridgeDescriptionKey = @"bridgeDescription";
 
 static NSMutableArray<Class> *RCTModuleClasses;
@@ -293,21 +293,26 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
 }
 
 /**
- * Legacy reload, please use reloadWithReason and provide a reason for stats.
+ * DEPRECATED - please use RCTReloadCommand.
  */
 - (void)reload
 {
    [self reloadWithReason:@"Unknown from bridge"];
 }
 
+/**
+ * DEPRECATED - please use RCTReloadCommand.
+ */
 - (void)reloadWithReason:(NSString *)reason
 {
-  #if RCT_ENABLE_INSPECTOR && !TARGET_OS_UIKITFORMAC
+  #if RCT_ENABLE_INSPECTOR
   // Disable debugger to resume the JsVM & avoid thread locks while reloading
   [RCTInspectorDevServerHelper disableDebugger];
   #endif
 
-  [[NSNotificationCenter defaultCenter] postNotificationName:RCTBridgeWillReloadNotification object:self userInfo:@{RCTBridgeDidDownloadScriptNotificationReasonKey: reason} ];
+  [[NSNotificationCenter defaultCenter] postNotificationName:RCTBridgeWillReloadNotification
+                                                      object:self
+                                                    userInfo:nil];
 
   /**
    * Any thread
@@ -327,6 +332,9 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
   [[NSNotificationCenter defaultCenter] postNotificationName:RCTBridgeFastRefreshNotification object:self];
 }
 
+/**
+ * DEPRECATED - please use RCTReloadCommand.
+ */
 - (void)requestReload
 {
   [self reloadWithReason:@"Requested from bridge"];
@@ -347,12 +355,6 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
 
   Class bridgeClass = self.bridgeClass;
 
-  #if RCT_DEV
-  RCTExecuteOnMainQueue(^{
-    RCTRegisterReloadCommandListener(self);
-  });
-  #endif
-
   // Only update bundleURL from delegate if delegate bundleURL has changed
   NSURL *previousDelegateURL = _delegateBundleURL;
   _delegateBundleURL = [self.delegate sourceURLForBridge:self];
@@ -362,6 +364,11 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
 
   // Sanitize the bundle URL
   _bundleURL = [RCTConvert NSURL:_bundleURL.absoluteString];
+
+  RCTExecuteOnMainQueue(^{
+    RCTRegisterReloadCommandListener(self);
+    RCTReloadCommandSetBundleURL(self->_bundleURL);
+  });
 
   self.batchedBridge = [[bridgeClass alloc] initWithParentBridge:self];
   [self.batchedBridge start];
@@ -386,6 +393,9 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
 
 - (void)invalidate
 {
+  [[NSNotificationCenter defaultCenter] postNotificationName:RCTBridgeWillBeInvalidatedNotification
+                                                      object:self];
+
   RCTBridge *batchedBridge = self.batchedBridge;
   self.batchedBridge = nil;
 

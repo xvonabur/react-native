@@ -7,6 +7,9 @@
 
 package com.facebook.react.fabric.mounting.mountitems;
 
+import static com.facebook.react.fabric.FabricUIManager.IS_DEVELOPMENT_ENVIRONMENT;
+
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import com.facebook.react.fabric.mounting.MountingManager;
 import com.facebook.react.uimanager.StateWrapper;
@@ -22,12 +25,19 @@ public class UpdateStateMountItem implements MountItem {
   }
 
   @Override
-  public void execute(MountingManager mountingManager) {
+  public void execute(@NonNull MountingManager mountingManager) {
     mountingManager.updateState(mReactTag, mStateWrapper);
   }
 
   @Override
   public String toString() {
-    return "UpdateStateMountItem [" + mReactTag + "] - stateWrapper: " + mStateWrapper;
+    StringBuilder result =
+        new StringBuilder("UpdateStateMountItem [").append(mReactTag).append("]");
+
+    if (IS_DEVELOPMENT_ENVIRONMENT) {
+      result.append(" state: ").append(mStateWrapper != null ? mStateWrapper : "<null>");
+    }
+
+    return result.toString();
   }
 }

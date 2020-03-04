@@ -15,10 +15,8 @@ import static com.facebook.systrace.Systrace.TRACE_TAG_REACT_JAVA_BRIDGE;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Rect;
-import android.os.Build;
 import android.os.Bundle;
 import android.util.AttributeSet;
-import android.util.DisplayMetrics;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.Surface;
@@ -36,10 +34,10 @@ import com.facebook.react.bridge.CatalystInstance;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReactMarker;
 import com.facebook.react.bridge.ReactMarkerConstants;
+import com.facebook.react.bridge.UIManager;
 import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
-import com.facebook.react.common.ReactConstants;
 import com.facebook.react.common.annotations.VisibleForTesting;
 import com.facebook.react.modules.appregistry.AppRegistry;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
@@ -77,6 +75,7 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
     void onAttachedToReactInstance(ReactRootView rootView);
   }
 
+  private static final String TAG = "ReactRootView";
   private @Nullable ReactInstanceManager mReactInstanceManager;
   private @Nullable String mJSModuleName;
   private @Nullable Bundle mAppProperties;
@@ -127,8 +126,12 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
 
   @Override
   protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+    // TODO: T60453649 - Add test automation to verify behavior of onMeasure
+    setAllowImmediateUIOperationExecution(false);
+
     if (mUseSurface) {
       super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+      setAllowImmediateUIOperationExecution(true);
       return;
     }
 
@@ -182,6 +185,7 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
       mLastHeight = height;
 
     } finally {
+      setAllowImmediateUIOperationExecution(true);
       Systrace.endSection(TRACE_TAG_REACT_JAVA_BRIDGE);
     }
   }
@@ -191,14 +195,11 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
     if (mReactInstanceManager == null
         || !mIsAttachedToInstance
         || mReactInstanceManager.getCurrentReactContext() == null) {
-      FLog.w(
-          ReactConstants.TAG,
-          "Unable to dispatch touch to JS as the catalyst instance has not been attached");
+      FLog.w(TAG, "Unable to dispatch touch to JS as the catalyst instance has not been attached");
       return;
     }
     if (mJSTouchDispatcher == null) {
-      FLog.w(
-          ReactConstants.TAG, "Unable to dispatch touch to JS before the dispatcher is available");
+      FLog.w(TAG, "Unable to dispatch touch to JS before the dispatcher is available");
       return;
     }
     ReactContext reactContext = mReactInstanceManager.getCurrentReactContext();
@@ -238,9 +239,7 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
     if (mReactInstanceManager == null
         || !mIsAttachedToInstance
         || mReactInstanceManager.getCurrentReactContext() == null) {
-      FLog.w(
-          ReactConstants.TAG,
-          "Unable to handle key event as the catalyst instance has not been attached");
+      FLog.w(TAG, "Unable to handle key event as the catalyst instance has not been attached");
       return super.dispatchKeyEvent(ev);
     }
     mAndroidHWInputDeviceHelper.handleKeyEvent(ev);
@@ -253,7 +252,7 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
         || !mIsAttachedToInstance
         || mReactInstanceManager.getCurrentReactContext() == null) {
       FLog.w(
-          ReactConstants.TAG,
+          TAG,
           "Unable to handle focus changed event as the catalyst instance has not been attached");
       super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
       return;
@@ -268,7 +267,7 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
         || !mIsAttachedToInstance
         || mReactInstanceManager.getCurrentReactContext() == null) {
       FLog.w(
-          ReactConstants.TAG,
+          TAG,
           "Unable to handle child focus changed event as the catalyst instance has not been attached");
       super.requestChildFocus(child, focused);
       return;
@@ -281,14 +280,11 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
     if (mReactInstanceManager == null
         || !mIsAttachedToInstance
         || mReactInstanceManager.getCurrentReactContext() == null) {
-      FLog.w(
-          ReactConstants.TAG,
-          "Unable to dispatch touch to JS as the catalyst instance has not been attached");
+      FLog.w(TAG, "Unable to dispatch touch to JS as the catalyst instance has not been attached");
       return;
     }
     if (mJSTouchDispatcher == null) {
-      FLog.w(
-          ReactConstants.TAG, "Unable to dispatch touch to JS before the dispatcher is available");
+      FLog.w(TAG, "Unable to dispatch touch to JS before the dispatcher is available");
       return;
     }
     ReactContext reactContext = mReactInstanceManager.getCurrentReactContext();
@@ -422,18 +418,65 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
     mShouldLogContentAppeared = shouldLogContentAppeared;
   }
 
+  @Nullable
+  @Override
+  public String getSurfaceID() {
+    Bundle appProperties = getAppProperties();
+    return appProperties != null ? appProperties.getString("surfaceID") : null;
+  }
+
   private void updateRootLayoutSpecs(final int widthMeasureSpec, final int heightMeasureSpec) {
     if (mReactInstanceManager == null) {
-      FLog.w(
-          ReactConstants.TAG,
-          "Unable to update root layout specs for uninitialized ReactInstanceManager");
+      FLog.w(TAG, "Unable to update root layout specs for uninitialized ReactInstanceManager");
       return;
     }
     final ReactContext reactApplicationContext = mReactInstanceManager.getCurrentReactContext();
 
     if (reactApplicationContext != null) {
-      UIManagerHelper.getUIManager(reactApplicationContext, getUIManagerType())
-          .updateRootLayoutSpecs(getRootViewTag(), widthMeasureSpec, heightMeasureSpec);
+      @Nullable
+      UIManager uiManager =
+          UIManagerHelper.getUIManager(reactApplicationContext, getUIManagerType());
+      // Ignore calling updateRootLayoutSpecs if UIManager is not properly initialized.
+      if (uiManager != null) {
+        uiManager.updateRootLayoutSpecs(getRootViewTag(), widthMeasureSpec, heightMeasureSpec);
+      }
+    }
+  }
+
+  /**
+   * In Fabric, it is possible for MountItems to be scheduled during onMeasure calls, specifically:
+   *
+   * <p>ReactRootView.onMeasure -> ReactRootView.updateRootLayoutSpecs ->
+   * FabricUIManager.updateRootLayoutSpecs -> Binding.setConstraints -> (C++) commit new tree ->
+   * (C++ Android binding) diff tree, schedule mount items -> FabricUIManager.scheduleMountItem
+   *
+   * <p>If called on the main thread, `scheduleMountItem` will execute MountItems synchronously,
+   * causing all ShadowNode updates to be flushed to the view hierarchy, on the main thread, during
+   * an onMeasure call.
+   *
+   * <p>Use this method to disable immediate execution of mount items.
+   *
+   * <p>This is a noop outside in pre-Fabric React Native.
+   */
+  private void setAllowImmediateUIOperationExecution(boolean flag) {
+    final ReactInstanceManager reactInstanceManager = mReactInstanceManager;
+
+    if (reactInstanceManager == null) {
+      return;
+    }
+
+    final ReactContext reactApplicationContext = reactInstanceManager.getCurrentReactContext();
+
+    if (reactApplicationContext == null) {
+      return;
+    }
+
+    @Nullable
+    UIManager uiManager = UIManagerHelper.getUIManager(reactApplicationContext, getUIManagerType());
+    // Ignore calling setAllowImmediateUIOperationExecution if UIManager is not properly
+    // initialized.
+    if (uiManager != null) {
+      uiManager.setAllowImmediateUIOperationExecution(flag);
     }
   }
 
@@ -541,6 +584,8 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
 
         mShouldLogContentAppeared = true;
 
+        // TODO T62192299: remove this
+        FLog.e(TAG, "runApplication: call AppRegistry.runApplication");
         catalystInstance.getJSModule(AppRegistry.class).runApplication(jsAppModuleName, appParams);
       }
     } finally {
@@ -640,8 +685,6 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
 
     private int mKeyboardHeight = 0;
     private int mDeviceRotation = 0;
-    private DisplayMetrics mWindowMetrics = new DisplayMetrics();
-    private DisplayMetrics mScreenMetrics = new DisplayMetrics();
 
     /* package */ CustomGlobalLayoutListener() {
       DisplayMetricsHolder.initDisplayMetricsIfNotInitialized(getContext().getApplicationContext());
@@ -706,32 +749,8 @@ public class ReactRootView extends FrameLayout implements RootView, ReactRoot {
     }
 
     private void checkForDeviceDimensionsChanges() {
-      // Get current display metrics.
-      DisplayMetricsHolder.initDisplayMetrics(getContext());
-      // Check changes to both window and screen display metrics since they may not update at the
-      // same time.
-      if (!areMetricsEqual(mWindowMetrics, DisplayMetricsHolder.getWindowDisplayMetrics())
-          || !areMetricsEqual(mScreenMetrics, DisplayMetricsHolder.getScreenDisplayMetrics())) {
-        mWindowMetrics.setTo(DisplayMetricsHolder.getWindowDisplayMetrics());
-        mScreenMetrics.setTo(DisplayMetricsHolder.getScreenDisplayMetrics());
-        emitUpdateDimensionsEvent();
-      }
-    }
-
-    private boolean areMetricsEqual(DisplayMetrics displayMetrics, DisplayMetrics otherMetrics) {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-        return displayMetrics.equals(otherMetrics);
-      } else {
-        // DisplayMetrics didn't have an equals method before API 17.
-        // Check all public fields manually.
-        return displayMetrics.widthPixels == otherMetrics.widthPixels
-            && displayMetrics.heightPixels == otherMetrics.heightPixels
-            && displayMetrics.density == otherMetrics.density
-            && displayMetrics.densityDpi == otherMetrics.densityDpi
-            && displayMetrics.scaledDensity == otherMetrics.scaledDensity
-            && displayMetrics.xdpi == otherMetrics.xdpi
-            && displayMetrics.ydpi == otherMetrics.ydpi;
-      }
+      // DeviceInfoModule caches the last dimensions emitted to JS, so we don't need to check here.
+      emitUpdateDimensionsEvent();
     }
 
     private void emitOrientationChanged(final int newRotation) {

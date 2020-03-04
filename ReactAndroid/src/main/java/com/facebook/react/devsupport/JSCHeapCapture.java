@@ -8,18 +8,17 @@
 package com.facebook.react.devsupport;
 
 import androidx.annotation.Nullable;
+import com.facebook.fbreact.specs.NativeJSCHeapCaptureSpec;
 import com.facebook.react.bridge.JavaScriptModule;
 import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.bridge.ReactContextBaseJavaModule;
-import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.module.annotations.ReactModule;
 import java.io.File;
 
 // This module is being called only by Java via the static method "captureHeap" that
 // requires it to already be initialized, thus we eagerly initialize this module
-@ReactModule(name = "JSCHeapCapture", needsEagerInit = true)
-public class JSCHeapCapture extends ReactContextBaseJavaModule {
-  public static final String TAG = JSCHeapCapture.class.getSimpleName();
+@ReactModule(name = JSCHeapCapture.TAG, needsEagerInit = true)
+public class JSCHeapCapture extends NativeJSCHeapCaptureSpec {
+  public static final String TAG = "JSCHeapCapture";
 
   public interface HeapCapture extends JavaScriptModule {
     void captureHeap(String path);
@@ -56,8 +55,7 @@ public class JSCHeapCapture extends ReactContextBaseJavaModule {
     File f = new File(path + "/capture.json");
     f.delete();
 
-    ReactApplicationContext reactApplicationContext =
-        getReactApplicationContextIfActiveOrWarn(TAG, "captureHeap");
+    ReactApplicationContext reactApplicationContext = getReactApplicationContextIfActiveOrWarn();
 
     if (reactApplicationContext != null) {
       HeapCapture heapCapture = reactApplicationContext.getJSModule(HeapCapture.class);
@@ -70,7 +68,7 @@ public class JSCHeapCapture extends ReactContextBaseJavaModule {
     }
   }
 
-  @ReactMethod
+  @Override
   public synchronized void captureComplete(String path, String error) {
     if (mCaptureInProgress != null) {
       if (error == null) {

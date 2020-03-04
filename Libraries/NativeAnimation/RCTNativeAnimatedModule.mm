@@ -15,9 +15,6 @@
 
 typedef void (^AnimatedOperation)(RCTNativeAnimatedNodesManager *nodesManager);
 
-@interface RCTNativeAnimatedModule() <NativeAnimatedModuleSpec>
-@end
-
 @implementation RCTNativeAnimatedModule
 {
   RCTNativeAnimatedNodesManager *_nodesManager;
@@ -160,11 +157,15 @@ RCT_EXPORT_METHOD(connectAnimatedNodeToView:(double)nodeTag
 RCT_EXPORT_METHOD(disconnectAnimatedNodeFromView:(double)nodeTag
                   viewTag:(double)viewTag)
 {
-  [self addPreOperationBlock:^(RCTNativeAnimatedNodesManager *nodesManager) {
-    [nodesManager restoreDefaultValues:[NSNumber numberWithDouble:nodeTag]];
-  }];
   [self addOperationBlock:^(RCTNativeAnimatedNodesManager *nodesManager) {
     [nodesManager disconnectAnimatedNodeFromView:[NSNumber numberWithDouble:nodeTag] viewTag:[NSNumber numberWithDouble:viewTag]];
+  }];
+}
+
+RCT_EXPORT_METHOD(restoreDefaultValues:(double)nodeTag)
+{
+  [self addPreOperationBlock:^(RCTNativeAnimatedNodesManager *nodesManager) {
+    [nodesManager restoreDefaultValues:[NSNumber numberWithDouble:nodeTag]];
   }];
 }
 
@@ -329,11 +330,6 @@ RCT_EXPORT_METHOD(removeAnimatedEventFromView:(double)viewTag
   RCTExecuteOnMainQueue(^{
     [self->_nodesManager handleAnimatedEvent:event];
   });
-}
-
-- (std::shared_ptr<facebook::react::TurboModule>)getTurboModuleWithJsInvoker:(std::shared_ptr<facebook::react::CallInvoker>)jsInvoker
-{
-  return std::make_shared<facebook::react::NativeAnimatedModuleSpecJSI>(self, jsInvoker);
 }
 
 @end

@@ -11,46 +11,42 @@
 'use strict';
 
 const DeprecatedImagePropType = require('../DeprecatedPropTypes/DeprecatedImagePropType');
-const NativeModules = require('../BatchedBridge/NativeModules');
 const React = require('react');
 const ReactNative = require('../Renderer/shims/ReactNative'); // eslint-disable-line no-unused-vars
 const StyleSheet = require('../StyleSheet/StyleSheet');
 
 const flattenStyle = require('../StyleSheet/flattenStyle');
-const requireNativeComponent = require('../ReactNative/requireNativeComponent');
 const resolveAssetSource = require('./resolveAssetSource');
 
 import type {ImageProps as ImagePropsType} from './ImageProps';
-import type {HostComponent} from '../Renderer/shims/ReactNativeTypes';
-import type {ImageStyleProp} from '../StyleSheet/StyleSheet';
 
-const ImageViewManager = NativeModules.ImageViewManager;
-const RCTImageView: HostComponent<mixed> = requireNativeComponent(
-  'RCTImageView',
-);
+import type {ImageStyleProp} from '../StyleSheet/StyleSheet';
+import NativeImageLoaderIOS from './NativeImageLoaderIOS';
+
+import ImageViewNativeComponent from './ImageViewNativeComponent';
 
 function getSize(
   uri: string,
   success: (width: number, height: number) => void,
   failure?: (error: any) => void,
 ) {
-  ImageViewManager.getSize(
-    uri,
-    success,
-    failure ||
-      function() {
-        console.warn('Failed to get size for image: ' + uri);
-      },
-  );
+  NativeImageLoaderIOS.getSize(uri)
+    .then(([width, height]) => success(width, height))
+    .catch(
+      failure ||
+        function() {
+          console.warn('Failed to get size for image ' + uri);
+        },
+    );
 }
 
 function getSizeWithHeaders(
   uri: string,
-  headers: {[string]: string},
+  headers: {[string]: string, ...},
   success: (width: number, height: number) => void,
   failure?: (error: any) => void,
 ): any {
-  return ImageViewManager.getSizeWithHeaders({uri, headers})
+  return NativeImageLoaderIOS.getSizeWithHeaders(uri, headers)
     .then(function(sizes) {
       success(sizes.width, sizes.height);
     })
@@ -63,13 +59,13 @@ function getSizeWithHeaders(
 }
 
 function prefetch(url: string): any {
-  return ImageViewManager.prefetchImage(url);
+  return NativeImageLoaderIOS.prefetchImage(url);
 }
 
 async function queryCache(
   urls: Array<string>,
-): Promise<{[string]: 'memory' | 'disk' | 'disk/memory'}> {
-  return await ImageViewManager.queryCache(urls);
+): Promise<{[string]: 'memory' | 'disk' | 'disk/memory', ...}> {
+  return await NativeImageLoaderIOS.queryCache(urls);
 }
 
 type ImageComponentStatics = $ReadOnly<{|
@@ -86,7 +82,7 @@ type ImageComponentStatics = $ReadOnly<{|
  * including network images, static resources, temporary local images, and
  * images from local disk, such as the camera roll.
  *
- * See https://facebook.github.io/react-native/docs/image.html
+ * See https://reactnative.dev/docs/image.html
  */
 let Image = (props: ImagePropsType, forwardedRef) => {
   const source = resolveAssetSource(props.source) || {
@@ -128,7 +124,7 @@ let Image = (props: ImagePropsType, forwardedRef) => {
   }
 
   return (
-    <RCTImageView
+    <ImageViewNativeComponent
       {...props}
       ref={forwardedRef}
       style={style}
@@ -139,15 +135,16 @@ let Image = (props: ImagePropsType, forwardedRef) => {
   );
 };
 
-Image = React.forwardRef<ImagePropsType, React.ElementRef<typeof RCTImageView>>(
-  Image,
-);
+Image = React.forwardRef<
+  ImagePropsType,
+  React.ElementRef<typeof ImageViewNativeComponent>,
+>(Image);
 Image.displayName = 'Image';
 
 /**
  * Retrieve the width and height (in pixels) of an image prior to displaying it.
  *
- * See https://facebook.github.io/react-native/docs/image.html#getsize
+ * See https://reactnative.dev/docs/image.html#getsize
  */
 /* $FlowFixMe(>=0.89.0 site=react_native_ios_fb) This comment suppresses an
  * error found when Flow v0.89 was deployed. To see the error, delete this
@@ -158,7 +155,7 @@ Image.getSize = getSize;
  * Retrieve the width and height (in pixels) of an image prior to displaying it
  * with the ability to provide the headers for the request.
  *
- * See https://facebook.github.io/react-native/docs/image.html#getsizewithheaders
+ * See https://reactnative.dev/docs/image.html#getsizewithheaders
  */
 /* $FlowFixMe(>=0.89.0 site=react_native_ios_fb) This comment suppresses an
  * error found when Flow v0.89 was deployed. To see the error, delete this
@@ -169,7 +166,7 @@ Image.getSizeWithHeaders = getSizeWithHeaders;
  * Prefetches a remote image for later use by downloading it to the disk
  * cache.
  *
- * See https://facebook.github.io/react-native/docs/image.html#prefetch
+ * See https://reactnative.dev/docs/image.html#prefetch
  */
 /* $FlowFixMe(>=0.89.0 site=react_native_ios_fb) This comment suppresses an
  * error found when Flow v0.89 was deployed. To see the error, delete this
@@ -179,7 +176,7 @@ Image.prefetch = prefetch;
 /**
  * Performs cache interrogation.
  *
- *  See https://facebook.github.io/react-native/docs/image.html#querycache
+ *  See https://reactnative.dev/docs/image.html#querycache
  */
 /* $FlowFixMe(>=0.89.0 site=react_native_ios_fb) This comment suppresses an
  * error found when Flow v0.89 was deployed. To see the error, delete this
@@ -189,7 +186,7 @@ Image.queryCache = queryCache;
 /**
  * Resolves an asset reference into an object.
  *
- * See https://facebook.github.io/react-native/docs/image.html#resolveassetsource
+ * See https://reactnative.dev/docs/image.html#resolveassetsource
  */
 /* $FlowFixMe(>=0.89.0 site=react_native_ios_fb) This comment suppresses an
  * error found when Flow v0.89 was deployed. To see the error, delete this
@@ -209,6 +206,6 @@ const styles = StyleSheet.create({
 
 module.exports = ((Image: any): React.AbstractComponent<
   ImagePropsType,
-  React.ElementRef<typeof RCTImageView>,
+  React.ElementRef<typeof ImageViewNativeComponent>,
 > &
   ImageComponentStatics);

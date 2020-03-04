@@ -10,10 +10,15 @@
 
 'use strict';
 
-import AndroidDropdownPickerNativeComponent from './AndroidDropdownPickerNativeComponent';
-import AndroidDialogPickerNativeComponent from './AndroidDialogPickerNativeComponent';
+import AndroidDropdownPickerNativeComponent, {
+  Commands as AndroidDropdownPickerCommands,
+} from './AndroidDropdownPickerNativeComponent';
+import AndroidDialogPickerNativeComponent, {
+  Commands as AndroidDialogPickerCommands,
+} from './AndroidDialogPickerNativeComponent';
 import * as React from 'react';
 import StyleSheet from '../../StyleSheet/StyleSheet';
+import invariant from 'invariant';
 import processColor from '../../StyleSheet/processColor';
 
 import type {SyntheticEvent} from '../../Types/CoreEventTypes';
@@ -57,8 +62,13 @@ function PickerAndroid(props: Props): React.Node {
         selected = index;
       }
       const {color, label} = child.props;
+      const processedColor = processColor(color);
+      invariant(
+        processedColor == null || typeof processedColor === 'number',
+        'Unexpected color given for PickerAndroid color prop',
+      );
       return {
-        color: color == null ? null : processColor(color),
+        color: color == null ? null : processedColor,
         label,
       };
     });
@@ -83,13 +93,22 @@ function PickerAndroid(props: Props): React.Node {
           onValueChange(null, position);
         }
       }
-
       const {current} = pickerRef;
       if (current != null && position !== selected) {
-        current.setNativeProps({selected});
+        const Commands =
+          props.mode === 'dropdown'
+            ? AndroidDropdownPickerCommands
+            : AndroidDialogPickerCommands;
+        Commands.setNativeSelectedPosition(current, selected);
       }
     },
-    [props.children, props.onValueChange, props.selectedValue, selected],
+    [
+      props.children,
+      props.onValueChange,
+      props.selectedValue,
+      props.mode,
+      selected,
+    ],
   );
 
   const rootProps = {

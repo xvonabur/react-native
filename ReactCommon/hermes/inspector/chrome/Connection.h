@@ -13,7 +13,6 @@
 
 #include <hermes/hermes.h>
 #include <hermes/inspector/RuntimeAdapter.h>
-#include <hermes/inspector/chrome/MessageTypes.h>
 #include <jsinspector/InspectorInterfaces.h>
 
 namespace facebook {
@@ -33,7 +32,7 @@ class Connection {
   ~Connection();
 
   /// getRuntime returns the underlying runtime being debugged.
-  HermesRuntime &getRuntime();
+  jsi::Runtime &getRuntime();
 
   /// getTitle returns the name of the friendly name of the runtime that's shown
   /// to users in Nuclide.

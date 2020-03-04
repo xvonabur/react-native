@@ -6,7 +6,7 @@
  *
  * @format
  * @emails oncall+react_native
- * @flow
+ * @flow strict-local
  */
 
 'use strict';
@@ -17,9 +17,62 @@ const LogBoxInspectorMessageHeader = require('../LogBoxInspectorMessageHeader')
 const render = require('../../../../jest/renderer');
 
 describe('LogBoxInspectorMessageHeader', () => {
-  it('should not render collapse button for short content', () => {
+  it('should render error', () => {
     const output = render.shallowRender(
       <LogBoxInspectorMessageHeader
+        title="Error"
+        level="error"
+        collapsed={false}
+        message={{
+          content: 'Some error message',
+          substitutions: [],
+        }}
+        onPress={() => {}}
+      />,
+    );
+
+    expect(output).toMatchSnapshot();
+  });
+
+  it('should render fatal', () => {
+    const output = render.shallowRender(
+      <LogBoxInspectorMessageHeader
+        title="Fatal Error"
+        level="fatal"
+        collapsed={false}
+        message={{
+          content: 'Some fatal message',
+          substitutions: [],
+        }}
+        onPress={() => {}}
+      />,
+    );
+
+    expect(output).toMatchSnapshot();
+  });
+
+  it('should render syntax error', () => {
+    const output = render.shallowRender(
+      <LogBoxInspectorMessageHeader
+        title="Syntax Error"
+        level="syntax"
+        collapsed={false}
+        message={{
+          content: 'Some syntax error message',
+          substitutions: [],
+        }}
+        onPress={() => {}}
+      />,
+    );
+
+    expect(output).toMatchSnapshot();
+  });
+
+  it('should not render See More button for short content', () => {
+    const output = render.shallowRender(
+      <LogBoxInspectorMessageHeader
+        title="Warning"
+        level="warn"
         collapsed={false}
         message={{
           content: 'Short',
@@ -32,11 +85,13 @@ describe('LogBoxInspectorMessageHeader', () => {
     expect(output).toMatchSnapshot();
   });
 
-  it('should render "collapse" if expanded', () => {
+  it('should not render "See More" if expanded', () => {
     const output = render.shallowRender(
       <LogBoxInspectorMessageHeader
+        title="Warning"
+        level="warn"
         collapsed={false}
-        message={{content: '#'.repeat(200), substitutions: []}}
+        message={{content: '#'.repeat(301), substitutions: []}}
         onPress={() => {}}
       />,
     );
@@ -44,12 +99,14 @@ describe('LogBoxInspectorMessageHeader', () => {
     expect(output).toMatchSnapshot();
   });
 
-  it('should render "see more" if collapsed', () => {
+  it('should render "See More" if collapsed', () => {
     const output = render.shallowRender(
       <LogBoxInspectorMessageHeader
+        title="Warning"
+        level="warn"
         collapsed={true}
         message={{
-          content: '#'.repeat(200),
+          content: '#'.repeat(301),
           substitutions: [],
         }}
         onPress={() => {}}

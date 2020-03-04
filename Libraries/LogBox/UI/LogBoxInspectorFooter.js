@@ -10,8 +10,10 @@
 
 'use strict';
 
+import type {LogLevel} from '../Data/LogBoxLog';
+
 import * as React from 'react';
-import SafeAreaView from '../../Components/SafeAreaView/SafeAreaView';
+import DeviceInfo from '../../Utilities/DeviceInfo';
 import StyleSheet from '../../StyleSheet/StyleSheet';
 import Text from '../../Text/Text';
 import View from '../../Components/View/View';
@@ -21,13 +23,26 @@ import * as LogBoxStyle from './LogBoxStyle';
 type Props = $ReadOnly<{|
   onDismiss: () => void,
   onMinimize: () => void,
+  level?: ?LogLevel,
 |}>;
 
 function LogBoxInspectorFooter(props: Props): React.Node {
+  if (props.level === 'syntax') {
+    return (
+      <View style={styles.root}>
+        <View style={styles.button}>
+          <Text style={styles.syntaxErrorText}>
+            This error cannot be dismissed.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
-      <FooterButton text="Minimize" onPress={props.onMinimize} />
       <FooterButton text="Dismiss" onPress={props.onDismiss} />
+      <FooterButton text="Minimize" onPress={props.onMinimize} />
     </View>
   );
 }
@@ -42,21 +57,21 @@ function FooterButton(props: ButtonProps): React.Node {
     <LogBoxButton
       backgroundColor={{
         default: 'transparent',
-        pressed: LogBoxStyle.getBackgroundLightColor(),
+        pressed: LogBoxStyle.getBackgroundDarkColor(),
       }}
       onPress={props.onPress}
-      style={buttonStyles.button}>
+      style={buttonStyles.safeArea}>
       <View style={buttonStyles.content}>
         <Text style={buttonStyles.label}>{props.text}</Text>
       </View>
-      <SafeAreaView />
     </LogBoxButton>
   );
 }
 
 const buttonStyles = StyleSheet.create({
-  button: {
+  safeArea: {
     flex: 1,
+    paddingBottom: DeviceInfo.getConstants().isIPhoneX_deprecated ? 30 : 0,
   },
   content: {
     alignItems: 'center',
@@ -67,7 +82,7 @@ const buttonStyles = StyleSheet.create({
     color: LogBoxStyle.getTextColor(1),
     fontSize: 14,
     includeFontPadding: false,
-    lineHeight: 18,
+    lineHeight: 20,
   },
 });
 
@@ -78,8 +93,21 @@ const styles = StyleSheet.create({
     shadowOffset: {width: 0, height: -2},
     shadowRadius: 2,
     shadowOpacity: 0.5,
-    elevation: 1,
     flexDirection: 'row',
+  },
+  button: {
+    flex: 1,
+  },
+  syntaxErrorText: {
+    textAlign: 'center',
+    width: '100%',
+    height: 48,
+    fontSize: 14,
+    lineHeight: 20,
+    paddingTop: 20,
+    paddingBottom: 50,
+    fontStyle: 'italic',
+    color: LogBoxStyle.getTextColor(0.6),
   },
 });
 

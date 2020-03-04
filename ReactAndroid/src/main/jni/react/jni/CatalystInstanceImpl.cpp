@@ -8,6 +8,7 @@
 #include "CatalystInstanceImpl.h"
 
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <sstream>
 #include <vector>
@@ -23,12 +24,9 @@
 #include <cxxreact/ModuleRegistry.h>
 #include <cxxreact/RAMBundleRegistry.h>
 #include <cxxreact/RecoverableError.h>
-#include <fb/fbjni/ByteBuffer.h>
 #include <fb/log.h>
-#include <folly/Memory.h>
+#include <fbjni/ByteBuffer.h>
 #include <folly/dynamic.h>
-#include <jni/Countable.h>
-#include <jni/LocalReference.h>
 
 #include "CxxModuleWrapper.h"
 #include "JNativeRunnable.h"
@@ -93,7 +91,7 @@ CatalystInstanceImpl::initHybrid(jni::alias_ref<jclass>) {
 }
 
 CatalystInstanceImpl::CatalystInstanceImpl()
-    : instance_(folly::make_unique<Instance>()) {}
+    : instance_(std::make_unique<Instance>()) {}
 
 CatalystInstanceImpl::~CatalystInstanceImpl() {
   if (moduleMessageQueue_ != NULL) {
@@ -181,7 +179,7 @@ void CatalystInstanceImpl::initializeBridge(
   instance_->initializeBridge(
       std::make_unique<JInstanceCallback>(callback, moduleMessageQueue_),
       jseh->getExecutorFactory(),
-      folly::make_unique<JMessageQueueThread>(jsQueue),
+      std::make_unique<JMessageQueueThread>(jsQueue),
       moduleRegistry_);
 }
 
@@ -276,7 +274,7 @@ void CatalystInstanceImpl::setGlobalVariable(
 
   instance_->setGlobalVariable(
       std::move(propName),
-      folly::make_unique<JSBigStdString>(std::move(jsonValue)));
+      std::make_unique<JSBigStdString>(std::move(jsonValue)));
 }
 
 jlong CatalystInstanceImpl::getJavaScriptContext() {
@@ -290,8 +288,8 @@ void CatalystInstanceImpl::handleMemoryPressure(int pressureLevel) {
 jni::alias_ref<CallInvokerHolder::javaobject>
 CatalystInstanceImpl::getJSCallInvokerHolder() {
   if (!jsCallInvokerHolder_) {
-    jsCallInvokerHolder_ =
-        jni::make_global(CallInvokerHolder::newObjectCxxArgs(std::make_shared<BridgeJSCallInvoker>(instance_)));
+    jsCallInvokerHolder_ = jni::make_global(CallInvokerHolder::newObjectCxxArgs(
+        std::make_shared<BridgeJSCallInvoker>(instance_)));
   }
 
   return jsCallInvokerHolder_;
@@ -301,7 +299,9 @@ jni::alias_ref<CallInvokerHolder::javaobject>
 CatalystInstanceImpl::getNativeCallInvokerHolder() {
   if (!nativeCallInvokerHolder_) {
     nativeCallInvokerHolder_ =
-        jni::make_global(CallInvokerHolder::newObjectCxxArgs(std::make_shared<MessageQueueThreadCallInvoker>(moduleMessageQueue_)));
+        jni::make_global(CallInvokerHolder::newObjectCxxArgs(
+            std::make_shared<MessageQueueThreadCallInvoker>(
+                moduleMessageQueue_)));
   }
 
   return nativeCallInvokerHolder_;

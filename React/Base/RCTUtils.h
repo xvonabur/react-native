@@ -44,6 +44,8 @@ RCT_EXTERN void RCTUnsafeExecuteOnMainQueueSync(dispatch_block_t block);
 RCT_EXTERN CGFloat RCTScreenScale(void);
 RCT_EXTERN CGSize RCTScreenSize(void);
 
+RCT_EXTERN CGFloat RCTFontSizeMultiplier(void);
+
 // Round float coordinates to nearest whole screen pixel (not point)
 RCT_EXTERN CGFloat RCTRoundPixelValue(CGFloat value);
 RCT_EXTERN CGFloat RCTCeilPixelValue(CGFloat value);
@@ -140,6 +142,9 @@ RCT_EXTERN UIImage *__nullable RCTImageFromLocalBundleAssetURL(NSURL *imageURL);
 
 // Creates a new, unique temporary file path with the specified extension
 RCT_EXTERN NSString *__nullable RCTTempFilePath(NSString *__nullable extension, NSError **error);
+
+// Get RGBA components of CGColor
+RCT_EXTERN void RCTGetRGBAColorComponents(CGColorRef color, CGFloat rgba[_Nonnull 4]);
 
 // Converts a CGColor to a hex string
 RCT_EXTERN NSString *RCTColorToHexString(CGColorRef color);

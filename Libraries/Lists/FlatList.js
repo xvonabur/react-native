@@ -19,7 +19,10 @@ const StyleSheet = require('../StyleSheet/StyleSheet');
 
 const invariant = require('invariant');
 
-import type {ScrollResponderType} from '../Components/ScrollView/ScrollView';
+import ScrollView, {
+  type ScrollResponderType,
+} from '../Components/ScrollView/ScrollView';
+import type {ScrollViewNativeComponentType} from '../Components/ScrollView/ScrollViewNativeComponentType.js';
 import type {ViewStyleProp} from '../StyleSheet/StyleSheet';
 import type {
   ViewToken,
@@ -89,7 +92,12 @@ type OptionalProps<ItemT> = {|
   getItemLayout?: (
     data: ?Array<ItemT>,
     index: number,
-  ) => {length: number, offset: number, index: number},
+  ) => {
+    length: number,
+    offset: number,
+    index: number,
+    ...
+  },
   /**
    * If true, renders items next to each other horizontally instead of stacked vertically.
    */
@@ -144,9 +152,11 @@ export type Props<ItemT> = {
       getItemLayout: $PropertyType<VirtualizedListProps, 'getItemLayout'>,
       renderItem: $PropertyType<VirtualizedListProps, 'renderItem'>,
       keyExtractor: $PropertyType<VirtualizedListProps, 'keyExtractor'>,
+      ...
     },
   >,
   ...FlatListProps<ItemT>,
+  ...
 };
 
 const defaultProps = {
@@ -275,7 +285,7 @@ class FlatList<ItemT> extends React.PureComponent<Props<ItemT>, void> {
   /**
    * Scrolls to the end of the content. May be janky without `getItemLayout` prop.
    */
-  scrollToEnd(params?: ?{animated?: ?boolean}) {
+  scrollToEnd(params?: ?{animated?: ?boolean, ...}) {
     if (this._listRef) {
       this._listRef.scrollToEnd(params);
     }
@@ -294,6 +304,7 @@ class FlatList<ItemT> extends React.PureComponent<Props<ItemT>, void> {
     index: number,
     viewOffset?: number,
     viewPosition?: number,
+    ...
   }) {
     if (this._listRef) {
       this._listRef.scrollToIndex(params);
@@ -310,6 +321,7 @@ class FlatList<ItemT> extends React.PureComponent<Props<ItemT>, void> {
     animated?: ?boolean,
     item: ItemT,
     viewPosition?: number,
+    ...
   }) {
     if (this._listRef) {
       this._listRef.scrollToItem(params);
@@ -321,7 +333,7 @@ class FlatList<ItemT> extends React.PureComponent<Props<ItemT>, void> {
    *
    * Check out [scrollToOffset](docs/virtualizedlist.html#scrolltooffset) of VirtualizedList
    */
-  scrollToOffset(params: {animated?: ?boolean, offset: number}) {
+  scrollToOffset(params: {animated?: ?boolean, offset: number, ...}) {
     if (this._listRef) {
       this._listRef.scrollToOffset(params);
     }
@@ -358,13 +370,31 @@ class FlatList<ItemT> extends React.PureComponent<Props<ItemT>, void> {
     }
   }
 
+  /**
+   * Provides a reference to the underlying host component
+   */
+  getNativeScrollRef():
+    | ?React.ElementRef<typeof View>
+    | ?React.ElementRef<ScrollViewNativeComponentType> {
+    if (this._listRef) {
+      const scrollRef = this._listRef.getScrollRef();
+      if (scrollRef != null) {
+        if (scrollRef instanceof ScrollView) {
+          return scrollRef.getNativeScrollRef();
+        } else {
+          return scrollRef;
+        }
+      }
+    }
+  }
+
   getScrollableNode(): any {
     if (this._listRef) {
       return this._listRef.getScrollableNode();
     }
   }
 
-  setNativeProps(props: {[string]: mixed}) {
+  setNativeProps(props: {[string]: mixed, ...}) {
     if (this._listRef) {
       this._listRef.setNativeProps(props);
     }
@@ -383,10 +413,10 @@ class FlatList<ItemT> extends React.PureComponent<Props<ItemT>, void> {
         }),
       );
     } else if (this.props.onViewableItemsChanged) {
-      /* $FlowFixMe(>=0.63.0 site=react_native_fb) This comment suppresses an
-       * error found when Flow v0.63 was deployed. To see the error delete this
-       * comment and run Flow. */
       this._virtualizedListPairs.push({
+        /* $FlowFixMe(>=0.63.0 site=react_native_fb) This comment suppresses an
+         * error found when Flow v0.63 was deployed. To see the error delete
+         * this comment and run Flow. */
         viewabilityConfig: this.props.viewabilityConfig,
         onViewableItemsChanged: this._createOnViewableItemsChanged(
           this.props.onViewableItemsChanged,
@@ -512,11 +542,13 @@ class FlatList<ItemT> extends React.PureComponent<Props<ItemT>, void> {
     onViewableItemsChanged: ?(info: {
       viewableItems: Array<ViewToken>,
       changed: Array<ViewToken>,
+      ...
     }) => void,
   ) {
     return (info: {
       viewableItems: Array<ViewToken>,
       changed: Array<ViewToken>,
+      ...
     }) => {
       const {numColumns} = this.props;
       if (onViewableItemsChanged) {
@@ -559,6 +591,9 @@ class FlatList<ItemT> extends React.PureComponent<Props<ItemT>, void> {
     };
 
     return {
+      /* $FlowFixMe(>=0.111.0 site=react_native_fb) This comment suppresses an
+       * error found when Flow v0.111 was deployed. To see the error, delete
+       * this comment and run Flow. */
       [virtualizedListRenderKey]: (info: RenderItemProps<ItemT>) => {
         if (numColumns > 1) {
           const {item, index} = info;
