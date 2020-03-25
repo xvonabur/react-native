@@ -181,41 +181,13 @@ class TextExample extends React.Component<{}> {
               <Text style={{fontFamily: 'notoserif', fontStyle: 'italic'}}>
                 NotoSerif Italic (Missing Font file)
               </Text>
+              <Text style={{fontFamily: 'Srisakdi'}}>Srisakdi Regular</Text>
               <Text
                 style={{
-                  fontFamily: 'Rubik',
-                  fontWeight: 'normal',
+                  fontFamily: 'Srisakdi',
+                  fontWeight: 'bold',
                 }}>
-                Rubik Regular
-              </Text>
-              <Text
-                style={{
-                  fontFamily: 'Rubik',
-                  fontWeight: '300',
-                }}>
-                Rubik Light
-              </Text>
-              <Text
-                style={{
-                  fontFamily: 'Rubik',
-                  fontWeight: '700',
-                }}>
-                Rubik Bold
-              </Text>
-              <Text
-                style={{
-                  fontFamily: 'Rubik',
-                  fontWeight: '500',
-                }}>
-                Rubik Medium
-              </Text>
-              <Text
-                style={{
-                  fontFamily: 'Rubik',
-                  fontStyle: 'italic',
-                  fontWeight: '500',
-                }}>
-                Rubik Medium Italic
+                Srisakdi Bold
               </Text>
             </View>
           </View>
@@ -231,15 +203,15 @@ class TextExample extends React.Component<{}> {
         </RNTesterBlock>
         <RNTesterBlock title="Font Weight">
           <Text style={{fontWeight: 'bold'}}>Move fast and be bold</Text>
-          <Text style={{fontWeight: 'normal'}}>Move fast and be normal</Text>
+          <Text style={{fontWeight: 'normal'}}>Move fast and be bold</Text>
         </RNTesterBlock>
         <RNTesterBlock title="Font Style">
-          <Text style={{fontStyle: 'italic'}}>Move fast and be italic</Text>
-          <Text style={{fontStyle: 'normal'}}>Move fast and be normal</Text>
+          <Text style={{fontStyle: 'italic'}}>Move fast and be bold</Text>
+          <Text style={{fontStyle: 'normal'}}>Move fast and be bold</Text>
         </RNTesterBlock>
         <RNTesterBlock title="Font Style and Weight">
           <Text style={{fontStyle: 'italic', fontWeight: 'bold'}}>
-            Move fast and be both bold and italic
+            Move fast and be bold
           </Text>
         </RNTesterBlock>
         <RNTesterBlock title="Text Decoration">
